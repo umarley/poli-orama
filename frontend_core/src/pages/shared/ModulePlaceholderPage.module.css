@@ -1,0 +1,30 @@
+.page {
+  display: grid;
+  gap: 20px;
+}
+
+.emptyState {
+  display: grid;
+  min-height: 320px;
+  place-items: center;
+  align-content: center;
+  padding: 32px;
+  text-align: center;
+}
+
+.emptyState :global(.ant-typography) {
+  max-width: 520px;
+  margin: 4px 0;
+}
+
+.icon {
+  display: grid;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 12px;
+  place-items: center;
+  border-radius: 16px;
+  background: #e6f4ff;
+  color: #1677ff;
+  font-size: 28px;
+}

@@ -1,0 +1,188 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend_core
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Configurar Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend_core/pyproject.toml
+
+      - name: Instalar dependencias
+        run: python -m pip install -e ".[dev]"
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Validar formatacao
+        run: ruff format --check .
+
+      - name: Typecheck
+        run: mypy src
+
+      - name: Testes
+        run: pytest
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend_core
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Configurar pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          package_json_file: frontend_core/package.json
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: frontend_core/pnpm-lock.yaml
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Validar formatacao
+        run: pnpm format:check
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Testes
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+  jobs:
+    name: Banco, Redis e Celery
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/inteligencia_politica
+      JOBS_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/inteligencia_politica
+      CELERY_BROKER_URL: redis://localhost:6379/0
+      CELERY_RESULT_BACKEND: redis://localhost:6379/1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Configurar Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            backend_jobs_celery/pyproject.toml
+            database/requirements.txt
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install -e "./backend_jobs_celery[dev]"
+          python -m pip install -r database/requirements.txt
+
+      - name: Validar worker
+        working-directory: backend_jobs_celery
+        run: |
+          ruff check .
+          ruff format --check .
+          mypy src
+          pytest
+
+      - name: Testar parser da migration
+        run: python -m unittest discover database/tests
+
+      - name: Iniciar PostgreSQL e Redis
+        run: docker compose --profile local-db up -d postgres redis
+
+      - name: Aguardar migration
+        run: |
+          for attempt in {1..60}; do
+            if docker compose exec -T postgres psql \
+              -U postgres -d inteligencia_politica -tAc \
+              "SELECT to_regclass('etl.job_processamento')" | grep -q job_processamento; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose logs postgres
+          exit 1
+
+      - name: Validar banco contra migration
+        run: python database/scripts/validate_schema.py --database-url "$DATABASE_URL"
+
+      - name: Iniciar worker
+        run: |
+          celery -A jobs.celery_app worker --loglevel=INFO --pool=solo \
+            > /tmp/vurix-worker.log 2>&1 &
+          echo $! > /tmp/vurix-worker.pid
+          for attempt in {1..30}; do
+            if celery -A jobs.celery_app inspect ping --timeout=2 | grep -q pong; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/vurix-worker.log
+          exit 1
+
+      - name: Executar jobs de sucesso e falha
+        run: |
+          jobs enqueue-test --wait --timeout 30
+          jobs enqueue-test --simulate-error --wait --timeout 30
+
+      - name: Logs em caso de falha
+        if: failure()
+        run: |
+          cat /tmp/vurix-worker.log || true
+          docker compose logs postgres redis || true
+
+      - name: Encerrar servicos
+        if: always()
+        run: docker compose --profile local-db down --volumes
+
+  containers:
+    name: Imagens Docker
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Validar Compose
+        run: docker compose --profile local-db config --quiet
+
+      - name: Construir imagens
+        run: docker compose build api frontend worker

@@ -1,0 +1,179 @@
+.page {
+  display: grid;
+  gap: 20px;
+}
+
+.summaryCard {
+  position: relative;
+  height: 100%;
+}
+
+.summaryCard :global(.ant-card-body) {
+  position: relative;
+  min-height: 126px;
+}
+
+.summaryCard :global(.ant-statistic-title) {
+  padding-right: 48px;
+}
+
+.summaryCard :global(.ant-statistic-content) {
+  font-size: 26px;
+  font-weight: 600;
+}
+
+.summaryIcon {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 8px;
+  font-size: 20px;
+}
+
+.blue {
+  background: #e6f4ff;
+  color: #1677ff;
+}
+
+.green {
+  background: #f6ffed;
+  color: #389e0d;
+}
+
+.orange {
+  background: #fff7e6;
+  color: #d46b08;
+}
+
+.purple {
+  background: #f9f0ff;
+  color: #722ed1;
+}
+
+.trend {
+  margin-top: 8px;
+}
+
+.territoryList {
+  display: grid;
+  gap: 22px;
+}
+
+.territoryRow {
+  display: grid;
+  align-items: center;
+  grid-template-columns: minmax(180px, 1fr) 2fr;
+  gap: 24px;
+}
+
+.territoryInfo {
+  display: grid;
+  gap: 2px;
+}
+
+.progress :global(.ant-progress-text) {
+  min-width: 40px;
+}
+
+.activityCard {
+  height: 100%;
+}
+
+.activityCard :global(.ant-list-item-meta-title) {
+  margin-bottom: 2px;
+  font-size: 13px;
+}
+
+.activityCard :global(.ant-list-item-meta-description) {
+  font-size: 12px;
+}
+
+.activityIcon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 50%;
+  background: #e6f4ff;
+  color: #1677ff;
+}
+
+.activityIcon[data-color='green'] {
+  background: #f6ffed;
+  color: #389e0d;
+}
+
+.activityIcon[data-color='cyan'] {
+  background: #e6fffb;
+  color: #08979c;
+}
+
+.activityIcon[data-color='orange'] {
+  background: #fff7e6;
+  color: #d46b08;
+}
+
+.events {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.event {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.event > div:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.event > div:last-child strong,
+.event > div:last-child span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.date {
+  display: grid;
+  width: 48px;
+  height: 52px;
+  flex: 0 0 auto;
+  place-content: center;
+  border: 1px solid #d6e4ff;
+  border-radius: 6px;
+  background: #f0f5ff;
+  color: #003eb3;
+  text-align: center;
+}
+
+.date strong {
+  font-size: 18px;
+  line-height: 20px;
+}
+
+.date span {
+  font-size: 10px;
+  font-weight: 600;
+}
+
+@media (max-width: 767px) {
+  .territoryRow {
+    align-items: start;
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .events {
+    grid-template-columns: 1fr;
+  }
+}

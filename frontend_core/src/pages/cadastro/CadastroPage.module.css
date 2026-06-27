@@ -1,0 +1,88 @@
+.page {
+  display: grid;
+  gap: 20px;
+}
+
+.page :global(.ant-form-inline) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 0;
+}
+
+.page :global(.ant-form-inline .ant-form-item:first-child) {
+  flex: 1 1 280px;
+}
+
+.page :global(.ant-form-inline .ant-form-item:first-child .ant-input-affix-wrapper) {
+  width: 100%;
+}
+
+.tableCard {
+  overflow: hidden;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.tableHeading {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid #f0f0f0;
+  gap: 16px;
+}
+
+.tableHeading > div {
+  display: grid;
+}
+
+.personCell {
+  display: flex;
+  min-width: 210px;
+  align-items: center;
+  gap: 10px;
+}
+
+.personCell > div {
+  display: grid;
+}
+
+.personAvatar {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: #e6f4ff;
+  color: #0958d9;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.modalForm {
+  padding-top: 12px;
+}
+
+.compactField {
+  width: 50%;
+}
+
+@media (max-width: 575px) {
+  .page :global(.ant-form-inline .ant-form-item) {
+    width: 100%;
+    flex: 1 1 100%;
+    margin-inline-end: 0;
+  }
+
+  .page :global(.ant-form-inline .ant-form-item-control),
+  .page :global(.ant-form-inline .ant-select) {
+    width: 100%;
+  }
+
+  .tableHeading {
+    align-items: flex-start;
+  }
+}

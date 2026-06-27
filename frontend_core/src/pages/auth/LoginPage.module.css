@@ -1,0 +1,228 @@
+.page {
+  display: grid;
+  min-height: 100vh;
+  grid-template-columns: minmax(440px, 48%) 1fr;
+  background: #fff;
+}
+
+.formPanel {
+  display: grid;
+  padding: 48px;
+  place-items: center;
+  background: #fafafa;
+}
+
+.formWrapper {
+  display: grid;
+  width: min(100%, 420px);
+  gap: 24px;
+}
+
+.intro {
+  display: grid;
+  gap: 4px;
+  margin-top: 20px;
+}
+
+.intro :global(.ant-typography) {
+  margin: 0;
+}
+
+.formOptions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: -4px;
+}
+
+.submit {
+  height: 42px;
+  margin-top: 24px;
+}
+
+.demoHint {
+  text-align: center;
+}
+
+.visualPanel {
+  position: relative;
+  display: grid;
+  overflow: hidden;
+  padding: 56px clamp(40px, 6vw, 96px);
+  place-items: center;
+  background:
+    radial-gradient(circle at 90% 12%, rgb(64 150 255 / 22%), transparent 28%),
+    linear-gradient(145deg, #001452 0%, #001d66 52%, #003eb3 100%);
+  color: #fff;
+}
+
+.visualPanel::before,
+.visualPanel::after {
+  position: absolute;
+  width: 280px;
+  height: 280px;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 50%;
+  content: '';
+}
+
+.visualPanel::before {
+  top: -140px;
+  right: -80px;
+}
+
+.visualPanel::after {
+  bottom: -180px;
+  left: -80px;
+  width: 380px;
+  height: 380px;
+}
+
+.visualContent {
+  position: relative;
+  z-index: 1;
+  max-width: 680px;
+}
+
+.eyebrow {
+  display: block;
+  margin-bottom: 12px;
+  color: #91caff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.visualContent > :global(.ant-typography) {
+  color: #fff;
+}
+
+.visualContent > :global(p.ant-typography) {
+  max-width: 580px;
+  color: rgb(255 255 255 / 72%);
+  font-size: 16px;
+  line-height: 24px;
+}
+
+.featureGrid {
+  display: grid;
+  margin: 28px 0;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.featureGrid > div {
+  display: grid;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 7%);
+  backdrop-filter: blur(6px);
+  gap: 4px;
+}
+
+.featureGrid :global(.anticon) {
+  margin-bottom: 8px;
+  color: #69b1ff;
+  font-size: 20px;
+}
+
+.featureGrid span {
+  color: rgb(255 255 255 / 62%);
+  font-size: 12px;
+}
+
+.dashboardPreview {
+  overflow: hidden;
+  height: 250px;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 12px;
+  background: #f5f5f5;
+  box-shadow: 0 24px 64px rgb(0 0 0 / 24%);
+  transform: perspective(900px) rotateX(2deg) rotateY(-4deg);
+}
+
+.previewHeader {
+  display: flex;
+  height: 28px;
+  align-items: center;
+  padding: 0 10px;
+  background: #fff;
+  gap: 5px;
+}
+
+.previewHeader span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #d9d9d9;
+}
+
+.previewBody {
+  display: grid;
+  height: calc(100% - 28px);
+  grid-template-columns: 86px 1fr;
+}
+
+.previewSidebar {
+  background: #001d66;
+}
+
+.previewMain {
+  padding: 18px;
+}
+
+.previewCards {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.previewCards span {
+  height: 42px;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.previewChart {
+  display: flex;
+  height: 120px;
+  align-items: end;
+  padding: 18px 24px 0;
+  border-radius: 6px;
+  margin-top: 14px;
+  background: #fff;
+  gap: 12px;
+}
+
+.previewChart i {
+  flex: 1;
+  border-radius: 3px 3px 0 0;
+  background: linear-gradient(#69b1ff, #1677ff);
+}
+
+@media (max-width: 991px) {
+  .page {
+    grid-template-columns: 1fr;
+  }
+
+  .visualPanel {
+    display: none;
+  }
+
+  .formPanel {
+    min-height: 100vh;
+  }
+}
+
+@media (max-width: 575px) {
+  .formPanel {
+    align-items: start;
+    padding: 32px 20px;
+  }
+
+  .formWrapper {
+    gap: 20px;
+  }
+}

@@ -1,0 +1,66 @@
+# Frontend dependencies
+/frontend_core/node_modules/
+/.pnpm-store/
+
+# Build output and TypeScript incremental state
+/frontend_core/dist/
+/frontend_core/*.tsbuildinfo
+
+# Test output and coverage
+/frontend_core/coverage/
+/frontend_core/playwright-report/
+/frontend_core/test-results/
+
+# Tool caches
+/frontend_core/.vite/
+/frontend_core/.eslintcache
+/frontend_core/.cache/
+
+# Local environment files (keep templates versioned)
+/frontend_core/.env
+/frontend_core/.env.*
+!/frontend_core/.env.example
+
+# Logs
+/frontend_core/*.log
+/frontend_core/npm-debug.log*
+/frontend_core/yarn-debug.log*
+/frontend_core/yarn-error.log*
+/frontend_core/pnpm-debug.log*
+
+# Local editor and operating-system files
+/frontend_core/.idea/
+/frontend_core/.vscode/*
+!/frontend_core/.vscode/extensions.json
+!/frontend_core/.vscode/settings.json
+/frontend_core/.DS_Store
+/frontend_core/Thumbs.db
+
+# Backend Python
+/backend_core/.env
+/backend_core/.env.*
+!/backend_core/.env.example
+/backend_core/.venv/
+/backend_core/.pytest_cache/
+/backend_core/.mypy_cache/
+/backend_core/.ruff_cache/
+/backend_core/.coverage
+/backend_core/htmlcov/
+/backend_core/**/__pycache__/
+/backend_core/**/*.py[cod]
+
+# Celery worker
+/backend_jobs_celery/.env
+/backend_jobs_celery/.env.*
+!/backend_jobs_celery/.env.example
+/backend_jobs_celery/.venv/
+/backend_jobs_celery/.pytest_cache/
+/backend_jobs_celery/.mypy_cache/
+/backend_jobs_celery/.ruff_cache/
+/backend_jobs_celery/**/__pycache__/
+/backend_jobs_celery/**/*.py[cod]
+
+# Docker local state
+/.env
+/.env.*
+!/.env.example

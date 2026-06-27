@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vurix-backend-jobs"
+version = "0.1.0"
+description = "Worker Celery do SaaS Vurix Eleitoral"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "celery[redis]>=5.6,<6",
+  "psycopg[binary]>=3.2,<4",
+  "pydantic-settings>=2.7,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "mypy>=1.14,<2",
+  "pytest>=8.3,<9",
+  "ruff>=0.9,<1",
+]
+
+[project.scripts]
+jobs = "jobs.cli:entrypoint"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/jobs"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+packages = ["jobs"]
+
+[[tool.mypy.overrides]]
+module = ["celery.*"]
+ignore_missing_imports = true

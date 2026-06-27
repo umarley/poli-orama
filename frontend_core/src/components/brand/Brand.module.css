@@ -1,0 +1,37 @@
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: #141414;
+  font-size: 16px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.inverted {
+  color: #fff;
+}
+
+.mark {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 8px 2px 8px 2px;
+  background: #1677ff;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  transform: skew(-7deg);
+}
+
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.name strong {
+  color: #69b1ff;
+  font-weight: 600;
+}
