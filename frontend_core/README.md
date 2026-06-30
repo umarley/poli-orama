@@ -20,9 +20,9 @@ pnpm dev
 
 A aplicação estará disponível em `http://127.0.0.1:5173`.
 
-Na tela inicial, mantenha o e-mail demonstrativo e use a senha `demo123`. A autenticação
-é simulada nesta fundação e deverá ser substituída pelo endpoint definido na especificação
-de autenticação.
+O login exige o slug da campanha, e-mail e senha cadastrados no backend. A sessão usa
+access token curto e refresh token rotativo; respostas 401 tentam uma única renovação
+antes de encerrar a sessão.
 
 ## Comandos
 
@@ -65,10 +65,12 @@ src/
 - Imports internos usam o alias `@/`.
 - Cores, tipografia, raios e dimensões básicas estão centralizados em
   `src/styles/theme.ts`.
-- O cliente Axios injeta `Authorization`, `X-Tenant-ID` e `X-Campaign-ID` e normaliza
+- O cliente Axios injeta `Authorization` e `X-Campaign-ID` e normaliza
   erros no formato `{ code, message, details }`.
-- A sessão mantém usuário, tenant, campanha atual e token como contextos separados com
-  Zustand.
+- A sessão mantém usuário, tenant, permissões, access token e refresh token com Zustand.
+- Menus e rotas são filtrados pela permissão efetiva retornada pela API.
+- Gestores podem configurar MFA TOTP e todos os usuários podem consultar e revogar
+  sessões em **Segurança e acessos**.
 - Dados assíncronos e invalidação de cache usam TanStack Query.
 - Rotas autenticadas ficam sob `AuthenticatedLayout`.
 - Novos domínios devem manter contratos e serviços em `src/modules/<dominio>`.

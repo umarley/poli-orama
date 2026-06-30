@@ -56,6 +56,24 @@ class AuthenticationError(AppError):
         )
 
 
+class MfaRequiredError(AppError):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            code="mfa_required",
+            message="Informe o codigo do aplicativo autenticador.",
+        )
+
+
+class InvalidMfaCodeError(AppError):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            code="invalid_mfa_code",
+            message="Codigo de autenticacao invalido.",
+        )
+
+
 class AuthorizationError(AppError):
     def __init__(self, message: str = "Usuario sem permissao para esta acao.") -> None:
         super().__init__(

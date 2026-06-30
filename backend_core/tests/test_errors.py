@@ -1,7 +1,26 @@
-from fastapi.testclient import TestClient
+from unittest.mock import AsyncMock
 
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.access import get_db_session, require_saas_admin
 from app.core.errors import ResourceNotFoundError
 from app.main import app
+
+
+@pytest.fixture(autouse=True)
+def authenticated_admin() -> None:
+    async def fake_admin() -> int:
+        return 1
+
+    async def fake_session():
+        yield AsyncMock(spec=AsyncSession)
+
+    app.dependency_overrides[require_saas_admin] = fake_admin
+    app.dependency_overrides[get_db_session] = fake_session
+    yield
+    app.dependency_overrides.clear()
 
 
 def test_validation_error_uses_standard_contract() -> None:
@@ -38,7 +57,7 @@ def test_not_found_uses_standard_contract() -> None:
         with TestClient(app) as client:
             response = client.get("/api/v1/tenants/99")
     finally:
-        app.dependency_overrides.clear()
+        app.dependency_overrides.pop(get_tenant_service, None)
 
     assert response.status_code == 404
     assert response.json()["code"] == "resource_not_found"
@@ -58,7 +77,7 @@ def test_internal_error_hides_implementation_details() -> None:
         with TestClient(app, raise_server_exceptions=False) as client:
             response = client.get("/api/v1/tenants/1")
     finally:
-        app.dependency_overrides.clear()
+        app.dependency_overrides.pop(get_tenant_service, None)
 
     assert response.status_code == 500
     assert response.json()["code"] == "internal_error"

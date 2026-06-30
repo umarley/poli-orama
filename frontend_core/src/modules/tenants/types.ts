@@ -39,6 +39,8 @@ export interface TenantRecord {
   documento?: string;
   tem_mandato: boolean;
   plano_assinatura_id?: number;
+  data_inicio_contrato?: string | null;
+  data_fim_contrato?: string | null;
   status: TenantStatus;
   criado_em: string;
   atualizado_em: string;

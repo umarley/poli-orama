@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.auth.router import router as auth_router
 from app.core.config import get_settings
 from app.core.database import dispose_database
 from app.core.errors import install_exception_handlers
@@ -48,9 +49,6 @@ app.add_middleware(
         "Idempotency-Key",
         "X-Campaign-ID",
         "X-Request-ID",
-        "X-Tenant-ID",
-        "X-User-ID",
-        "X-User-Role",
         "X-Webhook-Signature",
     ],
     expose_headers=["X-Request-ID"],
@@ -60,6 +58,7 @@ install_exception_handlers(app)
 
 app.include_router(health_router)
 app.include_router(public_router)
+app.include_router(auth_router, prefix=settings.api_v1_prefix)
 app.include_router(tenants_router, prefix=settings.api_v1_prefix)
 app.include_router(cadastro_router, prefix=settings.api_v1_prefix)
 app.include_router(territorio_router, prefix=settings.api_v1_prefix)

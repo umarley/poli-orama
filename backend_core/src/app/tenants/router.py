@@ -3,8 +3,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Path, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.access import get_db_session
 from app.core.config import get_settings
-from app.core.database import get_session
 from app.core.pagination import ListParams, Page, list_params
 from app.tenants.access import RequestActor, require_actor, require_saas_admin, require_tenant_admin
 from app.tenants.repository import CommercialRepository, TenantRepository
@@ -22,13 +22,13 @@ router = APIRouter(tags=["Tenants"])
 
 
 def get_tenant_service(
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> TenantManagementService:
     return TenantManagementService(TenantRepository(session))
 
 
 def get_commercial_service(
-    session: Annotated[AsyncSession, Depends(get_session)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> CommercialService:
     return CommercialService(CommercialRepository(session), get_settings())
 

@@ -13,6 +13,9 @@ credenciais:
 $env:DATABASE_ADMIN_URL = "postgresql://postgres:senha@localhost:5432/inteligencia_politica"
 psql $env:DATABASE_ADMIN_URL -v ON_ERROR_STOP=1 -f ".\database\migrations\001 - ddl_inteligencia_politica.sql"
 psql $env:DATABASE_ADMIN_URL -v ON_ERROR_STOP=1 -f ".\database\migrations\002 - tenants_planos_onboarding.sql"
+psql $env:DATABASE_ADMIN_URL -v ON_ERROR_STOP=1 -f ".\database\migrations\003 - auth_rbac_auditoria_p0.sql"
+psql $env:DATABASE_ADMIN_URL -v ON_ERROR_STOP=1 -f ".\database\migrations\004 - auth_p1_acesso_territorial.sql"
+psql $env:DATABASE_ADMIN_URL -v ON_ERROR_STOP=1 -f ".\database\migrations\005 - auth_p2_mfa_sessoes.sql"
 ```
 
 Em Linux/macOS:
@@ -23,6 +26,12 @@ psql "$DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1 \
   -f "database/migrations/001 - ddl_inteligencia_politica.sql"
 psql "$DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1 \
   -f "database/migrations/002 - tenants_planos_onboarding.sql"
+psql "$DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1 \
+  -f "database/migrations/003 - auth_rbac_auditoria_p0.sql"
+psql "$DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1 \
+  -f "database/migrations/004 - auth_p1_acesso_territorial.sql"
+psql "$DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1 \
+  -f "database/migrations/005 - auth_p2_mfa_sessoes.sql"
 ```
 
 A migration deve ser aplicada uma unica vez em um banco vazio. O uso de

@@ -6,6 +6,7 @@ import {
   MenuOutlined,
   MenuUnfoldOutlined,
   SearchOutlined,
+  SafetyCertificateOutlined,
 } from '@ant-design/icons';
 import {
   Avatar,
@@ -24,9 +25,10 @@ import {
 import { useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
-import { getNavigationLabel, menuItems } from '@/app/navigation';
+import { canViewNavigationItem, getNavigationLabel, navigationItems } from '@/app/navigation';
 import { Brand } from '@/components/brand/Brand';
 import { ToastBridge } from '@/components/feedback/ToastBridge';
+import { logout } from '@/modules/auth/auth-service';
 import { useSessionStore } from '@/stores/session-store';
 
 import styles from './AuthenticatedLayout.module.css';
@@ -44,10 +46,9 @@ export function AuthenticatedLayout() {
   const currentCampaign = useSessionStore((state) => state.currentCampaign);
   const clearSession = useSessionStore((state) => state.clearSession);
   const isMobile = screens.md === false;
-  const isSaasAdmin = ['gestor_saas', 'admin'].includes(user?.role ?? '');
-  const visibleMenuItems = menuItems?.filter(
-    (item) => item?.key !== '/admin/tenants' || isSaasAdmin,
-  );
+  const visibleMenuItems = navigationItems
+    .filter((item) => canViewNavigationItem(item, user?.permissions ?? [], user?.profiles ?? []))
+    .map((item) => ({ ...item }));
 
   const currentRoute =
     visibleMenuItems
@@ -59,9 +60,13 @@ export function AuthenticatedLayout() {
     setDrawerOpen(false);
   };
 
-  const handleLogout = () => {
-    clearSession();
-    navigate('/login', { replace: true });
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } finally {
+      clearSession();
+      navigate('/login', { replace: true });
+    }
   };
 
   const navigation = (
@@ -164,11 +169,17 @@ export function AuthenticatedLayout() {
                 menu={{
                   items: [
                     {
+                      key: 'security',
+                      label: 'Segurança e acessos',
+                      icon: <SafetyCertificateOutlined />,
+                      onClick: () => navigate('/minha-conta/acessos'),
+                    },
+                    {
                       key: 'logout',
                       label: 'Sair',
                       icon: <LogoutOutlined />,
                       danger: true,
-                      onClick: handleLogout,
+                      onClick: () => void handleLogout(),
                     },
                   ],
                 }}

@@ -1,23 +1,28 @@
 import {
+  BankOutlined,
   LockOutlined,
   MailOutlined,
   PieChartOutlined,
   SafetyCertificateOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
-import { Alert, Button, Checkbox, Form, Input, Space, Typography } from 'antd';
+import { Alert, Button, Form, Input, Space, Typography } from 'antd';
 import { useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 
 import { Brand } from '@/components/brand/Brand';
-import { useSessionStore } from '@/stores/session-store';
+import { getDefaultRoute } from '@/app/navigation';
+import { login } from '@/modules/auth/auth-service';
+import { normalizeApiError } from '@/services/api/api-error';
+import { mapAuthUser, useSessionStore } from '@/stores/session-store';
 
 import styles from './LoginPage.module.css';
 
 interface LoginFormValues {
+  tenantSlug: string;
   email: string;
   password: string;
-  remember?: boolean;
+  mfaCode?: string;
 }
 
 export function LoginPage() {
@@ -25,6 +30,7 @@ export function LoginPage() {
   const location = useLocation();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mfaRequired, setMfaRequired] = useState(false);
   const isAuthenticated = useSessionStore((state) => state.isAuthenticated);
   const setSession = useSessionStore((state) => state.setSession);
 
@@ -36,46 +42,53 @@ export function LoginPage() {
     setSubmitting(true);
     setError(null);
 
-    await new Promise((resolve) => window.setTimeout(resolve, 550));
-
-    if (!values.email || values.password.length < 6) {
-      setError('Confira seu e-mail e informe uma senha com pelo menos 6 caracteres.');
-      setSubmitting(false);
-      return;
-    }
-
-    setSession(
-      {
-        id: 'usr-demo',
-        name: 'Marina Costa',
+    try {
+      const authentication = await login({
+        tenant_slug: values.tenantSlug,
         email: values.email,
-        initials: 'MC',
-        role: 'gestor_saas',
-      },
-      {
-        id: '1',
-        name: 'Ricardo Almeida',
-        slug: 'ricardo-almeida',
-        status: 'ativo',
-      },
-      {
-        id: 'campanha-demo',
-        name: 'Ricardo Almeida 2026',
-        office: 'Deputado estadual',
-        active: true,
-        election: {
-          id: 'eleicao-demo',
-          year: 2026,
-          type: 'estadual',
-          round: 1,
-          date: '2026-10-04',
+        senha: values.password,
+        dispositivo: window.navigator.userAgent.slice(0, 180),
+        codigo_mfa: values.mfaCode,
+      });
+      useSessionStore
+        .getState()
+        .updateAuthentication(
+          authentication.usuario,
+          authentication.access_token,
+          authentication.refresh_token,
+          authentication.expires_in,
+        );
+      const tenant = authentication.usuario.tenant;
+      setSession(
+        mapAuthUser(authentication.usuario),
+        {
+          id: tenant.id,
+          name: tenant.nome,
+          slug: tenant.slug,
+          status: tenant.status,
         },
-      },
-      'token-demonstracao',
-    );
-
-    const destination = (location.state as { from?: string } | null)?.from ?? '/dashboard';
-    navigate(destination, { replace: true });
+        null,
+        authentication.access_token,
+        authentication.refresh_token,
+        authentication.expires_in,
+      );
+      const destination =
+        (location.state as { from?: string } | null)?.from ??
+        getDefaultRoute(
+          authentication.usuario.permissoes,
+          authentication.usuario.perfis.map((profile) => profile.codigo),
+        );
+      navigate(destination, { replace: true });
+    } catch (requestError) {
+      useSessionStore.getState().clearSession();
+      const apiError = normalizeApiError(requestError);
+      if (apiError.code === 'mfa_required') {
+        setMfaRequired(true);
+      }
+      setError(apiError.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -95,10 +108,43 @@ export function LoginPage() {
           <Form<LoginFormValues>
             layout="vertical"
             requiredMark={false}
-            initialValues={{ email: 'gestor@campanha.com.br', remember: true }}
             onFinish={handleSubmit}
             size="large"
           >
+            <Form.Item
+              label="Campanha"
+              name="tenantSlug"
+              rules={[
+                { required: true, message: 'Informe o identificador da campanha.' },
+                {
+                  pattern: /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
+                  message: 'Use letras minúsculas, números e hífens.',
+                },
+              ]}
+            >
+              <Input
+                prefix={<BankOutlined />}
+                placeholder="nome-da-campanha"
+                autoComplete="organization"
+              />
+            </Form.Item>
+            {mfaRequired && (
+              <Form.Item
+                label="Código de autenticação"
+                name="mfaCode"
+                rules={[
+                  { required: true, message: 'Informe o código do aplicativo autenticador.' },
+                  { pattern: /^\d{6}$/, message: 'O código deve possuir seis números.' },
+                ]}
+              >
+                <Input
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="000000"
+                  autoComplete="one-time-code"
+                />
+              </Form.Item>
+            )}
             <Form.Item
               label="E-mail"
               name="email"
@@ -118,7 +164,7 @@ export function LoginPage() {
               name="password"
               rules={[
                 { required: true, message: 'Informe sua senha.' },
-                { min: 6, message: 'A senha deve ter pelo menos 6 caracteres.' },
+                { min: 12, message: 'A senha deve ter pelo menos 12 caracteres.' },
               ]}
             >
               <Input.Password
@@ -129,9 +175,7 @@ export function LoginPage() {
             </Form.Item>
 
             <div className={styles.formOptions}>
-              <Form.Item name="remember" valuePropName="checked" noStyle>
-                <Checkbox>Lembrar acesso</Checkbox>
-              </Form.Item>
+              <span />
               <Button type="link" size="small">
                 Esqueci minha senha
               </Button>
@@ -147,10 +191,6 @@ export function LoginPage() {
               Entrar
             </Button>
           </Form>
-
-          <Typography.Text type="secondary" className={styles.demoHint}>
-            Ambiente inicial: use o e-mail preenchido e a senha <strong>demo123</strong>.
-          </Typography.Text>
         </div>
       </section>
 

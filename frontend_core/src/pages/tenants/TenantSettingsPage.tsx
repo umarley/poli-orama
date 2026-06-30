@@ -35,7 +35,7 @@ export function TenantSettingsPage() {
       AppToast.success('Configurações atualizadas.');
       if (tenantQuery.data) {
         setTenant({
-          id: String(tenantQuery.data.id),
+          id: tenantQuery.data.id,
           name: configuration.nome_publico || tenantQuery.data.nome,
           slug: tenantQuery.data.slug,
           status: tenantQuery.data.status,

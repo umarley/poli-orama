@@ -7,8 +7,10 @@ services:
     environment:
       ENVIRONMENT: local
       LOG_LEVEL: INFO
-      DATABASE_URL: ${API_DATABASE_URL:-postgresql+asyncpg://postgres:postgres@postgres:5432/inteligencia_politica}
+      DATABASE_URL: ${API_DATABASE_URL:-postgresql+asyncpg://app_inteligencia:troque_esta_senha@postgres:5432/inteligencia_politica}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173,http://localhost:4321,http://127.0.0.1:4321}
+      JWT_SECRET: ${JWT_SECRET:-local-compose-jwt-secret-change-before-production}
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:-local-compose-mfa-key-change-before-production}
     ports:
       - "127.0.0.1:8000:8000"
     healthcheck:
@@ -110,6 +112,9 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - "./database/migrations/001 - ddl_inteligencia_politica.sql:/docker-entrypoint-initdb.d/001-ddl.sql:ro"
       - "./database/migrations/002 - tenants_planos_onboarding.sql:/docker-entrypoint-initdb.d/002-tenants.sql:ro"
+      - "./database/migrations/003 - auth_rbac_auditoria_p0.sql:/docker-entrypoint-initdb.d/003-auth.sql:ro"
+      - "./database/migrations/004 - auth_p1_acesso_territorial.sql:/docker-entrypoint-initdb.d/004-auth-p1.sql:ro"
+      - "./database/migrations/005 - auth_p2_mfa_sessoes.sql:/docker-entrypoint-initdb.d/005-auth-p2.sql:ro"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s

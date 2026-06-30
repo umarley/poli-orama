@@ -1,0 +1,184 @@
+import hmac
+from collections.abc import AsyncIterator, Awaitable, Callable
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from typing import Annotated
+
+from fastapi import Depends
+from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.auth.repository import AuthRepository
+from app.auth.security import decode_access_token, session_is_inactive, token_digest
+from app.core.config import get_settings
+from app.core.database import get_session
+from app.core.errors import AuthenticationError, AuthorizationError, TenantInactiveError
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
+
+
+@dataclass(frozen=True, slots=True)
+class RequestActor:
+    tenant_id: int
+    user_id: int
+    session_id: int
+    profiles: tuple[str, ...]
+    permissions: frozenset[str]
+    token: str
+
+    @property
+    def role(self) -> str:
+        return self.profiles[0] if self.profiles else "usuario"
+
+
+@dataclass(frozen=True, slots=True)
+class TerritorialAccess:
+    unrestricted: bool
+    scopes: frozenset[tuple[str, int | None, bool]]
+
+    def can_access(
+        self, scope_type: str, scope_id: int | None, *, administer: bool = False
+    ) -> bool:
+        if self.unrestricted:
+            return True
+        for current_type, current_id, can_administer in self.scopes:
+            if current_type == "global" and (not administer or can_administer):
+                return True
+            if (
+                current_type == scope_type
+                and current_id == scope_id
+                and (not administer or can_administer)
+            ):
+                return True
+        return False
+
+
+async def get_current_user(
+    session: Annotated[AsyncSession, Depends(get_session)],
+    token: Annotated[str | None, Depends(oauth2_scheme)],
+) -> RequestActor:
+    if not token:
+        raise AuthenticationError()
+    settings = get_settings()
+    claims = decode_access_token(token, settings)
+    repository = AuthRepository(session)
+    tenant_id = int(claims["tenant_id"])
+    user_id = int(claims["sub"])
+    session_id = int(claims["sid"])
+
+    await repository.set_tenant_context(tenant_id)
+    tenant = await repository.resolve_tenant_for_login_by_id(tenant_id)
+    if tenant is None:
+        raise AuthenticationError("Tenant da sessao nao foi encontrado.")
+    if tenant.status not in {"ativo", "trial"}:
+        raise TenantInactiveError(tenant.status)
+
+    user = await repository.get_user(tenant_id, user_id)
+    user_session = await repository.get_session(session_id)
+    now = datetime.now(UTC)
+    if (
+        user is None
+        or user.status != "ativo"
+        or user_session is None
+        or user_session.usuario_id != user_id
+        or user_session.tenant_id != tenant_id
+        or user_session.revogada_em is not None
+        or user_session.expira_em <= now
+        or not hmac.compare_digest(user_session.token_hash, token_digest(token))
+    ):
+        raise AuthenticationError("Sessao invalida ou revogada.")
+    if session_is_inactive(user_session.ultimo_uso_em, now, settings):
+        await repository.revoke_session(user_session)
+        await repository.commit()
+        raise AuthenticationError("Sessao expirada por inatividade.")
+    if (
+        user_session.ultimo_uso_em + timedelta(seconds=settings.session_touch_interval_seconds)
+        <= now
+    ):
+        await repository.touch_session(user_session, now)
+        await repository.commit()
+        await repository.set_tenant_context(tenant_id)
+
+    profiles = tuple(profile.codigo for profile in await repository.profiles_for_user(user_id))
+    permissions = frozenset(
+        permission.codigo for permission in await repository.permissions_for_user(user_id)
+    )
+    return RequestActor(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        session_id=session_id,
+        profiles=profiles,
+        permissions=permissions,
+        token=token,
+    )
+
+
+async def get_db_session(
+    _: Annotated[RequestActor, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> AsyncIterator[AsyncSession]:
+    """Entrega a sessao depois de validar o JWT e definir o tenant para o RLS."""
+    yield session
+
+
+async def get_territorial_access(
+    actor: Annotated[RequestActor, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> TerritorialAccess:
+    if {"gestor", "gestor_saas"} & set(actor.profiles):
+        return TerritorialAccess(unrestricted=True, scopes=frozenset())
+    policies = await AuthRepository(session).territorial_access_for_user(
+        actor.tenant_id, actor.user_id
+    )
+    scope_fields = {
+        "estado": "estado_id",
+        "municipio": "municipio_id",
+        "bairro": "bairro_id",
+        "zona_eleitoral": "zona_eleitoral_id",
+        "secao_eleitoral": "secao_eleitoral_id",
+        "territorio": "territorio_id",
+    }
+    return TerritorialAccess(
+        unrestricted=False,
+        scopes=frozenset(
+            (
+                policy.tipo_escopo,
+                (
+                    getattr(policy, scope_fields[policy.tipo_escopo])
+                    if policy.tipo_escopo in scope_fields
+                    else None
+                ),
+                policy.pode_administrar,
+            )
+            for policy in policies
+        ),
+    )
+
+
+def require_permission(module: str, action: str) -> Callable[..., Awaitable[RequestActor]]:
+    permission_code = f"{module}.{action}"
+
+    async def dependency(
+        actor: Annotated[RequestActor, Depends(get_current_user)],
+    ) -> RequestActor:
+        if permission_code not in actor.permissions:
+            raise AuthorizationError(f"Permissao obrigatoria: {permission_code}.")
+        return actor
+
+    return dependency
+
+
+async def require_tenant_admin(
+    actor: Annotated[RequestActor, Depends(get_current_user)],
+) -> RequestActor:
+    if "configuracoes.administrar" not in actor.permissions:
+        raise AuthorizationError()
+    return actor
+
+
+async def require_saas_admin(
+    actor: Annotated[RequestActor, Depends(get_current_user)],
+) -> int:
+    if "gestor_saas" not in actor.profiles:
+        raise AuthorizationError("Apenas gestores SaaS podem administrar tenants.")
+    return actor.user_id

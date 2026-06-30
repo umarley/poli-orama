@@ -48,7 +48,9 @@ Escopo: frontend autenticado, backend principal, jobs assincronos, site publico,
 8. SPEC-10 - Dashboards e relatorios basicos.
 9. SPEC-08 - Agenda e eventos em versao enxuta.
 10. SPEC-09 - Demandas e atendimentos em versao enxuta.
-11. SPEC-16 - Seguranca, LGPD, observabilidade, QA e deploy.
+11. SPEC-11 a SPEC-15 - Modulos complementares e avancados conforme o release.
+12. SPEC-16 - Fechamento final de seguranca, LGPD, observabilidade, QA e deploy,
+    executado depois de todas as demais specs previstas.
 
 ## Arquivos de specs
 

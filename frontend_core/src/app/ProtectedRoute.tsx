@@ -6,11 +6,14 @@ import { useSessionStore } from '@/stores/session-store';
 
 export function ProtectedRoute({ children }: PropsWithChildren) {
   const isAuthenticated = useSessionStore((state) => state.isAuthenticated);
+  const hasSessionToken = useSessionStore((state) =>
+    Boolean(state.accessToken || state.refreshToken),
+  );
   const location = useLocation();
   const tenant = useSessionStore((state) => state.tenant);
   const clearSession = useSessionStore((state) => state.clearSession);
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated || !hasSessionToken) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
 

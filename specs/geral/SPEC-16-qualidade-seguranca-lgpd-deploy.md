@@ -4,6 +4,22 @@ Prioridade principal: P0/P1
 Modulo: transversal  
 Objetivo: garantir que o SaaS seja testavel, seguro, observavel, aderente a LGPD e pronto para operacao em ambientes local, staging e producao.
 
+## Ordem de execucao
+
+Esta e a spec de fechamento do projeto. Sua execucao definitiva deve ocorrer
+somente depois que as SPEC-01 a SPEC-15 previstas para o release estiverem
+implementadas. Antes disso, seus itens podem orientar a arquitetura e o CI, mas
+nao podem ser considerados concluidos apenas com modulos simulados, rotas
+temporarias ou testes sem as entidades finais.
+
+O inicio da SPEC-16 exige:
+
+- migrations e modelos definitivos dos modulos anteriores;
+- endpoints e fluxos frontend do release implementados;
+- exportacoes, downloads e jobs do release identificados;
+- classificacao dos dados pessoais e sensiveis coletados por cada modulo;
+- matriz final de perfis, permissoes e escopos territoriais aprovada.
+
 ## Escopo MVP
 
 - CI com lint, typecheck e testes.
@@ -70,9 +86,49 @@ Objetivo: garantir que o SaaS seja testavel, seguro, observavel, aderente a LGPD
 | QSD-041 | P2 | Seguranca | Realizar pentest externo. | Relatorio de achados e plano de correcao. |
 | QSD-042 | P2 | Observabilidade | Criar dashboard tecnico. | API, banco, jobs e filas aparecem em painel. |
 | QSD-043 | P2 | DevOps | Criar ambiente de homologacao com dados mascarados. | Usuarios testam fluxos sem dados sensiveis reais. |
+| QSD-044 | P0 | Arquitetura/QA | Inventariar todos os endpoints e tabelas com escopo de tenant. | Documento relaciona rota, tabela, permissao, regra RLS e spec de origem sem lacunas. |
+| QSD-045 | P0 | Backend | Aplicar RBAC final em todos os endpoints privados. | Cada rota privada exige permissao explicita ou possui justificativa documentada para depender apenas de autenticacao. |
+| QSD-046 | P0 | Backend/QA | Validar que APIs nao confiam em `tenant_id` recebido do cliente. | Criacoes e consultas usam o tenant do token/sessao; payload ou query string nao permitem trocar o tenant. |
+| QSD-047 | P0 | Database | Revisar e completar RLS das tabelas tenant-aware criadas pelas SPEC-04 a SPEC-15. | Todas as tabelas com `tenant_id` possuem politica adequada e a role da aplicacao nao consegue contorna-la. |
+| QSD-048 | P0 | QA | Criar matriz de testes de isolamento por modulo. | Cadastro, territorio, metas, ETL, agenda, demandas, relatorios, arquivos, comunicacao e modo eleicao provam leitura e mutacao isoladas entre tenants. |
+| QSD-049 | P0 | Backend | Aplicar acesso territorial aos modulos dependentes. | Cadastro, metas, agenda, demandas, dashboards e exportacoes respeitam o filtro territorial reutilizavel da SPEC-05. |
+| QSD-050 | P0 | QA | Testar acesso territorial por perfil e modulo. | Coordenador e lider nao listam, detalham, alteram nem exportam registros fora do escopo permitido. |
+| QSD-051 | P0 | Backend | Completar auditoria de mutacoes dos dominios. | Criacao, edicao, inativacao e exclusao de pessoa, lideranca, meta, demanda, evento e configuracao de permissao registram antes/depois, ator, tenant e entidade. |
+| QSD-052 | P0 | Backend | Auditar acessos sensiveis e downloads controlados. | Consulta ou download definido como sensivel registra ator, tenant, finalidade/alvo, data e resultado sem gravar o dado sensivel no log. |
+| QSD-053 | P0 | Backend | Integrar auditoria em todas as exportacoes reais. | Exportacoes de cadastro, ETL, agenda, demandas, dashboards, relatorios e arquivos usam o helper comum de `log_exportacao`. |
+| QSD-054 | P0 | QA | Testar autorizacao e auditoria das exportacoes. | Sem permissao a API retorna 403; com permissao e finalidade valida gera arquivo e log com filtros e volume. |
+| QSD-055 | P0 | Backend/Frontend | Aplicar mascaramento conforme a matriz final de dados sensiveis. | APIs, telas, buscas, dashboards, exportacoes e logs ocultam CPF, titulo, telefone e dados politicos para perfis sem necessidade funcional. |
+| QSD-056 | P1 | Backend/QA | Validar o vinculo entre usuario e pessoa da SPEC-04. | `auth.usuario.pessoa_id`, quando preenchido, referencia pessoa do mesmo tenant e nao permite associacao cruzada. |
+| QSD-057 | P0 | Backend/Database | Reconciliar catalogo e seeds RBAC com todos os modulos entregues. | Toda acao protegida possui permissao cadastrada e os perfis basicos recebem exatamente a matriz final aprovada. |
+| QSD-058 | P0 | QA | Testar a matriz RBAC final usando seeds e endpoints reais. | Gestor, coordenador, lider, telefonista e administrativo possuem testes positivos e negativos nos modulos aplicaveis. |
+| QSD-059 | P1 | Frontend/QA | Reconciliar menus, rotas e acoes com a autorizacao final. | Item oculto nao e acessivel por URL e toda acao exibida corresponde a uma permissao que o backend tambem valida. |
+| QSD-060 | P0 | Seguranca/QA | Validar integridade e acesso aos logs de auditoria. | Usuario comum nao altera/apaga logs, consultas sao restritas e tentativas indevidas sao bloqueadas. |
+| QSD-061 | P0 | QA/Arquitetura | Produzir matriz final de rastreabilidade da SPEC-03. | AUTH-001 a AUTH-030 e regras transversais apontam implementacao, testes e evidencias; nenhuma pendencia fica classificada apenas como dependencia futura. |
+
+## Fechamento das dependencias da SPEC-03
+
+As tarefas abaixo nao representam nova implementacao isolada do modulo de
+autenticacao. Elas validam e completam garantias da SPEC-03 que so podem ser
+comprovadas quando os dominios consumidores existirem.
+
+| Garantia da SPEC-03 | Specs das quais depende | Fechamento na SPEC-16 |
+| --- | --- | --- |
+| RLS e isolamento em dados operacionais (`AUTH-007`, `AUTH-008`, `AUTH-027`) | SPEC-04 a SPEC-15, conforme os modulos incluidos no release | QSD-044, QSD-046, QSD-047 e QSD-048 |
+| RBAC aplicado a operacoes reais (`AUTH-009`, `AUTH-010`, `AUTH-023`, `AUTH-026`) | SPEC-04 a SPEC-15 | QSD-045, QSD-057, QSD-058 e QSD-059 |
+| Escopo territorial efetivo (`AUTH-018` e `AUTH-019`) | SPEC-04, SPEC-05, SPEC-06, SPEC-08, SPEC-09 e SPEC-10 | QSD-049 e QSD-050 |
+| Auditoria das mutacoes sensiveis (`AUTH-015` e `AUTH-016`) | SPEC-04, SPEC-06, SPEC-08, SPEC-09, SPEC-13 e SPEC-14 | QSD-051, QSD-052 e QSD-060 |
+| Auditoria e autorizacao de exportacoes (`AUTH-017`) | SPEC-07, SPEC-08, SPEC-09, SPEC-10 e SPEC-11 | QSD-013, QSD-014, QSD-053 e QSD-054 |
+| Mascaramento de dados por perfil | SPEC-04, SPEC-05, SPEC-10, SPEC-13, SPEC-14 e SPEC-15 | QSD-011, QSD-012 e QSD-055 |
+| Vinculo opcional entre identidade e cadastro | SPEC-04 | QSD-056 |
+
+Uma dependencia so pode ser marcada como resolvida quando houver teste contra a
+implementacao real. Existencia de helper, model, migration ou teste com dados
+artificiais isolados nao substitui a validacao no endpoint e no fluxo consumidor.
 
 ## Checklist de go-live MVP
 
+- SPEC-01 a SPEC-15 previstas para o release concluidas e integradas.
+- Matriz de rastreabilidade da SPEC-03 sem dependencias futuras.
 - API, frontend, site e worker publicados.
 - Banco aplicado e backup configurado.
 - Tenant inicial criado.
@@ -96,6 +152,8 @@ Objetivo: garantir que o SaaS seja testavel, seguro, observavel, aderente a LGPD
 
 ## Definition of Done
 
+- QSD-044 a QSD-061 foram executadas contra os modulos reais do release.
+- Nenhuma garantia de seguranca foi aceita apenas por existir na camada de infraestrutura.
 - CI e deploy estao funcionando.
 - Fluxos criticos possuem testes.
 - Seguranca e LGPD possuem controles minimos implementados.
