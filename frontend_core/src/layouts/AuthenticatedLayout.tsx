@@ -44,10 +44,15 @@ export function AuthenticatedLayout() {
   const currentCampaign = useSessionStore((state) => state.currentCampaign);
   const clearSession = useSessionStore((state) => state.clearSession);
   const isMobile = screens.md === false;
+  const isSaasAdmin = ['gestor_saas', 'admin'].includes(user?.role ?? '');
+  const visibleMenuItems = menuItems?.filter(
+    (item) => item?.key !== '/admin/tenants' || isSaasAdmin,
+  );
 
   const currentRoute =
-    menuItems?.map((item) => String(item?.key)).find((key) => location.pathname.startsWith(key)) ??
-    '/dashboard';
+    visibleMenuItems
+      ?.map((item) => String(item?.key))
+      .find((key) => location.pathname.startsWith(key)) ?? '/dashboard';
 
   const handleNavigate = ({ key }: { key: string }) => {
     navigate(key);
@@ -73,7 +78,7 @@ export function AuthenticatedLayout() {
       <Menu
         theme="dark"
         mode="inline"
-        items={menuItems}
+        items={visibleMenuItems}
         selectedKeys={[currentRoute]}
         onClick={handleNavigate}
         aria-label="Navegação principal"

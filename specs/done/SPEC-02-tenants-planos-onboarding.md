@@ -1,5 +1,7 @@
 # SPEC-02 - Tenants, Planos e Onboarding
 
+Status: concluida em 2026-06-29.
+
 Prioridade principal: P0  
 Modulo: `tenants`, `public`, `auth`, `site_publico`  
 Objetivo: permitir que o SaaS represente clientes/campanhas/candidatos, seus planos, configuracoes e ativacao inicial com isolamento logico por tenant.

@@ -17,6 +17,7 @@ from app.mod_dashboard.router import router as dashboard_router
 from app.mod_demandas.router import router as demandas_router
 from app.mod_metas.router import router as metas_router
 from app.mod_territorio.router import router as territorio_router
+from app.tenants.public_router import router as public_router
 from app.tenants.router import router as tenants_router
 
 settings = get_settings()
@@ -41,13 +42,24 @@ app.add_middleware(
     allow_origins=settings.cors_origin_list,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "Idempotency-Key",
+        "X-Campaign-ID",
+        "X-Request-ID",
+        "X-Tenant-ID",
+        "X-User-ID",
+        "X-User-Role",
+        "X-Webhook-Signature",
+    ],
     expose_headers=["X-Request-ID"],
 )
 app.add_middleware(RequestContextMiddleware)
 install_exception_handlers(app)
 
 app.include_router(health_router)
+app.include_router(public_router)
 app.include_router(tenants_router, prefix=settings.api_v1_prefix)
 app.include_router(cadastro_router, prefix=settings.api_v1_prefix)
 app.include_router(territorio_router, prefix=settings.api_v1_prefix)

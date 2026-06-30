@@ -1,0 +1,8 @@
+---
+import { CommercialForm } from '../components/CommercialForm';
+import BaseLayout from '../layouts/BaseLayout.astro';
+const plan = Astro.url.searchParams.get('plano') || 'profissional';
+---
+<BaseLayout title="Contratar | Vurix Eleitoral" description="Envie o pré-cadastro para contratar a Vurix Eleitoral.">
+  <section class="section"><span class="eyebrow">PRÉ-CADASTRO</span><h1>Prepare sua operação</h1><p class="muted">O envio não ativa um tenant nem coleta cartão. A ativação depende de aprovação comercial ou confirmação confiável de pagamento.</p><CommercialForm kind="contract" initialPlan={plan} client:load /></section>
+</BaseLayout>

@@ -12,6 +12,7 @@ credenciais:
 ```powershell
 $env:DATABASE_ADMIN_URL = "postgresql://postgres:senha@localhost:5432/inteligencia_politica"
 psql $env:DATABASE_ADMIN_URL -v ON_ERROR_STOP=1 -f ".\database\migrations\001 - ddl_inteligencia_politica.sql"
+psql $env:DATABASE_ADMIN_URL -v ON_ERROR_STOP=1 -f ".\database\migrations\002 - tenants_planos_onboarding.sql"
 ```
 
 Em Linux/macOS:
@@ -20,6 +21,8 @@ Em Linux/macOS:
 export DATABASE_ADMIN_URL='postgresql://postgres:senha@localhost:5432/inteligencia_politica'
 psql "$DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1 \
   -f "database/migrations/001 - ddl_inteligencia_politica.sql"
+psql "$DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1 \
+  -f "database/migrations/002 - tenants_planos_onboarding.sql"
 ```
 
 A migration deve ser aplicada uma unica vez em um banco vazio. O uso de

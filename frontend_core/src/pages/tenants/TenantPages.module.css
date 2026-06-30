@@ -1,0 +1,46 @@
+.page {
+  display: grid;
+  gap: 20px;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.filters > * {
+  min-width: 180px;
+}
+
+.card {
+  border-radius: 8px;
+}
+
+.form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+}
+
+.full {
+  grid-column: 1 / -1;
+}
+
+.usage {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.limit {
+  display: grid;
+  gap: 8px;
+}
+
+@media (max-width: 767px) {
+  .form,
+  .usage {
+    grid-template-columns: 1fr;
+  }
+}

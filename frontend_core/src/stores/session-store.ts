@@ -6,11 +6,14 @@ export interface SessionUser {
   name: string;
   email: string;
   initials: string;
+  role: 'usuario' | 'gestor' | 'gestor_saas' | 'admin';
 }
 
 export interface Tenant {
   id: string;
   name: string;
+  slug: string;
+  status: 'pendente' | 'ativo' | 'suspenso' | 'cancelado' | 'trial' | 'inadimplente';
 }
 
 export type ElectionScope = 'municipal' | 'estadual' | 'federal' | 'suplementar' | 'outra';
@@ -71,7 +74,7 @@ export const useSessionStore = create<SessionState>()(
     }),
     {
       name: 'vurix-eleitoral-session',
-      version: 2,
+      version: 3,
       migrate: () =>
         ({
           user: null,

@@ -1,0 +1,41 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  description: string;
+}
+
+const { title, description } = Astro.props;
+const loginUrl = import.meta.env.PUBLIC_APP_LOGIN_URL || 'http://localhost:5173/login';
+---
+
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="description" content={description} />
+    <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)} />
+    <title>{title}</title>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/">Vurix <span>Eleitoral</span></a>
+      <nav aria-label="Navegação principal">
+        <a href="/planos">Planos</a>
+        <a href="/demo">Agendar demo</a>
+        <a href="/contato">Contato</a>
+        <a class="button secondary" href={loginUrl}>Entrar</a>
+      </nav>
+    </header>
+    <main>
+      <slot />
+    </main>
+    <footer>
+      <strong>Vurix Eleitoral</strong>
+      <span>Inteligência e operação para campanhas.</span>
+      <nav><a href="/contato">Contato e privacidade</a></nav>
+    </footer>
+  </body>
+</html>

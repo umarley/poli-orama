@@ -1,0 +1,12 @@
+---
+import { PricingGrid } from '../components/PricingGrid';
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+<BaseLayout title="Planos | Vurix Eleitoral" description="Compare os planos ativos da plataforma Vurix Eleitoral.">
+  <section class="section">
+    <span class="eyebrow">PLANOS</span>
+    <h1>Estrutura para cada fase da campanha</h1>
+    <p class="muted">Os planos são carregados da API comercial e mantêm uma opção estática caso ela esteja temporariamente indisponível.</p>
+    <PricingGrid client:load />
+  </section>
+</BaseLayout>

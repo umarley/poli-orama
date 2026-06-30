@@ -50,10 +50,13 @@ export function LoginPage() {
         name: 'Marina Costa',
         email: values.email,
         initials: 'MC',
+        role: 'gestor_saas',
       },
       {
-        id: 'tenant-demo',
+        id: '1',
         name: 'Ricardo Almeida',
+        slug: 'ricardo-almeida',
+        status: 'ativo',
       },
       {
         id: 'campanha-demo',

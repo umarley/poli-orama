@@ -1,5 +1,7 @@
 import {
+  BankOutlined,
   CalendarOutlined,
+  CreditCardOutlined,
   DashboardOutlined,
   FlagOutlined,
   IdcardOutlined,
@@ -24,6 +26,8 @@ export const navigationItems: NavigationItem[] = [
   { key: '/agenda', label: 'Agenda', icon: <CalendarOutlined /> },
   { key: '/demandas', label: 'Demandas', icon: <UnorderedListOutlined /> },
   { key: '/configuracoes', label: 'Configurações', icon: <SettingOutlined /> },
+  { key: '/assinatura', label: 'Assinatura', icon: <CreditCardOutlined /> },
+  { key: '/admin/tenants', label: 'Tenants', icon: <BankOutlined /> },
 ];
 
 export const menuItems: MenuProps['items'] = navigationItems.map((item) => ({

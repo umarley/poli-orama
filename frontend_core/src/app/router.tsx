@@ -1,18 +1,19 @@
 import { Navigate, createBrowserRouter } from 'react-router-dom';
 
 import { ProtectedRoute } from '@/app/ProtectedRoute';
+import { SaasAdminRoute } from '@/app/SaasAdminRoute';
 import { AuthenticatedLayout } from '@/layouts/AuthenticatedLayout';
 import { LoginPage } from '@/pages/auth/LoginPage';
 import { CadastroPage } from '@/pages/cadastro/CadastroPage';
 import { DashboardPage } from '@/pages/dashboard/DashboardPage';
 import { ModulePlaceholderPage } from '@/pages/shared/ModulePlaceholderPage';
 import { NotFoundPage } from '@/pages/shared/NotFoundPage';
+import { AdminTenantsPage } from '@/pages/tenants/AdminTenantsPage';
+import { SubscriptionPage } from '@/pages/tenants/SubscriptionPage';
+import { TenantSettingsPage } from '@/pages/tenants/TenantSettingsPage';
 
 export const router = createBrowserRouter([
-  {
-    path: '/login',
-    element: <LoginPage />,
-  },
+  { path: '/login', element: <LoginPage /> },
   {
     path: '/',
     element: (
@@ -60,13 +61,14 @@ export const router = createBrowserRouter([
           />
         ),
       },
+      { path: 'configuracoes', element: <TenantSettingsPage /> },
+      { path: 'assinatura', element: <SubscriptionPage /> },
       {
-        path: 'configuracoes',
+        path: 'admin/tenants',
         element: (
-          <ModulePlaceholderPage
-            title="Configurações"
-            description="Gerencie usuários, preferências do tenant e parâmetros da campanha."
-          />
+          <SaasAdminRoute>
+            <AdminTenantsPage />
+          </SaasAdminRoute>
         ),
       },
       { path: '*', element: <NotFoundPage /> },

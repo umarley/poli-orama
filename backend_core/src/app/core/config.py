@@ -26,7 +26,12 @@ class Settings(BaseSettings):
     database_pool_size: int = Field(default=5, ge=1)
     database_max_overflow: int = Field(default=10, ge=0)
 
-    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    cors_origins: str = (
+        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4321,http://127.0.0.1:4321"
+    )
+    checkout_provider: Literal["none", "sandbox", "external"] = "none"
+    checkout_sandbox_url: str = "https://sandbox.checkout.local/session"
+    payment_webhook_secret: str = "change-me-in-production"
 
     @property
     def cors_origin_list(self) -> list[str]:

@@ -47,6 +47,34 @@ class ResourceNotFoundError(AppError):
         )
 
 
+class AuthenticationError(AppError):
+    def __init__(self, message: str = "Autenticacao obrigatoria.") -> None:
+        super().__init__(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            code="authentication_required",
+            message=message,
+        )
+
+
+class AuthorizationError(AppError):
+    def __init__(self, message: str = "Usuario sem permissao para esta acao.") -> None:
+        super().__init__(
+            status_code=status.HTTP_403_FORBIDDEN,
+            code="permission_denied",
+            message=message,
+        )
+
+
+class TenantInactiveError(AppError):
+    def __init__(self, tenant_status: str) -> None:
+        super().__init__(
+            status_code=status.HTTP_403_FORBIDDEN,
+            code="tenant_inactive",
+            message="O acesso deste tenant esta bloqueado. Contate o suporte.",
+            details={"tenant_status": tenant_status},
+        )
+
+
 class DatabaseUnavailableError(AppError):
     def __init__(self) -> None:
         super().__init__(

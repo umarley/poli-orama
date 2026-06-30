@@ -36,6 +36,15 @@
 /frontend_core/.DS_Store
 /frontend_core/Thumbs.db
 
+# Public Astro site
+/site_publico/node_modules/
+/site_publico/dist/
+/site_publico/.astro/
+/site_publico/.env
+/site_publico/.env.*
+!/site_publico/.env.example
+/site_publico/*.log
+
 # Backend Python
 /backend_core/.env
 /backend_core/.env.*
@@ -48,6 +57,10 @@
 /backend_core/htmlcov/
 /backend_core/**/__pycache__/
 /backend_core/**/*.py[cod]
+
+# Database validation
+/database/**/__pycache__/
+/database/**/*.py[cod]
 
 # Celery worker
 /backend_jobs_celery/.env
