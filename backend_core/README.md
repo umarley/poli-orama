@@ -64,6 +64,19 @@ python -m app.auth.bootstrap --tenant-slug campanha-exemplo `
 
 O comando solicita e confirma a senha de forma oculta.
 
+Cadastro:
+
+- `GET/POST /api/v1/cadastro/pessoas`: listagem filtrada e cadastro completo.
+- `GET/PATCH/DELETE /api/v1/cadastro/pessoas/{id}`: detalhe, edicao e inativacao.
+- `/api/v1/cadastro/pessoas/{id}/*`: documentos, contatos, enderecos, eleitor,
+  lideranca, tipos, indicacoes, relacionamentos e complemento politico.
+- `/api/v1/cadastro/hierarquia`: consulta e manutencao da hierarquia.
+- `/api/v1/cadastro/nucleos-familiares`, `/comunidades` e `/tags`: segmentacao.
+- `/api/v1/cadastro/validacoes` e `/duplicidades`: filas de qualidade cadastral.
+- `GET /api/v1/cadastro/duplicidades/{id}/merge-preview`: comparacao assistida.
+- `POST /api/v1/cadastro/duplicidades/{id}/merge`: merge auditavel para gestores.
+- `GET /api/v1/cadastro/pessoas/busca-rapida`: busca por nome, documento ou telefone.
+
 Comandos de qualidade:
 
 ```powershell
@@ -72,6 +85,18 @@ ruff format --check .
 mypy src
 pytest
 ```
+
+Testes de integracao usam `TEST_DATABASE_URL`. A API e as conexoes de preparacao
+dos testes apontam automaticamente para essa mesma URL:
+
+```powershell
+$env:TEST_DATABASE_URL = "postgresql+asyncpg://usuario:senha@localhost:5432/vurix_test"
+pytest tests/test_cadastro_integration.py
+```
+
+O banco de teste deve receber todas as migrations, inclusive `005`, `006` e `007`,
+antes da execucao. A aplicacao das migrations exige uma conta com permissao de
+alteracao de schema; a role restrita da API nao deve ser usada para isso.
 
 ## Convencao de modulos
 

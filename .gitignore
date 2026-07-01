@@ -54,6 +54,11 @@
 /backend_core/.mypy_cache/
 /backend_core/.ruff_cache/
 /backend_core/.coverage
+/backend_core/tests/
+!/backend_core/tests/
+/backend_core/tests/*
+!/backend_core/tests/test_cadastro_*.py
+!/backend_core/tests/conftest.py
 /backend_core/htmlcov/
 /backend_core/**/__pycache__/
 /backend_core/**/*.py[cod]
@@ -67,6 +72,7 @@
 /backend_jobs_celery/.env.*
 !/backend_jobs_celery/.env.example
 /backend_jobs_celery/.venv/
+/backend_jobs_celery/tests/*
 /backend_jobs_celery/.pytest_cache/
 /backend_jobs_celery/.mypy_cache/
 /backend_jobs_celery/.ruff_cache/

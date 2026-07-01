@@ -1,4 +1,4 @@
-import { canViewNavigationItem, navigationItems } from '@/app/navigation';
+import { canViewNavigationItem, getNavigationLabel, navigationItems } from '@/app/navigation';
 
 describe('navegação por permissão', () => {
   it('oculta módulos sem permissão efetiva', () => {
@@ -16,5 +16,10 @@ describe('navegação por permissão', () => {
     expect(tenants).toBeDefined();
     expect(canViewNavigationItem(tenants!, [], ['gestor_saas'])).toBe(true);
     expect(canViewNavigationItem(tenants!, [], ['gestor'])).toBe(false);
+  });
+
+  it('usa o item mais específico em rotas internas de cadastro', () => {
+    expect(getNavigationLabel('/cadastro/segmentacao')).toBe('Tags e comunidades');
+    expect(getNavigationLabel('/cadastro/indicacoes')).toBe('Rede de indicações');
   });
 });

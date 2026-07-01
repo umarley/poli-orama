@@ -398,6 +398,7 @@ CREATE TABLE auth.sessao_usuario (
     user_agent      TEXT,
     ip_origem       INET,
     criado_em       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    ultimo_uso_em   TIMESTAMPTZ NOT NULL DEFAULT now(),
     expira_em       TIMESTAMPTZ NOT NULL,
     revogada_em     TIMESTAMPTZ,
     CONSTRAINT uq_sessao_token UNIQUE (token_hash)
@@ -2075,7 +2076,7 @@ CREATE TABLE auditoria.log_auditoria (
     tenant_id       BIGINT REFERENCES public.tenant(id) ON DELETE CASCADE,
     usuario_id      BIGINT REFERENCES auth.usuario(id),
     acao            VARCHAR(20) NOT NULL
-                    CHECK (acao IN ('criar','editar','excluir','acessar','exportar','login','logout','confirmar')),
+                    CHECK (acao IN ('criar','editar','excluir','acessar','exportar','login','logout','confirmar','mesclar')),
     schema_nome     VARCHAR(40),
     tabela          VARCHAR(80),
     registro_id     BIGINT,

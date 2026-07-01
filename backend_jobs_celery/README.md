@@ -33,6 +33,35 @@ jobs status 1
 O primeiro job termina como `concluido`. O segundo gera uma falha controlada,
 registra log de nivel `error` e termina como `falha`.
 
+## Completude cadastral
+
+O Celery Beat enfileira diariamente um job `indicador` por tenant ativo. O horario
+padrao e 02:30 (`America/Sao_Paulo`) e pode ser alterado com
+`COMPLETENESS_JOB_HOUR` e `COMPLETENESS_JOB_MINUTE`. O processamento usa lotes
+configurados por `COMPLETENESS_JOB_BATCH_SIZE` e impede jobs simultaneos do mesmo
+indicador e tenant.
+
+O score varia de 0 a 100 e usa os seguintes pesos:
+
+- nome completo: 10;
+- data de nascimento: 10;
+- sexo, estado civil, escolaridade, profissao e religiao: 5 cada;
+- ao menos um documento, contato e endereco: 15 cada;
+- ao menos um tipo de pessoa: 5.
+
+Cadastros inativos ou excluidos nao sao recalculados. Cada lote define
+`app.current_tenant_id` antes de consultar ou atualizar tabelas protegidas por RLS.
+
+Para executar manualmente:
+
+```powershell
+jobs enqueue-completeness --tenant-id 1 --wait
+jobs enqueue-completeness --tenant-id 1 --batch-size 500
+```
+
+O job registra as quantidades `processadas` e `atualizadas` em
+`etl.log_processamento`.
+
 ## Qualidade
 
 ```powershell
@@ -47,4 +76,5 @@ pytest
 ```powershell
 docker compose --profile local-db up --build
 docker compose exec worker jobs enqueue-test --wait
+docker compose exec worker jobs enqueue-completeness --tenant-id 1 --wait
 ```

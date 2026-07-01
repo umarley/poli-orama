@@ -53,6 +53,7 @@ export function AuthenticatedLayout() {
   const currentRoute =
     visibleMenuItems
       ?.map((item) => String(item?.key))
+      .sort((left, right) => right.length - left.length)
       .find((key) => location.pathname.startsWith(key)) ?? '/dashboard';
 
   const handleNavigate = ({ key }: { key: string }) => {

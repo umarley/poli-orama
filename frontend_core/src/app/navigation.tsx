@@ -6,7 +6,9 @@ import {
   FlagOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
+  ShareAltOutlined,
   SolutionOutlined,
+  TagsOutlined,
   TeamOutlined,
   UnorderedListOutlined,
   UserOutlined,
@@ -38,6 +40,18 @@ export const navigationItems: NavigationItem[] = [
     key: '/liderancas',
     label: 'Lideranças',
     icon: <SolutionOutlined />,
+    permission: 'cadastro.visualizar',
+  },
+  {
+    key: '/cadastro/segmentacao',
+    label: 'Tags e comunidades',
+    icon: <TagsOutlined />,
+    permission: 'cadastro.visualizar',
+  },
+  {
+    key: '/cadastro/indicacoes',
+    label: 'Rede de indicações',
+    icon: <ShareAltOutlined />,
     permission: 'cadastro.visualizar',
   },
   {
@@ -109,5 +123,9 @@ export function getDefaultRoute(permissions: string[], profiles: string[]) {
 }
 
 export function getNavigationLabel(pathname: string) {
-  return navigationItems.find((item) => pathname.startsWith(item.key))?.label ?? 'Página';
+  return (
+    [...navigationItems]
+      .sort((left, right) => right.key.length - left.key.length)
+      .find((item) => pathname.startsWith(item.key))?.label ?? 'Página'
+  );
 }

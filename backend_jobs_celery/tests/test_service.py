@@ -2,7 +2,11 @@ from typing import Any
 
 import pytest
 
-from jobs.service import execute_test_job
+from jobs.service import (
+    enqueue_scheduled_completeness_jobs,
+    execute_completeness_job,
+    execute_test_job,
+)
 
 
 class FakeRepository:
@@ -49,3 +53,109 @@ def test_simulated_error_records_failure_and_reraises() -> None:
 
     assert [event[0] for event in repository.events] == ["started", "failed"]
     assert repository.events[-1][2] == {"error_type": "RuntimeError"}
+
+
+class FakeCompletenessRepository(FakeRepository):
+    def __init__(self, *, error: Exception | None = None) -> None:
+        super().__init__()
+        self.error = error
+        self.recalculation: tuple[int, int] | None = None
+
+    def recalculate_person_completeness(self, *, tenant_id: int, batch_size: int) -> dict[str, int]:
+        self.recalculation = (tenant_id, batch_size)
+        if self.error is not None:
+            raise self.error
+        return {
+            "tenant_id": tenant_id,
+            "processadas": 12,
+            "atualizadas": 8,
+        }
+
+
+def test_completeness_job_updates_scores_and_records_metrics() -> None:
+    repository = FakeCompletenessRepository()
+
+    result = execute_completeness_job(
+        repository,
+        job_id=20,
+        tenant_id=30,
+        batch_size=500,
+    )
+
+    assert repository.recalculation == (30, 500)
+    assert result["processadas"] == 12
+    assert repository.events == [
+        ("started", 20, None),
+        (
+            "succeeded",
+            20,
+            {"tenant_id": 30, "processadas": 12, "atualizadas": 8},
+        ),
+    ]
+
+
+def test_completeness_job_records_failure_and_reraises() -> None:
+    repository = FakeCompletenessRepository(error=RuntimeError("database unavailable"))
+
+    with pytest.raises(RuntimeError, match="database unavailable"):
+        execute_completeness_job(
+            repository,
+            job_id=21,
+            tenant_id=31,
+            batch_size=100,
+        )
+
+    assert repository.events[-1] == (
+        "failed",
+        21,
+        {"tenant_id": 31, "error_type": "RuntimeError"},
+    )
+
+
+class FakeSchedulerRepository:
+    def __init__(self) -> None:
+        self.failed: list[int] = []
+
+    def list_active_tenant_ids(self) -> list[int]:
+        return [10, 11, 12]
+
+    def create_if_idle(
+        self,
+        *,
+        job_type: str,
+        reference: str,
+        parameters: dict[str, Any],
+        tenant_id: int,
+    ) -> int | None:
+        assert job_type == "indicador"
+        assert reference == "completude_cadastral"
+        assert parameters == {"batch_size": 250, "origem": "automatico"}
+        return None if tenant_id == 11 else tenant_id + 100
+
+    def mark_failed(self, job_id: int, context: dict[str, Any] | None = None) -> None:
+        self.failed.append(job_id)
+
+
+def test_scheduler_enqueues_active_tenants_without_overlapping_jobs() -> None:
+    repository = FakeSchedulerRepository()
+    dispatched: list[tuple[int, int, int]] = []
+
+    def dispatch(job_id: int, tenant_id: int, batch_size: int) -> str:
+        dispatched.append((job_id, tenant_id, batch_size))
+        if tenant_id == 12:
+            raise RuntimeError("broker unavailable")
+        return "task-id"
+
+    result = enqueue_scheduled_completeness_jobs(
+        repository,
+        batch_size=250,
+        dispatch=dispatch,
+    )
+
+    assert dispatched == [(110, 10, 250), (112, 12, 250)]
+    assert repository.failed == [112]
+    assert result == {
+        "tenants_enfileirados": 1,
+        "tenants_ignorados": 1,
+        "falhas_despacho": 1,
+    }

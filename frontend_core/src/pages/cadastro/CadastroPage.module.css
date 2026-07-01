@@ -38,15 +38,30 @@
   display: grid;
 }
 
-.personCell {
+.personCell,
+.personButton {
   display: flex;
   min-width: 210px;
   align-items: center;
   gap: 10px;
 }
 
-.personCell > div {
+.personCell > div,
+.personButton > span:last-child {
   display: grid;
+}
+
+.personButton {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.personButton:hover strong {
+  color: #1677ff;
 }
 
 .personAvatar {
@@ -68,6 +83,19 @@
 
 .compactField {
   width: 50%;
+}
+
+.filters {
+  gap: 8px 0;
+}
+
+.searchField {
+  min-width: 260px;
+  flex: 1 1 280px;
+}
+
+.searchField :global(.ant-input-affix-wrapper) {
+  width: 100%;
 }
 
 @media (max-width: 575px) {

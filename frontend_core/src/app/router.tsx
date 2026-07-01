@@ -5,9 +5,14 @@ import { PermissionRoute } from '@/app/PermissionRoute';
 import { ProtectedRoute } from '@/app/ProtectedRoute';
 import { SaasAdminRoute } from '@/app/SaasAdminRoute';
 import { AuthenticatedLayout } from '@/layouts/AuthenticatedLayout';
-import { LoginPage } from '@/pages/auth/LoginPage';
 import { AccessHistoryPage } from '@/pages/auth/AccessHistoryPage';
+import { LoginPage } from '@/pages/auth/LoginPage';
 import { CadastroPage } from '@/pages/cadastro/CadastroPage';
+import { IndicacoesGraphPage } from '@/pages/cadastro/IndicacoesGraphPage';
+import { LiderancasPage } from '@/pages/cadastro/LiderancasPage';
+import { PessoaDetailPage } from '@/pages/cadastro/PessoaDetailPage';
+import { SegmentacaoPage } from '@/pages/cadastro/SegmentacaoPage';
+import { ValidacoesPage } from '@/pages/cadastro/ValidacoesPage';
 import { DashboardPage } from '@/pages/dashboard/DashboardPage';
 import { ModulePlaceholderPage } from '@/pages/shared/ModulePlaceholderPage';
 import { NotFoundPage } from '@/pages/shared/NotFoundPage';
@@ -40,14 +45,24 @@ export const router = createBrowserRouter([
         element: withPermission('cadastro.visualizar', <CadastroPage />),
       },
       {
+        path: 'cadastro/pessoas/:id',
+        element: withPermission('cadastro.visualizar', <PessoaDetailPage />),
+      },
+      {
+        path: 'cadastro/segmentacao',
+        element: withPermission('cadastro.visualizar', <SegmentacaoPage />),
+      },
+      {
+        path: 'cadastro/validacoes',
+        element: withPermission('cadastro.visualizar', <ValidacoesPage />),
+      },
+      {
+        path: 'cadastro/indicacoes',
+        element: withPermission('cadastro.visualizar', <IndicacoesGraphPage />),
+      },
+      {
         path: 'liderancas',
-        element: withPermission(
-          'cadastro.visualizar',
-          <ModulePlaceholderPage
-            title="Lideranças"
-            description="Organize lideranças, áreas de influência e vínculos com a campanha."
-          />,
-        ),
+        element: withPermission('cadastro.visualizar', <LiderancasPage />),
       },
       {
         path: 'metas',
@@ -79,10 +94,7 @@ export const router = createBrowserRouter([
           />,
         ),
       },
-      {
-        path: 'minha-conta/acessos',
-        element: <AccessHistoryPage />,
-      },
+      { path: 'minha-conta/acessos', element: <AccessHistoryPage /> },
       {
         path: 'usuarios',
         element: withPermission('usuarios.visualizar', <UsersPage />),

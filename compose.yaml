@@ -74,6 +74,10 @@ services:
       JOBS_DATABASE_URL: ${JOBS_DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/inteligencia_politica}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+      COMPLETENESS_JOB_ENABLED: ${COMPLETENESS_JOB_ENABLED:-true}
+      COMPLETENESS_JOB_HOUR: ${COMPLETENESS_JOB_HOUR:-2}
+      COMPLETENESS_JOB_MINUTE: ${COMPLETENESS_JOB_MINUTE:-30}
+      COMPLETENESS_JOB_BATCH_SIZE: ${COMPLETENESS_JOB_BATCH_SIZE:-1000}
     depends_on:
       redis:
         condition: service_healthy
@@ -83,6 +87,33 @@ services:
       timeout: 10s
       retries: 5
       start_period: 15s
+    restart: unless-stopped
+
+  worker-beat:
+    build:
+      context: ./backend_jobs_celery
+    command:
+      [
+        "celery",
+        "-A",
+        "jobs.celery_app",
+        "beat",
+        "--loglevel=INFO",
+        "--schedule=/tmp/celerybeat-schedule",
+      ]
+    environment:
+      ENVIRONMENT: local
+      LOG_LEVEL: INFO
+      JOBS_DATABASE_URL: ${JOBS_DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/inteligencia_politica}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+      COMPLETENESS_JOB_ENABLED: ${COMPLETENESS_JOB_ENABLED:-true}
+      COMPLETENESS_JOB_HOUR: ${COMPLETENESS_JOB_HOUR:-2}
+      COMPLETENESS_JOB_MINUTE: ${COMPLETENESS_JOB_MINUTE:-30}
+      COMPLETENESS_JOB_BATCH_SIZE: ${COMPLETENESS_JOB_BATCH_SIZE:-1000}
+    depends_on:
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
   redis:
@@ -115,6 +146,8 @@ services:
       - "./database/migrations/003 - auth_rbac_auditoria_p0.sql:/docker-entrypoint-initdb.d/003-auth.sql:ro"
       - "./database/migrations/004 - auth_p1_acesso_territorial.sql:/docker-entrypoint-initdb.d/004-auth-p1.sql:ro"
       - "./database/migrations/005 - auth_p2_mfa_sessoes.sql:/docker-entrypoint-initdb.d/005-auth-p2.sql:ro"
+      - "./database/migrations/006 - cadastro_pessoas_constraints.sql:/docker-entrypoint-initdb.d/006-cadastro.sql:ro"
+      - "./database/migrations/007 - cadastro_merge_assistido.sql:/docker-entrypoint-initdb.d/007-cadastro-merge.sql:ro"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s

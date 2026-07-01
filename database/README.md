@@ -16,6 +16,8 @@ psql $env:DATABASE_ADMIN_URL -v ON_ERROR_STOP=1 -f ".\database\migrations\002 - 
 psql $env:DATABASE_ADMIN_URL -v ON_ERROR_STOP=1 -f ".\database\migrations\003 - auth_rbac_auditoria_p0.sql"
 psql $env:DATABASE_ADMIN_URL -v ON_ERROR_STOP=1 -f ".\database\migrations\004 - auth_p1_acesso_territorial.sql"
 psql $env:DATABASE_ADMIN_URL -v ON_ERROR_STOP=1 -f ".\database\migrations\005 - auth_p2_mfa_sessoes.sql"
+psql $env:DATABASE_ADMIN_URL -v ON_ERROR_STOP=1 -f ".\database\migrations\006 - cadastro_pessoas_constraints.sql"
+psql $env:DATABASE_ADMIN_URL -v ON_ERROR_STOP=1 -f ".\database\migrations\007 - cadastro_merge_assistido.sql"
 ```
 
 Em Linux/macOS:
@@ -32,6 +34,10 @@ psql "$DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1 \
   -f "database/migrations/004 - auth_p1_acesso_territorial.sql"
 psql "$DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1 \
   -f "database/migrations/005 - auth_p2_mfa_sessoes.sql"
+psql "$DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1 \
+  -f "database/migrations/006 - cadastro_pessoas_constraints.sql"
+psql "$DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1 \
+  -f "database/migrations/007 - cadastro_merge_assistido.sql"
 ```
 
 A migration deve ser aplicada uma unica vez em um banco vazio. O uso de
