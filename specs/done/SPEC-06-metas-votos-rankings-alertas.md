@@ -4,6 +4,29 @@ Prioridade principal: P1
 Modulo: `mod_metas`, `frontend_core/metas`  
 Objetivo: permitir que a campanha defina, acompanhe e compare metas de votos por lider, equipe, territorio, comunidade, nucleo familiar ou campanha inteira.
 
+Status: concluida em 2026-07-03. As tarefas META-001 a META-030 foram
+implementadas. O item META-030 usa um modelo heuristico explicavel, com score
+baseado no percentual atual, cobertura da base, historico de estagnacao e
+engajamento medio; nao se trata de um modelo estatistico treinado.
+
+Revisao de aderencia: concluida em 2026-07-03. Backend principal e worker
+assincrono usam as mesmas regras de progresso, risco, alertas e ranking.
+
+## Regras canonicas de calculo
+
+- Metas ativas nos calculos: somente `ativa` e `em_risco`.
+- Quantidade atual: ultima confirmacao; na ausencia dela, ultima projecao; sem
+  ambas, quantidade de pessoas vinculadas ao alvo.
+- Situacao `em_risco`: qualquer percentual inferior ao limiar configurado pelo
+  tenant.
+- Pontuacao do ranking: `60%` do atingimento limitado a 100, `25%` dos
+  cadastros limitados a 100 e `15%` do engajamento medio normalizado para a
+  escala de 0 a 100.
+- Desempate do ranking: pontuacao, percentual, cadastros e identificador da
+  lideranca.
+- O recálculo automatico preserva confirmacoes e projecoes operacionais
+  existentes; mudancas cadastrais atualizam a base vinculada.
+
 ## Escopo MVP
 
 - Periodos de meta.

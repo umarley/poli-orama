@@ -19,6 +19,7 @@ import { useNavigate } from 'react-router-dom';
 import { BaseTable } from '@/components/data/BaseTable';
 import { AppToast } from '@/components/feedback/AppToast';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { TerritorySelect } from '@/components/territorios/TerritorySelect';
 import {
   inativarPessoa,
   listarLiderancas,
@@ -213,7 +214,7 @@ export function CadastroPage() {
             />
           </Form.Item>
           <Form.Item name="territorio_id">
-            <Input type="number" placeholder="Território" style={{ width: 120 }} />
+            <TerritorySelect style={{ width: 220 }} />
           </Form.Item>
           <Form.Item>
             <Space>

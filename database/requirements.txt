@@ -1,1 +1,2 @@
 asyncpg>=0.30,<1
+argon2-cffi>=23.1,<26

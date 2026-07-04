@@ -78,3 +78,9 @@ docker compose --profile local-db up --build
 docker compose exec worker jobs enqueue-test --wait
 docker compose exec worker jobs enqueue-completeness --tenant-id 1 --wait
 ```
+## Alertas de demandas
+
+O beat agenda diariamente `jobs.demandas.enqueue_deadline_alerts`. Para cada tenant
+ativo, o worker cria alertas idempotentes para demandas vencendo ou vencidas e resolve
+alertas que deixaram de se aplicar. Configure com `DEMAND_DEADLINES_ENABLED`,
+`DEMAND_DEADLINES_HOUR` e `DEMAND_DEADLINES_LEAD_DAYS`.

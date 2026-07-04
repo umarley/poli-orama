@@ -1,5 +1,9 @@
 # SPEC-07 - Importacao, ETL e Qualidade de Dados
 
+Status: concluida em 2026-07-03 para o escopo MVP e deduplicacao fuzzy P2.
+As tarefas ETL-033, ETL-034 e ETL-035 dependem de contratos/fontes externos e
+foram detalhadas na SPEC-20 para execucao pos-MVP.
+
 Prioridade principal: P1  
 Modulo: `backend_jobs_celery`, `etl`, `mod_cadastro`  
 Objetivo: permitir importacao inicial de bases historicas e planilhas, com validacao, staging, deduplicacao, logs e carga controlada para cadastro.
@@ -94,3 +98,16 @@ Objetivo: permitir importacao inicial de bases historicas e planilhas, com valid
 - Usuario aprova carga.
 - Pessoas validas entram no cadastro com origem rastreavel.
 - Logs e status permitem acompanhar falhas.
+
+## Evidencias da implementacao
+
+- Migration `010 - importacao_etl_qualidade_dados.sql` com isolamento por tenant,
+  permissoes, fontes, regras de deduplicacao, staging e rastreabilidade.
+- API FastAPI em `backend_core/src/app/mod_etl`, incluindo CRUD de fontes,
+  upload, mapeamento, resumo, erros, duplicidades, aprovacao, cancelamento e CSV.
+- Jobs Celery em `backend_jobs_celery/src/jobs/imports.py` e
+  `backend_jobs_celery/src/jobs/import_rules.py`.
+- Telas de lista, upload, mapeamento, validacao, duplicidades e aprovacao em
+  `frontend_core/src/pages/etl`.
+- Testes unitarios e integrados para CSV, XLSX, validacao por linha,
+  duplicidade por CPF, carga aprovada e origem da pessoa.

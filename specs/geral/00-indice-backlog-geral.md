@@ -72,6 +72,12 @@ Escopo: frontend autenticado, backend principal, jobs assincronos, site publico,
 | `SPEC-14-modo-eleicao.md` | Operacao do dia da votacao e acompanhamento operacional | P3 |
 | `SPEC-15-nlp-ml-inteligencia-avancada.md` | Classificacao, previsoes, score de risco e recomendacoes | P3 |
 | `SPEC-16-qualidade-seguranca-lgpd-deploy.md` | Testes, LGPD, observabilidade, backup, deploy e go-live | P0/P1 |
+| `SPEC-17-aprimoramentos-cadastro-pos-mvp.md` | Qualidade cadastral, duplicidades, historico e auditoria complementar | P1/P2 |
+| `SPEC-18-aprimoramentos-territorios-georreferenciamento-pos-mvp.md` | Fechamento territorial, geocodificacao automatica, mapas e dados oficiais | P1/P2/P3 |
+| `SPEC-19-inteligencia-preditiva-metas-pos-mvp.md` | Modelo treinado, explicabilidade, fallback e monitoramento de risco | P2/P3 |
+| `SPEC-20-integracoes-etl-avancadas-pos-mvp.md` | GESPED automatico, dados oficiais TSE/IBGE e OCR | P2/P3 |
+| `SPEC-21-aprimoramentos-agenda-eventos-pos-mvp.md` | Filtros, QA, lembretes e analise de temas da agenda | P1/P2/P3 |
+| `SPEC-22-aprimoramentos-demandas-atendimentos-pos-mvp.md` | Cadastro rapido de solicitante, filtros, QA, responsaveis e NLP de demandas | P2/P3 |
 
 ## MVP minimo recomendado
 

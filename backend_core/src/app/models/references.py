@@ -27,12 +27,4 @@ religiao = _reference_table("religiao", "cadastro", SmallInteger)
 partido = _reference_table("partido", "cadastro", SmallInteger)
 
 arquivo = _reference_table("arquivo", "arquivo", BigInteger)
-fonte_dado = _reference_table("fonte_dado", "etl", BigInteger)
-
-municipio = _reference_table("municipio", "global", Integer)
-bairro = _reference_table("bairro", "global", Integer)
-zona_eleitoral = _reference_table("zona_eleitoral", "global", Integer)
-secao_eleitoral = _reference_table("secao_eleitoral", "global", BigInteger)
-local_votacao = _reference_table("local_votacao", "global", Integer)
-
-territorio = _reference_table("territorio", "territorio", BigInteger)
+eleicao = _reference_table("eleicao", "eleicao", BigInteger)

@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     database_echo: bool = False
     database_pool_size: int = Field(default=5, ge=1)
     database_max_overflow: int = Field(default=10, ge=0)
+    celery_broker_url: str = "redis://localhost:6379/0"
+    import_storage_path: str = "../data/importacoes"
+    import_max_file_mb: int = Field(default=25, ge=1, le=250)
 
     cors_origins: str = (
         "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4321,http://127.0.0.1:4321"

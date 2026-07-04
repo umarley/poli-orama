@@ -78,6 +78,9 @@ services:
       COMPLETENESS_JOB_HOUR: ${COMPLETENESS_JOB_HOUR:-2}
       COMPLETENESS_JOB_MINUTE: ${COMPLETENESS_JOB_MINUTE:-30}
       COMPLETENESS_JOB_BATCH_SIZE: ${COMPLETENESS_JOB_BATCH_SIZE:-1000}
+      DEMAND_DEADLINES_ENABLED: ${DEMAND_DEADLINES_ENABLED:-true}
+      DEMAND_DEADLINES_HOUR: ${DEMAND_DEADLINES_HOUR:-7}
+      DEMAND_DEADLINES_LEAD_DAYS: ${DEMAND_DEADLINES_LEAD_DAYS:-3}
     depends_on:
       redis:
         condition: service_healthy
@@ -111,6 +114,9 @@ services:
       COMPLETENESS_JOB_HOUR: ${COMPLETENESS_JOB_HOUR:-2}
       COMPLETENESS_JOB_MINUTE: ${COMPLETENESS_JOB_MINUTE:-30}
       COMPLETENESS_JOB_BATCH_SIZE: ${COMPLETENESS_JOB_BATCH_SIZE:-1000}
+      DEMAND_DEADLINES_ENABLED: ${DEMAND_DEADLINES_ENABLED:-true}
+      DEMAND_DEADLINES_HOUR: ${DEMAND_DEADLINES_HOUR:-7}
+      DEMAND_DEADLINES_LEAD_DAYS: ${DEMAND_DEADLINES_LEAD_DAYS:-3}
     depends_on:
       redis:
         condition: service_healthy
@@ -148,6 +154,12 @@ services:
       - "./database/migrations/005 - auth_p2_mfa_sessoes.sql:/docker-entrypoint-initdb.d/005-auth-p2.sql:ro"
       - "./database/migrations/006 - cadastro_pessoas_constraints.sql:/docker-entrypoint-initdb.d/006-cadastro.sql:ro"
       - "./database/migrations/007 - cadastro_merge_assistido.sql:/docker-entrypoint-initdb.d/007-cadastro-merge.sql:ro"
+      - "./database/migrations/008 - territorios_georreferenciamento.sql:/docker-entrypoint-initdb.d/008-territorios.sql:ro"
+      - "./database/migrations/009 - metas_votos_rankings_alertas.sql:/docker-entrypoint-initdb.d/009-metas.sql:ro"
+      - "./database/migrations/010 - importacao_etl_qualidade_dados.sql:/docker-entrypoint-initdb.d/010-etl.sql:ro"
+      - "./database/migrations/011 - agenda_eventos.sql:/docker-entrypoint-initdb.d/011-agenda.sql:ro"
+      - "./database/migrations/012 - demandas_atendimentos.sql:/docker-entrypoint-initdb.d/012-demandas.sql:ro"
+      - "./database/migrations/016 - demandas_indices_alertas.sql:/docker-entrypoint-initdb.d/016-demandas-alertas.sql:ro"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s

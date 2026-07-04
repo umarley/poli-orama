@@ -1,9 +1,12 @@
+from datetime import date
 from typing import Any
 
 import pytest
 
 from jobs.service import (
+    enqueue_scheduled_goals_jobs,
     enqueue_scheduled_completeness_jobs,
+    execute_goals_job,
     execute_completeness_job,
     execute_test_job,
 )
@@ -158,4 +161,75 @@ def test_scheduler_enqueues_active_tenants_without_overlapping_jobs() -> None:
         "tenants_enfileirados": 1,
         "tenants_ignorados": 1,
         "falhas_despacho": 1,
+    }
+
+
+class FakeGoalsRepository(FakeRepository):
+    def recalculate_goals_and_rankings(
+        self, *, tenant_id: int, reference_date: date
+    ) -> dict[str, int]:
+        assert reference_date == date(2026, 7, 3)
+        return {
+            "tenant_id": tenant_id,
+            "metas_atualizadas": 4,
+            "alertas_abertos": 2,
+            "liderancas_ranqueadas": 3,
+        }
+
+
+def test_goals_job_recalculates_progress_alerts_and_ranking() -> None:
+    repository = FakeGoalsRepository()
+
+    result = execute_goals_job(
+        repository,
+        job_id=40,
+        tenant_id=50,
+        reference_date=date(2026, 7, 3),
+    )
+
+    assert result["metas_atualizadas"] == 4
+    assert result["liderancas_ranqueadas"] == 3
+    assert [event[0] for event in repository.events] == ["started", "succeeded"]
+
+
+class FakeGoalsScheduler:
+    def __init__(self) -> None:
+        self.failed: list[int] = []
+
+    def list_active_tenant_ids(self) -> list[int]:
+        return [1, 2]
+
+    def create_if_idle(
+        self,
+        *,
+        job_type: str,
+        reference: str,
+        parameters: dict[str, Any],
+        tenant_id: int,
+    ) -> int | None:
+        assert job_type == "indicador"
+        assert reference == "metas_rankings_alertas"
+        assert parameters == {"origem": "mudanca_cadastro_periodica"}
+        return None if tenant_id == 2 else 100 + tenant_id
+
+    def mark_failed(self, job_id: int, context: dict[str, Any] | None = None) -> None:
+        self.failed.append(job_id)
+
+
+def test_goals_scheduler_avoids_overlapping_jobs() -> None:
+    repository = FakeGoalsScheduler()
+    dispatched: list[tuple[int, int]] = []
+
+    result = enqueue_scheduled_goals_jobs(
+        repository,
+        dispatch=lambda job_id, tenant_id: (
+            dispatched.append((job_id, tenant_id)) or "task-id"
+        ),
+    )
+
+    assert dispatched == [(101, 1)]
+    assert result == {
+        "tenants_enfileirados": 1,
+        "tenants_ignorados": 1,
+        "falhas_despacho": 0,
     }

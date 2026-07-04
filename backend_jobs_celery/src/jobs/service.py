@@ -1,11 +1,75 @@
 from collections.abc import Callable
+from datetime import date
 from typing import Any
 
 from jobs.repository import (
     CompletenessRepositoryProtocol,
     CompletenessSchedulerRepositoryProtocol,
+    GoalsRepositoryProtocol,
     JobRepositoryProtocol,
 )
+
+
+def execute_goals_job(
+    repository: GoalsRepositoryProtocol,
+    *,
+    job_id: int,
+    tenant_id: int,
+    reference_date: date | None = None,
+) -> dict[str, Any]:
+    repository.mark_started(job_id)
+    try:
+        metrics = repository.recalculate_goals_and_rankings(
+            tenant_id=tenant_id,
+            reference_date=reference_date or date.today(),
+        )
+        result: dict[str, Any] = {"job_id": job_id, "status": "concluido", **metrics}
+        repository.mark_succeeded(job_id, metrics)
+        return result
+    except Exception as exc:
+        repository.mark_failed(
+            job_id,
+            {"tenant_id": tenant_id, "error_type": type(exc).__name__},
+        )
+        raise
+
+
+def enqueue_scheduled_goals_jobs(
+    repository: CompletenessSchedulerRepositoryProtocol,
+    *,
+    dispatch: Callable[[int, int], str],
+) -> dict[str, int]:
+    enqueued = 0
+    skipped = 0
+    failed = 0
+    for tenant_id in repository.list_active_tenant_ids():
+        job_id = repository.create_if_idle(
+            job_type="indicador",
+            reference="metas_rankings_alertas",
+            parameters={"origem": "mudanca_cadastro_periodica"},
+            tenant_id=tenant_id,
+        )
+        if job_id is None:
+            skipped += 1
+            continue
+        try:
+            dispatch(job_id, tenant_id)
+            enqueued += 1
+        except Exception as exc:
+            repository.mark_failed(
+                job_id,
+                {
+                    "tenant_id": tenant_id,
+                    "error_type": type(exc).__name__,
+                    "fase": "despacho",
+                },
+            )
+            failed += 1
+    return {
+        "tenants_enfileirados": enqueued,
+        "tenants_ignorados": skipped,
+        "falhas_despacho": failed,
+    }
 
 
 def execute_test_job(

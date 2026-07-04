@@ -4,6 +4,8 @@ import {
   CreditCardOutlined,
   DashboardOutlined,
   FlagOutlined,
+  GlobalOutlined,
+  ImportOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
   ShareAltOutlined,
@@ -55,10 +57,22 @@ export const navigationItems: NavigationItem[] = [
     permission: 'cadastro.visualizar',
   },
   {
+    key: '/territorios',
+    label: 'Territórios e mapa',
+    icon: <GlobalOutlined />,
+    permission: 'territorio.visualizar',
+  },
+  {
     key: '/metas',
     label: 'Metas e votos',
     icon: <FlagOutlined />,
     permission: 'metas.visualizar',
+  },
+  {
+    key: '/importacoes',
+    label: 'Importações',
+    icon: <ImportOutlined />,
+    permission: 'etl.visualizar',
   },
   {
     key: '/agenda',

@@ -3,10 +3,11 @@
 from datetime import UTC, date, datetime
 from typing import Any
 
-from app.auth.access import RequestActor
+from app.auth.access import RequestActor, TerritorialAccess
 from app.core.errors import AuthorizationError, BusinessRuleError, ResourceNotFoundError
 from app.core.pagination import ListParams, Page
 from app.mod_cadastro.repository import CadastroRepository, person_snapshot
+from app.mod_territorio.repository import TerritorioRepository
 from app.schemas.cadastro import (
     EleitorCreate,
     EleitorResponse,
@@ -75,9 +76,20 @@ class CadastroService:
         self.repository = repository
 
     async def list_people(
-        self, actor: RequestActor, params: ListParams, filters: PessoaFiltros
+        self,
+        actor: RequestActor,
+        params: ListParams,
+        filters: PessoaFiltros,
+        territorial_access: TerritorialAccess | None = None,
     ) -> Page[PessoaListItem]:
-        people, total = await self.repository.list_people(actor.tenant_id, params, filters)
+        accessible_ids = None
+        if territorial_access is not None:
+            accessible_ids = await TerritorioRepository(
+                self.repository.session
+            ).accessible_ids(actor.tenant_id, territorial_access)
+        people, total = await self.repository.list_people(
+            actor.tenant_id, params, filters, accessible_ids
+        )
         items: list[PessoaListItem] = []
         for person in people:
             extensions = await self.repository.get_person_extensions(actor.tenant_id, person.id)
@@ -112,6 +124,20 @@ class CadastroService:
                 )
             )
         return Page[PessoaListItem].create(items, total, params)
+
+    async def ensure_person_territorial_access(
+        self,
+        actor: RequestActor,
+        person_id: int,
+        territorial_access: TerritorialAccess,
+    ) -> None:
+        ids = await TerritorioRepository(self.repository.session).accessible_ids(
+            actor.tenant_id, territorial_access
+        )
+        if ids is not None and not await self.repository.person_in_territories(
+            actor.tenant_id, person_id, ids
+        ):
+            raise AuthorizationError("Pessoa fora do escopo territorial permitido.")
 
     async def get_person(self, actor: RequestActor, person_id: int) -> PessoaDetalheResponse:
         person = await self.repository.get_person(actor.tenant_id, person_id)
@@ -765,9 +791,20 @@ class CadastroService:
         return SuspeitaDuplicidadeResponse.model_validate(item)
 
     async def quick_search(
-        self, actor: RequestActor, query: str, limit: int
+        self,
+        actor: RequestActor,
+        query: str,
+        limit: int,
+        territorial_access: TerritorialAccess | None = None,
     ) -> list[BuscaRapidaItem]:
-        people = await self.repository.quick_search(actor.tenant_id, query, limit)
+        accessible_ids = None
+        if territorial_access is not None:
+            accessible_ids = await TerritorioRepository(
+                self.repository.session
+            ).accessible_ids(actor.tenant_id, territorial_access)
+        people = await self.repository.quick_search(
+            actor.tenant_id, query, limit, accessible_ids
+        )
         return [
             BuscaRapidaItem(
                 id=person.id,

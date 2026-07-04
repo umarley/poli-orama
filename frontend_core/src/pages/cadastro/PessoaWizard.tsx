@@ -15,6 +15,7 @@ import type { Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { ElectoralLocationFields } from '@/components/territorios/ElectoralLocationFields';
 import { buscarPessoas, criarPessoa } from '@/modules/cadastro/pessoas-service';
 import type {
   BuscaRapidaItem,
@@ -46,6 +47,7 @@ interface WizardValues {
   titulo_eleitor?: string;
   zona_eleitoral_id?: number;
   secao_eleitoral_id?: number;
+  local_votacao_id?: number;
   lideranca_superior_id?: number;
   voluntario?: boolean;
   observacoes?: string;
@@ -68,6 +70,7 @@ const stepFields: Array<Array<keyof WizardValues>> = [
     'titulo_eleitor',
     'zona_eleitoral_id',
     'secao_eleitoral_id',
+    'local_votacao_id',
     'lideranca_superior_id',
     'observacoes',
   ],
@@ -147,11 +150,17 @@ export function PessoaWizard({ open, tipos, liderancas, onClose, onCreated }: Pe
         lideranca_superior_id: values.lideranca_superior_id,
         papel_subordinado: 'liderado',
       };
-      if (values.titulo_eleitor || values.zona_eleitoral_id || values.secao_eleitoral_id) {
+      if (
+        values.titulo_eleitor ||
+        values.zona_eleitoral_id ||
+        values.secao_eleitoral_id ||
+        values.local_votacao_id
+      ) {
         payload.eleitor = {
           titulo_eleitor: values.titulo_eleitor,
           zona_eleitoral_id: values.zona_eleitoral_id,
           secao_eleitoral_id: values.secao_eleitoral_id,
+          local_votacao_id: values.local_votacao_id,
           situacao_titulo: 'regular',
         };
       }
@@ -363,17 +372,8 @@ export function PessoaWizard({ open, tipos, liderancas, onClose, onCreated }: Pe
                 <Input />
               </Form.Item>
             </Col>
-            <Col xs={12} md={6}>
-              <Form.Item name="zona_eleitoral_id" label="Zona">
-                <Input type="number" />
-              </Form.Item>
-            </Col>
-            <Col xs={12} md={6}>
-              <Form.Item name="secao_eleitoral_id" label="Seção">
-                <Input type="number" />
-              </Form.Item>
-            </Col>
           </Row>
+          <ElectoralLocationFields />
           <Form.Item name="observacoes" label="Observações">
             <Input.TextArea rows={3} />
           </Form.Item>

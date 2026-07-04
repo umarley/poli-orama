@@ -16,6 +16,7 @@ from app.mod_agenda.router import router as agenda_router
 from app.mod_cadastro.router import router as cadastro_router
 from app.mod_dashboard.router import router as dashboard_router
 from app.mod_demandas.router import router as demandas_router
+from app.mod_etl.router import router as etl_router
 from app.mod_metas.router import router as metas_router
 from app.mod_territorio.router import router as territorio_router
 from app.tenants.public_router import router as public_router
@@ -65,4 +66,5 @@ app.include_router(territorio_router, prefix=settings.api_v1_prefix)
 app.include_router(metas_router, prefix=settings.api_v1_prefix)
 app.include_router(agenda_router, prefix=settings.api_v1_prefix)
 app.include_router(demandas_router, prefix=settings.api_v1_prefix)
+app.include_router(etl_router, prefix=settings.api_v1_prefix)
 app.include_router(dashboard_router, prefix=settings.api_v1_prefix)

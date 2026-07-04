@@ -1,5 +1,9 @@
 # SPEC-08 - Agenda e Eventos
 
+Status: concluida em 2026-07-03 para o fluxo principal.
+Os complementos de AGE-019, AGE-028, AGE-031 e AGE-033 foram detalhados na
+SPEC-21 para implementacao posterior.
+
 Prioridade principal: P1  
 Modulo: `mod_agenda`, `frontend_core/agenda`  
 Objetivo: controlar agenda politica, eventos, convites, pautas, presenca, liderancas envolvidas e demandas geradas.
@@ -87,3 +91,27 @@ Objetivo: controlar agenda politica, eventos, convites, pautas, presenca, lidera
 - Participantes, liderancas, convites, pautas e presenca ficam registrados.
 - Demandas podem ser criadas a partir de eventos.
 - Dashboard recebe indicadores basicos de agenda.
+
+## Evidencias da implementacao
+
+- Migration `011 - agenda_eventos.sql` com catalogos por tenant, cancelamento,
+  lembretes, insights, RBAC, RLS e indices.
+- API em `backend_core/src/app/mod_agenda` com CRUD de catalogos e eventos,
+  filtros, detalhe agregado, participantes, liderancas, convites, pautas,
+  presenca, demandas, resumo e exportacao CSV.
+- Jobs Celery em `backend_jobs_celery/src/jobs/agenda.py` para lembretes
+  idempotentes e analise lexical de temas/demandas recorrentes.
+- Telas `AgendaPage` e `EventDetailPage` com visoes mensal, semanal e lista,
+  filtros, formulario e abas operacionais.
+- Dashboard integrado aos proximos compromissos reais.
+- Testes integrados cobrem CRUD, escopo territorial, demanda originada,
+  lembretes e temas recorrentes.
+
+## Pendencias transferidas
+
+- Filtro explicito por intervalo e sincronizacao com exportacao.
+- Cobertura de edicao e calendario no frontend.
+- Central de lembretes, leitura e ciclo de cancelamento/remarcacao.
+- Analise independente de convites e cobertura ampliada de temas recorrentes.
+
+Consulte `SPEC-21-aprimoramentos-agenda-eventos-pos-mvp.md`.

@@ -4,6 +4,11 @@ Prioridade principal: P1
 Modulo: `mod_territorio`, `global`, `frontend_core/territorios`  
 Objetivo: organizar a campanha por estado, municipio, bairro, zona, secao, local de votacao, microrregiao e area customizada, preparando mapas e filtros territoriais.
 
+Status: base MVP entregue em 2026-07-03. A auditoria de aderencia identificou
+entregas parciais em TER-009, TER-015, TER-018, TER-020, TER-022, TER-024 e
+TER-027 a TER-029. As correcoes e evolucoes futuras foram consolidadas na
+`SPEC-18-aprimoramentos-territorios-georreferenciamento-pos-mvp.md`.
+
 ## Escopo MVP
 
 - Consulta de estados, municipios, bairros, zonas, secoes e locais de votacao.

@@ -23,13 +23,34 @@ celery_app.conf.update(
     worker_hijack_root_logger=False,
 )
 
+beat_schedule = {}
 if settings.completeness_job_enabled:
-    celery_app.conf.beat_schedule = {
-        "cadastro-completude-diaria": {
-            "task": "jobs.cadastro.enqueue_completeness",
-            "schedule": crontab(
-                hour=settings.completeness_job_hour,
-                minute=settings.completeness_job_minute,
-            ),
-        }
+    beat_schedule["cadastro-completude-diaria"] = {
+        "task": "jobs.cadastro.enqueue_completeness",
+        "schedule": crontab(
+            hour=settings.completeness_job_hour,
+            minute=settings.completeness_job_minute,
+        ),
     }
+if settings.goals_job_enabled:
+    beat_schedule["metas-recalculo-periodico"] = {
+        "task": "jobs.metas.enqueue_recalculation",
+        "schedule": settings.goals_job_interval_minutes * 60,
+    }
+if settings.agenda_reminders_enabled:
+    beat_schedule["agenda-lembretes-periodicos"] = {
+        "task": "jobs.agenda.enqueue_reminders",
+        "schedule": settings.agenda_reminders_interval_minutes * 60,
+    }
+if settings.agenda_nlp_enabled:
+    beat_schedule["agenda-analise-temas-diaria"] = {
+        "task": "jobs.agenda.enqueue_topic_analysis",
+        "schedule": crontab(hour=settings.agenda_nlp_hour, minute=0),
+    }
+if settings.demand_deadlines_enabled:
+    beat_schedule["demandas-alertas-prazo-diarios"] = {
+        "task": "jobs.demandas.enqueue_deadline_alerts",
+        "schedule": crontab(hour=settings.demand_deadlines_hour, minute=0),
+    }
+if beat_schedule:
+    celery_app.conf.beat_schedule = beat_schedule

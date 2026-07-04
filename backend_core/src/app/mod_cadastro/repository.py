@@ -81,6 +81,7 @@ class CadastroRepository(BaseRepository[Pessoa]):
         tenant_id: int,
         params: ListParams,
         filters: PessoaFiltros,
+        accessible_territory_ids: set[int] | None = None,
     ) -> Select[tuple[Pessoa]]:
         statement = statement.where(Pessoa.tenant_id == tenant_id)
         if not filters.incluir_inativos:
@@ -130,6 +131,18 @@ class CadastroRepository(BaseRepository[Pessoa]):
                     "AND pt.tenant_id = :tenant_id AND pt.territorio_id = :territorio_id)"
                 )
             )
+        if accessible_territory_ids is not None:
+            if not accessible_territory_ids:
+                statement = statement.where(text("FALSE"))
+            else:
+                statement = statement.where(
+                    text(
+                        "EXISTS (SELECT 1 FROM territorio.pessoa_territorio access_pt "
+                        "WHERE access_pt.pessoa_id = cadastro.pessoa.id "
+                        "AND access_pt.tenant_id = :tenant_id "
+                        "AND access_pt.territorio_id = ANY(:accessible_territory_ids))"
+                    )
+                )
         if filters.tag_id:
             statement = statement.where(
                 text(
@@ -145,6 +158,7 @@ class CadastroRepository(BaseRepository[Pessoa]):
         tenant_id: int,
         params: ListParams,
         filters: PessoaFiltros,
+        accessible_territory_ids: set[int] | None = None,
     ) -> tuple[list[Pessoa], int]:
         order_column = self.sortable_columns.get(params.order_by)
         if order_column is None:
@@ -153,13 +167,20 @@ class CadastroRepository(BaseRepository[Pessoa]):
                 code="invalid_order_field",
                 details={"allowed": sorted(self.sortable_columns)},
             )
-        filtered = self._person_filters(select(Pessoa), tenant_id, params, filters)
+        filtered = self._person_filters(
+            select(Pessoa), tenant_id, params, filters, accessible_territory_ids
+        )
         values = {
             "tenant_id": tenant_id,
             "tipo_id": filters.tipo_id,
             "lideranca_id": filters.lideranca_id,
             "territorio_id": filters.territorio_id,
             "tag_id": filters.tag_id,
+            "accessible_territory_ids": (
+                sorted(accessible_territory_ids)
+                if accessible_territory_ids is not None
+                else None
+            ),
         }
         total = int(
             (
@@ -178,6 +199,26 @@ class CadastroRepository(BaseRepository[Pessoa]):
             values,
         )
         return list(result.unique().all()), total
+
+    async def person_in_territories(
+        self, tenant_id: int, person_id: int, territory_ids: set[int]
+    ) -> bool:
+        if not territory_ids:
+            return False
+        return bool(
+            await self.session.scalar(
+                text(
+                    "SELECT EXISTS(SELECT 1 FROM territorio.pessoa_territorio "
+                    "WHERE tenant_id = :tenant_id AND pessoa_id = :person_id "
+                    "AND territorio_id = ANY(:territory_ids))"
+                ),
+                {
+                    "tenant_id": tenant_id,
+                    "person_id": person_id,
+                    "territory_ids": sorted(territory_ids),
+                },
+            )
+        )
 
     async def get_person(self, tenant_id: int, person_id: int) -> Pessoa | None:
         result: Pessoa | None = await self.session.scalar(
@@ -1366,22 +1407,40 @@ class CadastroRepository(BaseRepository[Pessoa]):
         await self.session.flush()
         return items
 
-    async def quick_search(self, tenant_id: int, query: str, limit: int) -> list[Pessoa]:
+    async def quick_search(
+        self,
+        tenant_id: int,
+        query: str,
+        limit: int,
+        accessible_territory_ids: set[int] | None = None,
+    ) -> list[Pessoa]:
         term = f"%{query}%"
-        result = await self.session.scalars(
-            select(Pessoa)
-            .where(
-                Pessoa.tenant_id == tenant_id,
-                Pessoa.ativo.is_(True),
-                Pessoa.excluido_em.is_(None),
-                or_(
-                    Pessoa.nome_completo.ilike(term),
-                    Pessoa.documentos.any(PessoaDocumento.numero.ilike(term)),
-                    Pessoa.contatos.any(PessoaContato.valor.ilike(term)),
-                ),
+        statement = select(Pessoa).where(
+            Pessoa.tenant_id == tenant_id,
+            Pessoa.ativo.is_(True),
+            Pessoa.excluido_em.is_(None),
+            or_(
+                Pessoa.nome_completo.ilike(term),
+                Pessoa.documentos.any(PessoaDocumento.numero.ilike(term)),
+                Pessoa.contatos.any(PessoaContato.valor.ilike(term)),
+            ),
+        )
+        values: dict[str, Any] = {"tenant_id": tenant_id}
+        if accessible_territory_ids is not None:
+            if not accessible_territory_ids:
+                return []
+            statement = statement.where(
+                text(
+                    "EXISTS (SELECT 1 FROM territorio.pessoa_territorio access_pt "
+                    "WHERE access_pt.pessoa_id = cadastro.pessoa.id "
+                    "AND access_pt.tenant_id = :tenant_id "
+                    "AND access_pt.territorio_id = ANY(:accessible_territory_ids))"
+                )
             )
-            .order_by(Pessoa.nome_completo)
-            .limit(limit)
+            values["accessible_territory_ids"] = sorted(accessible_territory_ids)
+        result = await self.session.scalars(
+            statement.order_by(Pessoa.nome_completo).limit(limit),
+            values,
         )
         return list(result.unique().all())
 

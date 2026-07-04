@@ -26,6 +26,17 @@ class Settings(BaseSettings):
     completeness_job_hour: int = Field(default=2, ge=0, le=23)
     completeness_job_minute: int = Field(default=30, ge=0, le=59)
     completeness_job_batch_size: int = Field(default=1000, ge=1, le=10000)
+    goals_job_enabled: bool = True
+    goals_job_interval_minutes: int = Field(default=15, ge=1, le=1440)
+    agenda_reminders_enabled: bool = True
+    agenda_reminders_interval_minutes: int = Field(default=15, ge=1, le=1440)
+    agenda_reminder_lead_hours: int = Field(default=24, ge=1, le=720)
+    agenda_nlp_enabled: bool = True
+    agenda_nlp_hour: int = Field(default=3, ge=0, le=23)
+    agenda_nlp_minimum_frequency: int = Field(default=2, ge=2, le=100)
+    demand_deadlines_enabled: bool = True
+    demand_deadlines_hour: int = Field(default=7, ge=0, le=23)
+    demand_deadlines_lead_days: int = Field(default=3, ge=0, le=30)
 
 
 @lru_cache

@@ -18,6 +18,12 @@ psql $env:DATABASE_ADMIN_URL -v ON_ERROR_STOP=1 -f ".\database\migrations\004 - 
 psql $env:DATABASE_ADMIN_URL -v ON_ERROR_STOP=1 -f ".\database\migrations\005 - auth_p2_mfa_sessoes.sql"
 psql $env:DATABASE_ADMIN_URL -v ON_ERROR_STOP=1 -f ".\database\migrations\006 - cadastro_pessoas_constraints.sql"
 psql $env:DATABASE_ADMIN_URL -v ON_ERROR_STOP=1 -f ".\database\migrations\007 - cadastro_merge_assistido.sql"
+psql $env:DATABASE_ADMIN_URL -v ON_ERROR_STOP=1 -f ".\database\migrations\008 - territorios_georreferenciamento.sql"
+psql $env:DATABASE_ADMIN_URL -v ON_ERROR_STOP=1 -f ".\database\migrations\009 - metas_votos_rankings_alertas.sql"
+psql $env:DATABASE_ADMIN_URL -v ON_ERROR_STOP=1 -f ".\database\migrations\010 - importacao_etl_qualidade_dados.sql"
+psql $env:DATABASE_ADMIN_URL -v ON_ERROR_STOP=1 -f ".\database\migrations\011 - agenda_eventos.sql"
+psql $env:DATABASE_ADMIN_URL -v ON_ERROR_STOP=1 -f ".\database\migrations\012 - demandas_atendimentos.sql"
+psql $env:DATABASE_ADMIN_URL -v ON_ERROR_STOP=1 -f ".\database\migrations\016 - demandas_indices_alertas.sql"
 ```
 
 Em Linux/macOS:
@@ -38,6 +44,18 @@ psql "$DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1 \
   -f "database/migrations/006 - cadastro_pessoas_constraints.sql"
 psql "$DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1 \
   -f "database/migrations/007 - cadastro_merge_assistido.sql"
+psql "$DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1 \
+  -f "database/migrations/008 - territorios_georreferenciamento.sql"
+psql "$DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1 \
+  -f "database/migrations/009 - metas_votos_rankings_alertas.sql"
+psql "$DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1 \
+  -f "database/migrations/010 - importacao_etl_qualidade_dados.sql"
+psql "$DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1 \
+  -f "database/migrations/011 - agenda_eventos.sql"
+psql "$DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1 \
+  -f "database/migrations/012 - demandas_atendimentos.sql"
+psql "$DATABASE_ADMIN_URL" -v ON_ERROR_STOP=1 \
+  -f "database/migrations/016 - demandas_indices_alertas.sql"
 ```
 
 A migration deve ser aplicada uma unica vez em um banco vazio. O uso de
@@ -95,3 +113,23 @@ docker compose --profile local-db up postgres
 
 O segundo comando remove dados do volume local; nao deve ser usado em ambientes
 compartilhados ou de producao.
+
+## Dados iniciais para desenvolvimento e testes
+
+Depois de aplicar todas as migrations, instale as dependencias e execute o seed:
+
+```powershell
+python -m pip install -r database/requirements.txt
+$env:SEED_PASSWORD = Read-Host "Senha dos usuarios de seed" -MaskInput
+python database/seeds/seed_development.py --env-file backend_core/.env
+Remove-Item Env:SEED_PASSWORD
+```
+
+Sem `SEED_PASSWORD`, o script solicita e confirma a senha de forma oculta. Ele
+cria ou atualiza tres tenants, suas configuracoes, um plano de desenvolvimento e
+um usuario para cada perfil global em cada tenant. O comando e idempotente e
+imprime os slugs, perfis e e-mails que podem ser usados no login.
+
+Use `--database-url` para informar a conexao diretamente. URLs no formato
+`postgresql+asyncpg://` tambem sao aceitas. O script somente permite os ambientes
+`local` e `test`.

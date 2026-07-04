@@ -6,7 +6,13 @@ from fastapi import APIRouter, Depends, Path, Query, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.access import RequestActor, get_db_session, require_permission
+from app.auth.access import (
+    RequestActor,
+    TerritorialAccess,
+    get_db_session,
+    get_territorial_access,
+    require_permission,
+)
 from app.core.pagination import ListParams, Page, list_params
 from app.mod_cadastro.repository import CadastroRepository
 from app.mod_cadastro.service import CadastroService
@@ -112,11 +118,12 @@ async def indication_graph(
 )
 async def quick_search(
     actor: Annotated[RequestActor, Depends(require_permission("cadastro", "visualizar"))],
+    territorial_access: Annotated[TerritorialAccess, Depends(get_territorial_access)],
     service: Annotated[CadastroService, Depends(get_cadastro_service)],
     query: str = Query(min_length=2, max_length=180),
     limit: int = Query(default=10, ge=1, le=50),
 ) -> list[BuscaRapidaItem]:
-    return await service.quick_search(actor, query, limit)
+    return await service.quick_search(actor, query, limit, territorial_access)
 
 
 @router.get(
@@ -139,6 +146,7 @@ async def list_person_types(
 async def list_people(
     params: Annotated[ListParams, Depends(list_params)],
     actor: Annotated[RequestActor, Depends(require_permission("cadastro", "visualizar"))],
+    territorial_access: Annotated[TerritorialAccess, Depends(get_territorial_access)],
     service: Annotated[CadastroService, Depends(get_cadastro_service)],
     nome: str | None = Query(default=None, max_length=180),
     cpf: str | None = Query(default=None, max_length=14),
@@ -159,7 +167,7 @@ async def list_people(
         tag_id=tag_id,
         incluir_inativos=incluir_inativos,
     )
-    return await service.list_people(actor, params, filters)
+    return await service.list_people(actor, params, filters, territorial_access)
 
 
 @router.post(
@@ -189,9 +197,11 @@ async def create_person(
 )
 async def get_person(
     actor: Annotated[RequestActor, Depends(require_permission("cadastro", "visualizar"))],
+    territorial_access: Annotated[TerritorialAccess, Depends(get_territorial_access)],
     service: Annotated[CadastroService, Depends(get_cadastro_service)],
     person_id: int = Path(ge=1),
 ) -> PessoaDetalheResponse:
+    await service.ensure_person_territorial_access(actor, person_id, territorial_access)
     return await service.get_person(actor, person_id)
 
 

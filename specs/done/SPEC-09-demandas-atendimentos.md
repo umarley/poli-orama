@@ -1,5 +1,6 @@
 # SPEC-09 - Demandas e Atendimentos
 
+Status: concluida no MVP, com aprimoramentos transferidos para a SPEC-22  
 Prioridade principal: P1  
 Modulo: `mod_demandas`, `frontend_core/demandas`  
 Objetivo: controlar solicitacoes, pedidos, atendimentos, responsaveis, prazos, resultados, status e historico de movimentacoes.
