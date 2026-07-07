@@ -10,6 +10,7 @@ import {
   Input,
   List,
   Modal,
+  Select,
   Space,
   Spin,
   Switch,
@@ -20,6 +21,8 @@ import {
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
+import { AttachmentsPanel } from '@/components/arquivos/AttachmentsPanel';
+import { PersonInteractionsPanel } from '@/components/comunicacao/PersonInteractionsPanel';
 import { AppToast } from '@/components/feedback/AppToast';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
@@ -27,10 +30,12 @@ import {
   atualizarDocumento,
   atualizarEndereco,
   atualizarPessoa,
+  listarEstadosCivis,
   obterPessoa,
 } from '@/modules/cadastro/pessoas-service';
 import type { PessoaContato, PessoaDocumento, PessoaEndereco } from '@/modules/cadastro/types';
 import { normalizeApiError } from '@/services/api/api-error';
+import { useSessionStore } from '@/stores/session-store';
 
 type Editor =
   | { type: 'person' }
@@ -45,12 +50,17 @@ export function PessoaDetailPage() {
   const queryClient = useQueryClient();
   const params = useParams();
   const personId = Number(params.id);
+  const permissions = useSessionStore((state) => state.user?.permissions ?? []);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [form] = Form.useForm<EditValues>();
   const personQuery = useQuery({
     queryKey: ['cadastro', 'pessoa', personId],
     queryFn: () => obterPessoa(personId),
     enabled: Number.isInteger(personId),
+  });
+  const estadosCivisQuery = useQuery({
+    queryKey: ['cadastro', 'estados-civis'],
+    queryFn: listarEstadosCivis,
   });
   const saveMutation = useMutation({
     mutationFn: async (values: EditValues) => {
@@ -170,7 +180,8 @@ export function PessoaDetailPage() {
                     {person.data_nascimento || '—'}
                   </Descriptions.Item>
                   <Descriptions.Item label="Estado civil">
-                    {person.estado_civil || '—'}
+                    {estadosCivisQuery.data?.find((item) => item.id === person.estado_civil)
+                      ?.nome || '—'}
                   </Descriptions.Item>
                   <Descriptions.Item label="Tipos">
                     {person.tipos.map((item) => (
@@ -344,6 +355,34 @@ export function PessoaDetailPage() {
               ),
             },
             {
+              key: 'anexos',
+              label: 'Foto e anexos',
+              children: (
+                <AttachmentsPanel
+                  entity="pessoa"
+                  entityId={personId}
+                  enablePersonPhoto
+                  canEdit={permissions.includes('cadastro.editar')}
+                />
+              ),
+            },
+            {
+              key: 'interacoes',
+              label: 'Interações',
+              children: permissions.includes('comunicacao.visualizar') ? (
+                <PersonInteractionsPanel
+                  pessoaId={personId}
+                  canCreate={permissions.includes('comunicacao.criar')}
+                />
+              ) : (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message="Você não tem permissão para visualizar interações."
+                />
+              ),
+            },
+            {
               key: 'historico',
               label: 'Histórico',
               children: (
@@ -386,7 +425,15 @@ export function PessoaDetailPage() {
                 <Input />
               </Form.Item>
               <Form.Item name="estado_civil" label="Estado civil">
-                <Input />
+                <Select
+                  allowClear
+                  showSearch
+                  optionFilterProp="label"
+                  options={(estadosCivisQuery.data ?? []).map((item) => ({
+                    value: item.id,
+                    label: item.nome,
+                  }))}
+                />
               </Form.Item>
               <Form.Item name="observacoes" label="Observações">
                 <Input.TextArea rows={3} />

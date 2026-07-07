@@ -1,0 +1,30 @@
+---
+const supportEmail = import.meta.env.PUBLIC_SUPPORT_EMAIL || "contato@vurix.com.br";
+---
+
+<footer class="site-footer">
+  <div>
+    <a class="brand" href="/">Vurix <span>Eleitoral</span></a>
+    <p>Inteligência e operação para campanhas que precisam decidir com clareza.</p>
+  </div>
+  <nav aria-label="Plataforma">
+    <strong>Plataforma</strong>
+    <a href="/plataforma">Visão geral</a>
+    <a href="/planos">Planos</a>
+    <a href="/demo">Agendar demo</a>
+  </nav>
+  <nav aria-label="Recursos">
+    <strong>Recursos</strong>
+    <a href="/recursos/cadastro-eleitoral">Cadastro eleitoral</a>
+    <a href="/recursos/territorio-mapas">Território e mapas</a>
+    <a href="/recursos/metas-liderancas">Metas e lideranças</a>
+  </nav>
+  <nav aria-label="Informações legais">
+    <strong>Legal</strong>
+    <a href="/politica-de-privacidade">Privacidade</a>
+    <a href="/termos-de-uso">Termos de uso</a>
+    <a href="/lgpd">LGPD</a>
+    <a href={`mailto:${supportEmail}`}>{supportEmail}</a>
+  </nav>
+  <small>© {new Date().getFullYear()} Vurix Eleitoral. Todos os direitos reservados.</small>
+</footer>

@@ -1,0 +1,33 @@
+---
+const loginUrl = import.meta.env.PUBLIC_APP_LOGIN_URL || "/login";
+const path = Astro.url.pathname;
+const isActive = (href: string) => href === "/" ? path === href : path.startsWith(href);
+---
+
+<header class="site-header">
+  <a class="brand" href="/" aria-label="Vurix Eleitoral — página inicial">Vurix <span>Eleitoral</span></a>
+  <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="main-navigation">
+    <span class="sr-only">Abrir menu</span>
+    <span aria-hidden="true">Menu</span>
+  </button>
+  <nav id="main-navigation" aria-label="Navegação principal">
+    <a href="/plataforma" aria-current={isActive("/plataforma") ? "page" : undefined}>Plataforma</a>
+    <a href="/recursos/cadastro-eleitoral" aria-current={isActive("/recursos") ? "page" : undefined}>Recursos</a>
+    <a href="/planos" aria-current={isActive("/planos") ? "page" : undefined}>Planos</a>
+    <a href="/demo" aria-current={isActive("/demo") ? "page" : undefined}>Demo</a>
+    <a href="/contato" aria-current={isActive("/contato") ? "page" : undefined}>Contato</a>
+    <a class="button secondary login-link" href={loginUrl}>Entrar</a>
+  </nav>
+</header>
+
+<script>
+  import { track } from "../lib/analytics";
+  const toggle = document.querySelector<HTMLButtonElement>(".nav-toggle");
+  const navigation = document.querySelector<HTMLElement>("#main-navigation");
+  toggle?.addEventListener("click", () => {
+    const expanded = toggle.getAttribute("aria-expanded") === "true";
+    toggle.setAttribute("aria-expanded", String(!expanded));
+    navigation?.classList.toggle("open", !expanded);
+  });
+  document.querySelector(".login-link")?.addEventListener("click", () => track("login_click"));
+</script>

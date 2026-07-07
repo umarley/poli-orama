@@ -39,6 +39,16 @@ class GeographyPoint(UserDefinedType[Any]):
         return "geography(Point, 4326)"
 
 
+class EstadoCivil(Base):
+    __tablename__ = "estado_civil"
+    __table_args__ = {"schema": "cadastro"}
+
+    id: Mapped[int] = mapped_column(Integer, Identity(always=True), primary_key=True)
+    codigo: Mapped[str] = mapped_column(String(30), nullable=False, unique=True)
+    nome: Mapped[str] = mapped_column(String(60), nullable=False, unique=True)
+    ordem: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+
+
 class Pessoa(Base):
     __tablename__ = "pessoa"
     __table_args__ = (
@@ -74,7 +84,9 @@ class Pessoa(Base):
     apelido: Mapped[str | None] = mapped_column(String(120))
     sexo: Mapped[str | None] = mapped_column(CHAR(1))
     data_nascimento: Mapped[date | None] = mapped_column(Date)
-    estado_civil: Mapped[str | None] = mapped_column(String(30))
+    estado_civil: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("cadastro.estado_civil.id", ondelete="SET NULL")
+    )
     escolaridade_id: Mapped[int | None] = mapped_column(
         SmallInteger, ForeignKey("cadastro.escolaridade.id")
     )
@@ -199,7 +211,7 @@ class Endereco(Base):
     __tablename__ = "endereco"
     __table_args__ = (
         Index("ix_endereco_geom", "geom", postgresql_using="gist"),
-        Index("ix_endereco_municipio", "municipio_id"),
+        Index("ix_endereco_municipio", "codigo_municipio_ibge"),
         {"schema": "cadastro"},
     )
 
@@ -209,7 +221,7 @@ class Endereco(Base):
         ForeignKey("public.tenant.id", ondelete="CASCADE"),
         nullable=False,
     )
-    municipio_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("global.municipio.id"))
+    codigo_municipio_ibge: Mapped[int | None] = mapped_column(Integer, ForeignKey("global.municipio.codigo_ibge"))
     bairro_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("global.bairro.id"))
     bairro_texto: Mapped[str | None] = mapped_column(String(150))
     logradouro: Mapped[str | None] = mapped_column(String(180))
@@ -300,7 +312,7 @@ class Eleitor(Base):
     local_votacao_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("global.local_votacao.id")
     )
-    municipio_voto_id: Mapped[int | None] = mapped_column(
+    codigo_municipio_ibge: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("global.municipio.id")
     )
     situacao_titulo: Mapped[str | None] = mapped_column(String(30), server_default="regular")

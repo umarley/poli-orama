@@ -16,6 +16,7 @@ import { PessoaDetailPage } from '@/pages/cadastro/PessoaDetailPage';
 import { SegmentacaoPage } from '@/pages/cadastro/SegmentacaoPage';
 import { ValidacoesPage } from '@/pages/cadastro/ValidacoesPage';
 import { DashboardPage } from '@/pages/dashboard/DashboardPage';
+import { ReportsPage } from '@/pages/dashboard/ReportsPage';
 import { DemandasPage } from '@/pages/demandas/DemandasPage';
 import { DemandDetailPage } from '@/pages/demandas/DemandDetailPage';
 import { ImportDetailPage } from '@/pages/etl/ImportDetailPage';
@@ -47,6 +48,10 @@ export const router = createBrowserRouter([
       {
         path: 'dashboard',
         element: withPermission('dashboard.visualizar', <DashboardPage />),
+      },
+      {
+        path: 'relatorios',
+        element: withPermission('dashboard.visualizar', <ReportsPage />),
       },
       {
         path: 'cadastro',

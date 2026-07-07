@@ -15,9 +15,11 @@ from app.models.agenda import (
     StatusEvento,
     TipoEvento,
 )
+from app.models.arquivo import Anexo, Arquivo, DocumentoExtraido, TipoAnexo
 from app.models.cadastro import (
     Eleitor,
     Endereco,
+    EstadoCivil,
     Lideranca,
     Pessoa,
     PessoaContato,
@@ -42,6 +44,14 @@ from app.models.cadastro_relacoes import (
     Tag,
     ValidacaoCadastro,
 )
+from app.models.comunicacao import CanalComunicacao, Interacao, TipoInteracao
+from app.models.dashboard import (
+    DashboardConfiguracao,
+    Indicador,
+    IndicadorValor,
+    Relatorio,
+    RelatorioExecucao,
+)
 from app.models.etl import (
     ErroImportacao,
     FonteDado,
@@ -54,6 +64,7 @@ from app.models.etl import (
     ResultadoDeduplicacao,
     StagingPessoa,
 )
+from app.models.global_refs import CategoriaDataComemorativa, DataComemorativa
 from app.models.metas import (
     AcompanhamentoMeta,
     AlertaMeta,
@@ -79,6 +90,10 @@ from app.models.territorio import (
 )
 
 __all__ = [
+    "Anexo",
+    "Arquivo",
+    "DocumentoExtraido",
+    "TipoAnexo",
     "Convite",
     "Evento",
     "EventoLideranca",
@@ -91,6 +106,7 @@ __all__ = [
     "TipoEvento",
     "Eleitor",
     "Endereco",
+    "EstadoCivil",
     "Comunidade",
     "HierarquiaLideranca",
     "Indicacao",
@@ -112,6 +128,11 @@ __all__ = [
     "SuspeitaDuplicidade",
     "Tag",
     "ValidacaoCadastro",
+    "CanalComunicacao",
+    "Interacao",
+    "TipoInteracao",
+    "CategoriaDataComemorativa",
+    "DataComemorativa",
     "ErroImportacao",
     "FonteDado",
     "Importacao",
@@ -122,6 +143,11 @@ __all__ = [
     "RegraDeduplicacao",
     "ResultadoDeduplicacao",
     "StagingPessoa",
+    "DashboardConfiguracao",
+    "Indicador",
+    "IndicadorValor",
+    "Relatorio",
+    "RelatorioExecucao",
     "Bairro",
     "Estado",
     "Geocodificacao",

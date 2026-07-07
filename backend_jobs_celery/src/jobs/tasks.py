@@ -1,9 +1,12 @@
+from datetime import date
 from typing import Any
 
 from jobs.agenda import AgendaProcessor
 from jobs.celery_app import celery_app
 from jobs.config import get_settings
+from jobs.dashboard import DashboardProcessor
 from jobs.demands import DemandDeadlineProcessor
+from jobs.files import FileExtractionProcessor
 from jobs.imports import ImportProcessor
 from jobs.repository import JobRepository
 from jobs.service import (
@@ -13,6 +16,100 @@ from jobs.service import (
     execute_goals_job,
     execute_test_job,
 )
+
+
+@celery_app.task(
+    bind=True,
+    name="jobs.arquivos.extract",
+    acks_late=True,
+    reject_on_worker_lost=True,
+)  # type: ignore[untyped-decorator]
+def extract_file_text(_: Any, attachment_id: int, tenant_id: int) -> dict[str, Any]:
+    return FileExtractionProcessor(get_settings()).extract(
+        tenant_id=tenant_id, attachment_id=attachment_id
+    )
+
+
+@celery_app.task(
+    bind=True,
+    name="jobs.dashboard.materialize",
+    acks_late=True,
+    reject_on_worker_lost=True,
+)  # type: ignore[untyped-decorator]
+def materialize_dashboard(_: Any, job_id: int, tenant_id: int) -> dict[str, Any]:
+    settings = get_settings()
+    repository = JobRepository(settings.jobs_database_url)
+    repository.mark_started(job_id)
+    try:
+        metrics = DashboardProcessor(settings.jobs_database_url).materialize(
+            tenant_id, date.today()
+        )
+        repository.mark_succeeded(job_id, metrics)
+        return {"job_id": job_id, "status": "concluido", **metrics}
+    except Exception as exc:
+        repository.mark_failed(job_id, {"error_type": type(exc).__name__})
+        raise
+
+
+@celery_app.task(name="jobs.dashboard.enqueue_materialization")  # type: ignore[untyped-decorator]
+def enqueue_dashboard_materialization() -> dict[str, int]:
+    settings = get_settings()
+    repository = JobRepository(settings.jobs_database_url)
+    enqueued = skipped = 0
+    for tenant_id in repository.list_active_tenant_ids():
+        job_id = repository.create_if_idle(
+            job_type="indicador",
+            reference="dashboard_diario",
+            parameters={"data_referencia": date.today().isoformat()},
+            tenant_id=tenant_id,
+        )
+        if job_id is None:
+            skipped += 1
+        else:
+            materialize_dashboard.apply_async(kwargs={"job_id": job_id, "tenant_id": tenant_id})
+            enqueued += 1
+    return {"enfileirados": enqueued, "ignorados": skipped}
+
+
+@celery_app.task(
+    bind=True,
+    name="jobs.dashboard.execute_scheduled_reports",
+    acks_late=True,
+    reject_on_worker_lost=True,
+)  # type: ignore[untyped-decorator]
+def execute_scheduled_reports(_: Any, job_id: int, tenant_id: int) -> dict[str, Any]:
+    settings = get_settings()
+    repository = JobRepository(settings.jobs_database_url)
+    repository.mark_started(job_id)
+    try:
+        metrics = DashboardProcessor(settings.jobs_database_url).execute_scheduled_reports(
+            tenant_id
+        )
+        repository.mark_succeeded(job_id, metrics)
+        return {"job_id": job_id, "status": "concluido", **metrics}
+    except Exception as exc:
+        repository.mark_failed(job_id, {"error_type": type(exc).__name__})
+        raise
+
+
+@celery_app.task(name="jobs.dashboard.enqueue_scheduled_reports")  # type: ignore[untyped-decorator]
+def enqueue_scheduled_reports() -> dict[str, int]:
+    settings = get_settings()
+    repository = JobRepository(settings.jobs_database_url)
+    enqueued = skipped = 0
+    for tenant_id in repository.list_active_tenant_ids():
+        job_id = repository.create_if_idle(
+            job_type="relatorio",
+            reference="relatorios_agendados",
+            parameters={"data_referencia": date.today().isoformat()},
+            tenant_id=tenant_id,
+        )
+        if job_id is None:
+            skipped += 1
+        else:
+            execute_scheduled_reports.apply_async(kwargs={"job_id": job_id, "tenant_id": tenant_id})
+            enqueued += 1
+    return {"enfileirados": enqueued, "ignorados": skipped}
 
 
 @celery_app.task(
@@ -33,9 +130,7 @@ def enqueue_goals_recalculation() -> dict[str, int]:
     repository = JobRepository(settings.jobs_database_url)
 
     def dispatch(job_id: int, tenant_id: int) -> str:
-        result = recalculate_goals.apply_async(
-            kwargs={"job_id": job_id, "tenant_id": tenant_id}
-        )
+        result = recalculate_goals.apply_async(kwargs={"job_id": job_id, "tenant_id": tenant_id})
         return str(result.id)
 
     return enqueue_scheduled_goals_jobs(repository, dispatch=dispatch)
@@ -47,9 +142,7 @@ def enqueue_goals_recalculation() -> dict[str, int]:
     acks_late=True,
     reject_on_worker_lost=True,
 )  # type: ignore[untyped-decorator]
-def process_import(
-    _: Any, job_id: int, tenant_id: int, import_id: int
-) -> dict[str, Any]:
+def process_import(_: Any, job_id: int, tenant_id: int, import_id: int) -> dict[str, Any]:
     settings = get_settings()
     repository = JobRepository(settings.jobs_database_url)
     repository.mark_started(job_id)
@@ -80,9 +173,7 @@ def process_import(
     acks_late=True,
     reject_on_worker_lost=True,
 )  # type: ignore[untyped-decorator]
-def load_import(
-    _: Any, job_id: int, tenant_id: int, import_id: int
-) -> dict[str, Any]:
+def load_import(_: Any, job_id: int, tenant_id: int, import_id: int) -> dict[str, Any]:
     settings = get_settings()
     repository = JobRepository(settings.jobs_database_url)
     repository.mark_started(job_id)
@@ -206,9 +297,7 @@ def enqueue_agenda_topic_analysis() -> dict[str, int]:
         job_id = repository.create_if_idle(
             job_type="nlp",
             reference="agenda_temas_recorrentes",
-            parameters={
-                "minimum_frequency": settings.agenda_nlp_minimum_frequency
-            },
+            parameters={"minimum_frequency": settings.agenda_nlp_minimum_frequency},
             tenant_id=tenant_id,
         )
         if job_id is None:
@@ -248,9 +337,7 @@ def generate_demand_deadline_alerts(
         repository.mark_succeeded(job_id, metrics)
         return {"job_id": job_id, "status": "concluido", **metrics}
     except Exception as exc:
-        repository.mark_failed(
-            job_id, {"tenant_id": tenant_id, "error_type": type(exc).__name__}
-        )
+        repository.mark_failed(job_id, {"tenant_id": tenant_id, "error_type": type(exc).__name__})
         raise
 
 

@@ -108,6 +108,13 @@ export interface VinculoResumo {
   nome: string;
 }
 
+export interface EstadoCivil {
+  id: number;
+  codigo: string;
+  nome: string;
+  ordem: number;
+}
+
 export interface PessoaDetalhe {
   id: number;
   uuid_publico: string;
@@ -117,7 +124,7 @@ export interface PessoaDetalhe {
   apelido: string | null;
   sexo: 'M' | 'F' | 'O' | 'N' | null;
   data_nascimento: string | null;
-  estado_civil: string | null;
+  estado_civil: number | null;
   escolaridade_id: number | null;
   profissao_id: number | null;
   religiao_id: number | null;
@@ -190,7 +197,7 @@ export interface PessoaCreateInput {
   apelido?: string;
   sexo?: 'M' | 'F' | 'O' | 'N';
   data_nascimento?: string;
-  estado_civil?: string;
+  estado_civil?: number;
   observacoes?: string;
   documentos: Array<{
     tipo_documento: TipoDocumento;

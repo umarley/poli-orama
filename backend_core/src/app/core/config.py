@@ -28,6 +28,24 @@ class Settings(BaseSettings):
     celery_broker_url: str = "redis://localhost:6379/0"
     import_storage_path: str = "../data/importacoes"
     import_max_file_mb: int = Field(default=25, ge=1, le=250)
+    storage_provider: Literal["local", "s3", "seaweedfs"] = "local"
+    storage_local_path: str = "../data/arquivos"
+    storage_bucket: str = "vurix-arquivos"
+    storage_endpoint_url: str = ""
+    storage_region: str = "us-east-1"
+    storage_access_key: str = ""
+    storage_secret_key: str = ""
+    storage_use_ssl: bool = True
+    storage_max_file_mb: int = Field(default=25, ge=1, le=250)
+    photo_max_file_mb: int = Field(default=8, ge=1, le=50)
+    storage_allowed_extensions: str = (
+        "jpg,jpeg,png,webp,pdf,csv,xlsx,xls,doc,docx,odt,txt"
+    )
+    seaweed_filer_url: str = ""
+    seaweed_project_name: str = ""
+    seaweed_username: str = ""
+    seaweed_password: str = ""
+    seaweed_timeout_seconds: float = Field(default=30, gt=0, le=300)
 
     cors_origins: str = (
         "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4321,http://127.0.0.1:4321"

@@ -38,6 +38,7 @@ from app.schemas.cadastro_operacional import (
     ComplementoPoliticoResponse,
     ComunidadeInput,
     ComunidadeResponse,
+    EstadoCivilResponse,
     HierarquiaInput,
     HierarquiaResponse,
     IndicacaoGraphResponse,
@@ -136,6 +137,18 @@ async def list_person_types(
     service: Annotated[CadastroService, Depends(get_cadastro_service)],
 ) -> list[PessoaTipoResponse]:
     return await service.list_types()
+
+
+@router.get(
+    "/estados-civis",
+    response_model=list[EstadoCivilResponse],
+    summary="Lista estados civis",
+)
+async def list_marital_statuses(
+    _: Annotated[RequestActor, Depends(require_permission("cadastro", "visualizar"))],
+    service: Annotated[CadastroService, Depends(get_cadastro_service)],
+) -> list[EstadoCivilResponse]:
+    return await service.list_marital_statuses()
 
 
 @router.get(

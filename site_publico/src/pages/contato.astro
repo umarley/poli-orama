@@ -1,7 +1,9 @@
 ---
-import { CommercialForm } from '../components/CommercialForm';
-import BaseLayout from '../layouts/BaseLayout.astro';
+import { CommercialForm } from "../components/CommercialForm";
+import MarketingLayout from "../layouts/MarketingLayout.astro";
+const supportEmail = import.meta.env.PUBLIC_SUPPORT_EMAIL || "contato@vurix.com.br";
+const whatsapp = import.meta.env.PUBLIC_SUPPORT_WHATSAPP;
 ---
-<BaseLayout title="Contato | Vurix Eleitoral" description="Fale com a equipe comercial da Vurix Eleitoral.">
-  <section class="section"><span class="eyebrow">CONTATO</span><h1>Converse com a equipe</h1><CommercialForm kind="lead" client:load /></section>
-</BaseLayout>
+<MarketingLayout title="Contato | Vurix Eleitoral" description="Fale com a equipe comercial e de suporte da Vurix Eleitoral.">
+  <section class="form-page"><div><span class="eyebrow">CONTATO</span><h1>Converse com a equipe</h1><p>Envie sua dúvida comercial ou institucional. Para solicitações sobre dados pessoais, use o canal indicado na página de LGPD.</p><div class="contact-channels"><a href={`mailto:${supportEmail}`}><strong>E-mail</strong><span>{supportEmail}</span></a>{whatsapp && <a href={`https://wa.me/${whatsapp}`} rel="noreferrer"><strong>WhatsApp</strong><span>Iniciar conversa</span></a>}<a href="/lgpd"><strong>Privacidade e LGPD</strong><span>Consultar canal de atendimento</span></a></div></div><CommercialForm kind="contact" client:load /></section>
+</MarketingLayout>

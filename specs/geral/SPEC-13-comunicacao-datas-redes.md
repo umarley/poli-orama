@@ -38,22 +38,7 @@ Objetivo: apoiar relacionamento politico com registro de interacoes, datas comem
 | COM-009 | P1 | Frontend | Exibir datas comemorativas proximas. | Widget mostra proximos 30 dias. |
 | COM-010 | P1 | Frontend | Criar aba de interacoes no detalhe da pessoa. | Usuario registra e visualiza historico manual. |
 | COM-011 | P1 | QA | Testar registro de interacao. | Interacao respeita tenant, permissao e auditoria quando sensivel. |
-| COM-012 | P2 | Backend | Mapear `consentimento_comunicacao`. | Preferencia, base legal e opt-out ficam registrados. |
-| COM-013 | P2 | Backend | Criar endpoint de consentimento. | Usuario autorizado registra consentimento ou opt-out. |
-| COM-014 | P2 | Frontend | Criar UI de preferencias de contato. | Detalhe da pessoa mostra consentimento e canais permitidos. |
-| COM-015 | P2 | Backend | Mapear `campanha_comunicacao` e `mensagem_comunicacao`. | Campanhas e mensagens podem ser salvas. |
-| COM-016 | P2 | Backend | Criar CRUD de campanha de comunicacao. | Campanha tem segmento, canal, objetivo, status e responsavel. |
-| COM-017 | P2 | Backend | Criar segmentacao por tags, comunidades, territorio e lider. | Campanha calcula publico-alvo permitido. |
-| COM-018 | P2 | Backend | Criar registro manual de mensagem individual/lote. | Mensagens ficam no historico com canal e status. |
-| COM-019 | P2 | Frontend | Criar tela de campanhas de comunicacao. | Usuario cria, edita e acompanha campanhas manuais. |
-| COM-020 | P2 | Frontend | Criar seletor de publico-alvo. | Tags, comunidades, territorios e lideres filtram destinatarios. |
-| COM-021 | P2 | QA | Testar opt-out. | Pessoa com opt-out nao entra em campanha daquele canal. |
-| COM-022 | P3 | Backend | Mapear perfil social monitorado. | Perfis sociais podem ser associados a pessoa/lideranca/campanha. |
-| COM-023 | P3 | Backend | Mapear publicacao social e engajamento. | Postagens e metricas podem ser registradas manualmente ou por API. |
-| COM-024 | P3 | Backend | Avaliar integracao oficial Instagram. | Documento tecnico define limites, permissoes e riscos. |
-| COM-025 | P3 | Backend | Avaliar integracao oficial WhatsApp. | Documento tecnico define API, consentimento e modelo operacional. |
-| COM-026 | P3 | Jobs | Criar ingestao de publicacoes quando permitido. | Job registra publicacoes e metricas conforme credenciais aprovadas. |
-| COM-027 | P3 | Frontend | Criar painel de engajamento social. | Mostra alcance, curtidas, comentarios, compartilhamentos e tendencia. |
+As tarefas COM-012 em diante foram migradas para `SPEC-13B-comunicacao-datas-redes-pos-mvp.md`.
 
 ## Regras de negocio
 

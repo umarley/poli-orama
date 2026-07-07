@@ -22,6 +22,14 @@ class Settings(BaseSettings):
     celery_result_backend: str = "redis://localhost:6379/1"
     celery_task_always_eager: bool = False
     celery_task_eager_propagates: bool = False
+    storage_provider: Literal["local", "s3", "seaweedfs"] = "local"
+    storage_local_path: str = "../data/arquivos"
+    storage_bucket: str = "vurix-arquivos"
+    storage_endpoint_url: str = ""
+    storage_region: str = "us-east-1"
+    storage_access_key: str = ""
+    storage_secret_key: str = ""
+    storage_use_ssl: bool = True
     completeness_job_enabled: bool = True
     completeness_job_hour: int = Field(default=2, ge=0, le=23)
     completeness_job_minute: int = Field(default=30, ge=0, le=59)
@@ -37,6 +45,10 @@ class Settings(BaseSettings):
     demand_deadlines_enabled: bool = True
     demand_deadlines_hour: int = Field(default=7, ge=0, le=23)
     demand_deadlines_lead_days: int = Field(default=3, ge=0, le=30)
+    dashboard_materialization_enabled: bool = True
+    dashboard_materialization_hour: int = Field(default=1, ge=0, le=23)
+    scheduled_reports_enabled: bool = True
+    scheduled_reports_hour: int = Field(default=5, ge=0, le=23)
 
 
 @lru_cache

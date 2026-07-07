@@ -31,6 +31,7 @@ from app.schemas.cadastro_operacional import (
     ComplementoPoliticoResponse,
     ComunidadeInput,
     ComunidadeResponse,
+    EstadoCivilResponse,
     HierarquiaInput,
     HierarquiaResponse,
     HierarquiaResumo,
@@ -235,6 +236,10 @@ class CadastroService:
         user_agent: str | None = None,
     ) -> PessoaDetalheResponse:
         person = await self._person(actor.tenant_id, person_id)
+        if payload.estado_civil is not None and not await self.repository.marital_status_exists(
+            payload.estado_civil
+        ):
+            raise ResourceNotFoundError("Estado civil", payload.estado_civil)
         before = person_snapshot(person)
         await self.repository.update_person(person, payload, actor.user_id)
         await self.repository.audit(
@@ -422,6 +427,12 @@ class CadastroService:
         return [
             PessoaTipoResponse.model_validate(item)
             for item in await self.repository.list_person_types()
+        ]
+
+    async def list_marital_statuses(self) -> list[EstadoCivilResponse]:
+        return [
+            EstadoCivilResponse.model_validate(item)
+            for item in await self.repository.list_marital_statuses()
         ]
 
     async def list_leaderships(self, actor: RequestActor) -> list[LiderancaOperacionalResponse]:
@@ -900,6 +911,10 @@ class CadastroService:
         await self.repository.commit()
 
     async def _validate_references(self, tenant_id: int, payload: PessoaCadastroCreate) -> None:
+        if payload.estado_civil is not None and not await self.repository.marital_status_exists(
+            payload.estado_civil
+        ):
+            raise ResourceNotFoundError("Estado civil", payload.estado_civil)
         if payload.indicacao and payload.indicacao.pessoa_indicante_id:
             if not await self.repository.person_exists(
                 tenant_id, payload.indicacao.pessoa_indicante_id

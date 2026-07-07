@@ -22,6 +22,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { TerritorySelect } from '@/components/territorios/TerritorySelect';
 import {
   inativarPessoa,
+  listarEstadosCivis,
   listarLiderancas,
   listarPessoas,
   listarTags,
@@ -45,6 +46,10 @@ export function CadastroPage() {
     queryFn: () => listarPessoas(filters),
   });
   const tiposQuery = useQuery({ queryKey: ['cadastro', 'tipos'], queryFn: listarTiposPessoa });
+  const estadosCivisQuery = useQuery({
+    queryKey: ['cadastro', 'estados-civis'],
+    queryFn: listarEstadosCivis,
+  });
   const tagsQuery = useQuery({ queryKey: ['cadastro', 'tags'], queryFn: listarTags });
   const liderancasQuery = useQuery({
     queryKey: ['cadastro', 'liderancas'],
@@ -271,6 +276,7 @@ export function CadastroPage() {
         open={wizardOpen}
         tipos={tiposQuery.data ?? []}
         liderancas={liderancasQuery.data ?? []}
+        estadosCivis={estadosCivisQuery.data ?? []}
         onClose={() => setWizardOpen(false)}
         onCreated={(id) => {
           void queryClient.invalidateQueries({ queryKey: ['cadastro', 'pessoas'] });

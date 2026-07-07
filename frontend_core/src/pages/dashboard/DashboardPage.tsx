@@ -1,309 +1,322 @@
 import {
-  ArrowRightOutlined,
   CalendarOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
-  EnvironmentOutlined,
+  FileTextOutlined,
   FlagOutlined,
-  PlusOutlined,
   TeamOutlined,
   UserAddOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
-import { Button, Card, Col, List, Progress, Row, Statistic, Tag, Typography } from 'antd';
+import {
+  Alert,
+  Button,
+  Card,
+  Col,
+  DatePicker,
+  Empty,
+  List,
+  Row,
+  Select,
+  Space,
+  Statistic,
+  Tag,
+  Typography,
+} from 'antd';
 import dayjs from 'dayjs';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { PageHeader } from '@/components/layout/PageHeader';
-import { listEvents } from '@/modules/agenda/agenda-service';
-import { obterResumoMetas } from '@/modules/metas/metas-service';
-import { getDemandSummary } from '@/modules/demandas/demandas-service';
+import { listarLiderancas } from '@/modules/cadastro/pessoas-service';
+import {
+  getBirthdays,
+  getCommemorativeDates,
+  getDashboardConfiguration,
+  getDashboardOverview,
+} from '@/modules/dashboard/dashboard-service';
+import type { DashboardFilters } from '@/modules/dashboard/types';
+import { listarTerritorios } from '@/modules/territorios/territorios-service';
 import { useSessionStore } from '@/stores/session-store';
 
 import styles from './DashboardPage.module.css';
 
-const summary = [
-  {
-    title: 'Pessoas cadastradas',
-    value: 12480,
-    suffix: '+6,2%',
-    icon: <TeamOutlined />,
-    tone: 'blue',
-  },
-  {
-    title: 'Lideranças ativas',
-    value: 186,
-    suffix: '+12',
-    icon: <UserAddOutlined />,
-    tone: 'green',
-  },
-  {
-    title: 'Meta de votos',
-    value: 68,
-    suffix: '%',
-    icon: <FlagOutlined />,
-    tone: 'orange',
-  },
-  {
-    title: 'Demandas pendentes',
-    value: 0,
-    suffix: '',
-    icon: <ClockCircleOutlined />,
-    tone: 'purple',
-  },
-] as const;
-
-const activities = [
-  {
-    title: 'Reunião com lideranças do Setor Norte',
-    meta: 'Hoje, 14:30 · Comitê central',
-    icon: <CalendarOutlined />,
-    color: 'blue',
-  },
-  {
-    title: 'Nova liderança vinculada à Vila Aurora',
-    meta: 'Há 45 minutos · Cadastro',
-    icon: <UserAddOutlined />,
-    color: 'green',
-  },
-  {
-    title: 'Demanda de iluminação foi concluída',
-    meta: 'Há 2 horas · Jardim Primavera',
-    icon: <CheckCircleOutlined />,
-    color: 'cyan',
-  },
-  {
-    title: 'Meta territorial revisada',
-    meta: 'Ontem, 18:15 · Zona Leste',
-    icon: <EnvironmentOutlined />,
-    color: 'orange',
-  },
-];
+const { RangePicker } = DatePicker;
 
 export function DashboardPage() {
   const navigate = useNavigate();
-  const goalsSummary = useQuery({
-    queryKey: ['metas', 'resumo'],
-    queryFn: () => obterResumoMetas(),
+  const [filters, setFilters] = useState<DashboardFilters>({
+    data_inicio: dayjs().subtract(29, 'day').format('YYYY-MM-DD'),
+    data_fim: dayjs().format('YYYY-MM-DD'),
   });
-  const upcomingEvents = useQuery({
-    queryKey: ['agenda', 'dashboard-proximos'],
-    queryFn: () =>
-      listEvents({
-        data_inicio: dayjs().toISOString(),
-        data_fim: dayjs().add(30, 'day').toISOString(),
-      }),
-  });
-  const demandSummary = useQuery({
-    queryKey: ['demandas', 'resumo'],
-    queryFn: getDemandSummary,
-  });
-  const demandStatusTotal = (status: string) =>
-    demandSummary.data?.por_status.find(
-      (item) => item.chave.toLocaleLowerCase() === status.toLocaleLowerCase(),
-    )?.total ?? 0;
   const currentCampaign = useSessionStore((state) => state.currentCampaign);
-  const campaignDescription = currentCampaign
-    ? `${currentCampaign.name} — ${currentCampaign.office}, eleições ${currentCampaign.election.year}.`
-    : 'Selecione uma campanha para acompanhar seus principais indicadores.';
+  const overview = useQuery({
+    queryKey: ['dashboard', 'overview', filters],
+    queryFn: () => getDashboardOverview(filters),
+  });
+  const birthdays = useQuery({
+    queryKey: ['dashboard', 'birthdays', filters],
+    queryFn: () => getBirthdays(filters),
+  });
+  const dates = useQuery({
+    queryKey: ['dashboard', 'dates', filters],
+    queryFn: () => getCommemorativeDates(filters),
+  });
+  const configuration = useQuery({
+    queryKey: ['dashboard', 'configuration'],
+    queryFn: getDashboardConfiguration,
+  });
+  const territories = useQuery({
+    queryKey: ['territorios', 'dashboard-options'],
+    queryFn: () => listarTerritorios(false),
+  });
+  const leaders = useQuery({
+    queryKey: ['cadastro', 'liderancas', 'dashboard-options'],
+    queryFn: listarLiderancas,
+  });
+  const enabled = (widget: string) =>
+    !configuration.data || configuration.data.widgets.includes(widget);
+  const data = overview.data;
 
   return (
     <div className={styles.page}>
       <PageHeader
         title="Painel de controle"
-        description={campaignDescription}
+        description={
+          currentCampaign
+            ? `${currentCampaign.name} — ${currentCampaign.office}, eleições ${currentCampaign.election.year}.`
+            : 'Indicadores executivos e operacionais da campanha.'
+        }
         breadcrumbs={[{ label: 'Início' }, { label: 'Painel de controle' }]}
         actions={
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/cadastro')}>
-            Novo cadastro
+          <Button icon={<FileTextOutlined />} onClick={() => navigate('/relatorios')}>
+            Relatórios
           </Button>
         }
       />
 
+      <Card size="small" aria-label="Filtros globais do dashboard">
+        <Space wrap>
+          <RangePicker
+            allowClear={false}
+            value={[dayjs(filters.data_inicio), dayjs(filters.data_fim)]}
+            onChange={(range) => {
+              if (range?.[0] && range[1]) {
+                setFilters((current) => ({
+                  ...current,
+                  data_inicio: range[0]!.format('YYYY-MM-DD'),
+                  data_fim: range[1]!.format('YYYY-MM-DD'),
+                }));
+              }
+            }}
+          />
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            placeholder="Todos os territórios"
+            style={{ minWidth: 220 }}
+            value={filters.territorio_id}
+            options={(territories.data ?? []).map((item) => ({
+              value: item.id,
+              label: item.nome,
+            }))}
+            onChange={(territorio_id) =>
+              setFilters((current) => ({ ...current, territorio_id }))
+            }
+          />
+          <Select
+            allowClear
+            placeholder="Todas as lideranças"
+            style={{ minWidth: 220 }}
+            value={filters.lideranca_id}
+            options={(leaders.data ?? []).map((item) => ({
+              value: item.id,
+              label: item.apelido_campanha || `Liderança #${item.id}`,
+            }))}
+            onChange={(lideranca_id) =>
+              setFilters((current) => ({ ...current, lideranca_id }))
+            }
+          />
+        </Space>
+      </Card>
+
+      {overview.isError && (
+        <Alert
+          type="error"
+          showIcon
+          message="Não foi possível carregar os indicadores."
+          action={<Button onClick={() => overview.refetch()}>Tentar novamente</Button>}
+        />
+      )}
+
       <Row gutter={[16, 16]}>
-        {summary.map((item) => {
-          const isGoals = item.title === 'Meta de votos';
-          const isDemands = item.title === 'Demandas pendentes';
-          const value = isDemands
-            ? demandStatusTotal('Pendente')
-            : isGoals
-            ? Number(goalsSummary.data?.percentual_geral ?? 0)
-            : item.value;
-          const suffix = isGoals ? '%' : item.suffix;
-          return (
-          <Col xs={24} sm={12} xl={6} key={item.title}>
-            <Card className={styles.summaryCard}>
-              <div className={`${styles.summaryIcon} ${styles[item.tone]}`}>{item.icon}</div>
-              <Statistic title={item.title} value={value} groupSeparator="." />
-              {suffix && <Tag
-                bordered={false}
-                color={
-                  isGoals && (goalsSummary.data?.metas_em_risco ?? 0) > 0
-                    ? 'red'
-                    : suffix.startsWith('-')
-                      ? 'red'
-                      : 'success'
-                }
-                className={styles.trend}
-              >
-                {isGoals && (goalsSummary.data?.metas_em_risco ?? 0) > 0
-                  ? `${goalsSummary.data?.metas_em_risco} em risco`
-                  : suffix}
-              </Tag>}
+        {enabled('cadastros') && (
+          <Col xs={24} md={12} xl={8}>
+            <Card loading={overview.isPending} title="Cadastros" extra={<TeamOutlined />}>
+              <Row gutter={12}>
+                <Col span={8}><Statistic title="Total" value={data?.cadastros.total ?? 0} /></Col>
+                <Col span={8}>
+                  <Statistic title="Novos" value={data?.cadastros.novos_periodo ?? 0} />
+                </Col>
+                <Col span={8}>
+                  <Statistic
+                    title="Pendentes"
+                    value={data?.cadastros.incompletos_pendentes ?? 0}
+                    valueStyle={{ color: data?.cadastros.incompletos_pendentes ? '#d46b08' : undefined }}
+                  />
+                </Col>
+              </Row>
+              <Typography.Text type="secondary">
+                Completude média: {data?.cadastros.completude_media ?? 0}% · Duplicidades:{' '}
+                {data?.cadastros.duplicidades_abertas ?? 0}
+              </Typography.Text>
             </Card>
           </Col>
-          );
-        })}
-      </Row>
-
-      <Row gutter={[16, 16]} aria-label="Resumo de demandas">
-        <Col xs={24} md={8}>
-          <Card>
-            <Statistic title="Demandas em andamento"
-              value={demandStatusTotal('Em andamento')} prefix={<ClockCircleOutlined />} />
-          </Card>
-        </Col>
-        <Col xs={24} md={8}>
-          <Card>
-            <Statistic title="Demandas concluídas"
-              value={demandStatusTotal('Concluida')} prefix={<CheckCircleOutlined />} />
-          </Card>
-        </Col>
-        <Col xs={24} md={8}>
-          <Card>
-            <Statistic title="Demandas vencidas" value={demandSummary.data?.vencidas ?? 0}
-              prefix={<WarningOutlined />}
-              valueStyle={(demandSummary.data?.vencidas ?? 0) > 0
-                ? { color: '#cf1322' } : undefined} />
-          </Card>
-        </Col>
-      </Row>
-
-      <Row gutter={[16, 16]} aria-label="Resumo operacional de metas">
-        <Col xs={24} md={8}>
-          <Card>
-            <Statistic
-              title="Metas ativas"
-              value={goalsSummary.data?.metas_ativas ?? 0}
-              prefix={<FlagOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} md={8}>
-          <Card>
-            <Statistic
-              title="Metas atingidas"
-              value={goalsSummary.data?.metas_atingidas ?? 0}
-              prefix={<CheckCircleOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} md={8}>
-          <Card>
-            <Statistic
-              title="Metas em risco"
-              value={goalsSummary.data?.metas_em_risco ?? 0}
-              prefix={<ClockCircleOutlined />}
-            />
-          </Card>
-        </Col>
+        )}
+        {enabled('liderancas') && (
+          <Col xs={24} md={12} xl={8}>
+            <Card loading={overview.isPending} title="Lideranças" extra={<UserAddOutlined />}>
+              <Row gutter={12}>
+                <Col span={8}>
+                  <Statistic title="Líderes" value={data?.liderancas.total_lideres ?? 0} />
+                </Col>
+                <Col span={8}>
+                  <Statistic title="Liderados" value={data?.liderancas.total_liderados ?? 0} />
+                </Col>
+                <Col span={8}>
+                  <Statistic
+                    title="Média/líder"
+                    value={data?.liderancas.media_liderados ?? 0}
+                    precision={2}
+                  />
+                </Col>
+              </Row>
+            </Card>
+          </Col>
+        )}
+        {enabled('metas') && (
+          <Col xs={24} md={12} xl={8}>
+            <Card loading={overview.isPending} title="Metas" extra={<FlagOutlined />}>
+              <Row gutter={12}>
+                <Col span={8}>
+                  <Statistic title="Ativas" value={data?.metas.metas_ativas ?? 0} />
+                </Col>
+                <Col span={8}>
+                  <Statistic title="Atingidas" value={data?.metas.atingidas ?? 0} />
+                </Col>
+                <Col span={8}>
+                  <Statistic
+                    title="Em risco"
+                    value={data?.metas.em_risco ?? 0}
+                    valueStyle={{ color: data?.metas.em_risco ? '#cf1322' : undefined }}
+                  />
+                </Col>
+              </Row>
+              <Typography.Text type="secondary">
+                Atingimento médio: {data?.metas.percentual_medio ?? 0}%
+              </Typography.Text>
+            </Card>
+          </Col>
+        )}
+        {enabled('demandas') && (
+          <Col xs={24} md={12} xl={12}>
+            <Card loading={overview.isPending} title="Demandas" extra={<ClockCircleOutlined />}>
+              <Row gutter={12}>
+                <Col span={6}>
+                  <Statistic title="Pendentes" value={data?.demandas.pendentes ?? 0} />
+                </Col>
+                <Col span={6}>
+                  <Statistic title="Em andamento" value={data?.demandas.em_andamento ?? 0} />
+                </Col>
+                <Col span={6}>
+                  <Statistic title="Concluídas" value={data?.demandas.concluidas ?? 0} />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="Vencidas"
+                    value={data?.demandas.vencidas ?? 0}
+                    prefix={<WarningOutlined />}
+                    valueStyle={{ color: data?.demandas.vencidas ? '#cf1322' : undefined }}
+                  />
+                </Col>
+              </Row>
+            </Card>
+          </Col>
+        )}
+        {enabled('eventos') && (
+          <Col xs={24} md={12} xl={12}>
+            <Card loading={overview.isPending} title="Eventos" extra={<CalendarOutlined />}>
+              <Row gutter={12}>
+                <Col span={6}>
+                  <Statistic title="No período" value={data?.eventos.total_periodo ?? 0} />
+                </Col>
+                <Col span={6}>
+                  <Statistic title="Realizados" value={data?.eventos.realizados ?? 0} />
+                </Col>
+                <Col span={6}>
+                  <Statistic title="Cancelados" value={data?.eventos.cancelados ?? 0} />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="Com presença"
+                    value={data?.eventos.presencas_registradas ?? 0}
+                    prefix={<CheckCircleOutlined />}
+                  />
+                </Col>
+              </Row>
+            </Card>
+          </Col>
+        )}
       </Row>
 
       <Row gutter={[16, 16]}>
-        <Col xs={24} xl={16}>
-          <Card
-            title="Desempenho por território"
-            extra={
-              <Button type="link" onClick={() => navigate('/metas')}>
-                Ver detalhes <ArrowRightOutlined />
-              </Button>
-            }
-          >
-            <div className={styles.territoryList}>
-              {[
-                ['Zona Norte', 82, '4.920 de 6.000'],
-                ['Zona Sul', 74, '3.700 de 5.000'],
-                ['Zona Leste', 67, '5.360 de 8.000'],
-                ['Zona Oeste', 51, '2.550 de 5.000'],
-              ].map(([name, value, detail]) => (
-                <div className={styles.territoryRow} key={name}>
-                  <div className={styles.territoryInfo}>
-                    <strong>{name}</strong>
-                    <Typography.Text type="secondary">{detail} votos mapeados</Typography.Text>
-                  </div>
-                  <div className={styles.progress}>
-                    <Progress
-                      percent={Number(value)}
-                      strokeColor={Number(value) >= 70 ? '#52c41a' : '#1677ff'}
-                      trailColor="#f0f0f0"
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </Col>
-
-        <Col xs={24} xl={8}>
-          <Card
-            title="Atividade recente"
-            extra={<Button type="link">Ver todas</Button>}
-            className={styles.activityCard}
-          >
-            <List
-              dataSource={activities}
-              renderItem={(activity) => (
-                <List.Item>
-                  <List.Item.Meta
-                    avatar={
-                      <span className={styles.activityIcon} data-color={activity.color}>
-                        {activity.icon}
-                      </span>
-                    }
-                    title={activity.title}
-                    description={activity.meta}
-                  />
-                </List.Item>
+        {enabled('aniversariantes') && (
+          <Col xs={24} lg={12}>
+            <Card title="Aniversariantes" loading={birthdays.isPending}>
+              {!!birthdays.data?.hoje.length && (
+                <Alert
+                  type="success"
+                  showIcon
+                  message={`${birthdays.data.hoje.length} aniversariante(s) hoje`}
+                  className={styles.widgetAlert}
+                />
               )}
-            />
-          </Card>
-        </Col>
+              <List
+                dataSource={(birthdays.data?.mes ?? []).slice(0, 8)}
+                locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Nenhum aniversariante no mês" /> }}
+                renderItem={(item) => (
+                  <List.Item extra={<Tag>{dayjs(item.data_nascimento).format('DD/MM')}</Tag>}>
+                    <List.Item.Meta
+                      title={item.nome}
+                      description={item.territorio || 'Sem território vinculado'}
+                    />
+                  </List.Item>
+                )}
+              />
+            </Card>
+          </Col>
+        )}
+        {enabled('datas_comemorativas') && (
+          <Col xs={24} lg={12}>
+            <Card title="Próximas datas comemorativas" loading={dates.isPending}>
+              <List
+                dataSource={(dates.data ?? []).slice(0, 8)}
+                locale={{ emptyText: 'Nenhuma data nos próximos 30 dias' }}
+                renderItem={(item) => (
+                  <List.Item extra={<Tag color="blue">{dayjs(item.data).format('DD/MM')}</Tag>}>
+                    <List.Item.Meta
+                      title={item.nome}
+                      description={`${item.categoria || 'Geral'} · ${item.ambito}`}
+                    />
+                  </List.Item>
+                )}
+              />
+            </Card>
+          </Col>
+        )}
       </Row>
-
-      <Card title="Próximos compromissos">
-        <div className={styles.events}>
-          {(upcomingEvents.data ?? []).slice(0, 5).map((event) => (
-            <div
-              className={styles.event}
-              key={event.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => navigate(`/agenda/eventos/${event.id}`)}
-              onKeyDown={(keyEvent) => {
-                if (keyEvent.key === 'Enter') navigate(`/agenda/eventos/${event.id}`);
-              }}
-            >
-              <div className={styles.date}>
-                <strong>{dayjs(event.data_inicio).format('DD')}</strong>
-                <span>{dayjs(event.data_inicio).format('MMM').toUpperCase()}</span>
-              </div>
-              <div>
-                <strong>{event.titulo}</strong>
-                <Typography.Text type="secondary">
-                  {dayjs(event.data_inicio).format('HH:mm')} ·{' '}
-                  {event.local_nome || event.territorio_nome || 'Local a definir'}
-                </Typography.Text>
-              </div>
-            </div>
-          ))}
-          {!upcomingEvents.isPending && !upcomingEvents.data?.length && (
-            <Typography.Text type="secondary">
-              Nenhum compromisso nos próximos 30 dias.
-            </Typography.Text>
-          )}
-        </div>
-      </Card>
     </div>
   );
 }

@@ -58,10 +58,6 @@ Objetivo: criar o site publico do SaaS para apresentar a plataforma, capturar le
 | SITE-030 | P1 | QA | Rodar build e check. | `npm run check` e `npm run build` passam. |
 | SITE-031 | P1 | QA | Testar formulario de lead E2E. | Envio valido, erro de validacao e erro de API funcionam. |
 | SITE-032 | P1 | QA | Auditar Lighthouse basico. | Paginas principais batem metas acordadas ou registram pendencias. |
-| SITE-033 | P2 | Frontend | Criar blog com Content Collections. | `/blog` e `/blog/[slug]` funcionam. |
-| SITE-034 | P2 | Frontend | Criar cases com autorizacao. | `/cases` e `/cases/[slug]` funcionam quando houver conteudo. |
-| SITE-035 | P2 | Frontend | Integrar checkout real. | Provedor escolhido redireciona e webhooks sao tratados no backend. |
-
 ## Endpoints publicos esperados
 
 | Metodo | Endpoint | Uso |

@@ -73,8 +73,8 @@ class TerritorioService:
         if type_id and await self.repository.get_type(actor.tenant_id, type_id) is None:
             raise ResourceNotFoundError("Tipo de territorio", type_id)
         references = {
-            "estado": payload.estado_id,
-            "municipio": payload.municipio_id,
+            "estado": payload.codigo_uf_ibge,
+            "municipio": payload.codigo_municipio_ibge,
             "bairro": payload.bairro_id,
             "zona_eleitoral": payload.zona_eleitoral_id,
             "secao_eleitoral": payload.secao_eleitoral_id,
@@ -160,8 +160,14 @@ class TerritorioService:
         self, actor: RequestActor, access: TerritorialAccess
     ) -> list[TerritorioTreeNode]:
         rows = await self.list_territories(actor, access, include_inactive=False)
+        allowed_fields = set(TerritorioTreeNode.model_fields)
         nodes = {
-            row["id"]: TerritorioTreeNode.model_validate({**row, "filhos": []})
+            row["id"]: TerritorioTreeNode.model_validate(
+                {
+                    **{key: value for key, value in row.items() if key in allowed_fields},
+                    "filhos": [],
+                }
+            )
             for row in rows
         }
         roots: list[TerritorioTreeNode] = []

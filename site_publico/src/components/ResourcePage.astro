@@ -1,0 +1,59 @@
+---
+import MarketingLayout from "../layouts/MarketingLayout.astro";
+
+interface Props {
+  eyebrow: string;
+  title: string;
+  description: string;
+  benefits: string[];
+  steps: string[];
+  related: { href: string; label: string }[];
+}
+const { eyebrow, title, description, benefits, steps, related } = Astro.props;
+---
+
+<MarketingLayout title={`${title} | Vurix Eleitoral`} description={description}>
+  <section class="page-hero">
+    <div>
+      <span class="eyebrow">{eyebrow}</span>
+      <h1>{title}</h1>
+      <p>{description}</p>
+      <div class="actions left">
+        <a class="button" href="/demo">Ver em uma demonstração</a>
+        <a class="button secondary" href="/planos">Comparar planos</a>
+      </div>
+    </div>
+    <div class="product-preview" aria-label="Representação da interface da plataforma">
+      <span></span><span></span><span></span>
+      <div><strong>Visão operacional</strong><i></i><i></i><i></i></div>
+    </div>
+  </section>
+  <section class="section">
+    <div class="section-heading">
+      <span class="eyebrow">RESULTADO OPERACIONAL</span>
+      <h2>Informação útil para a próxima decisão</h2>
+    </div>
+    <div class="feature-grid">
+      {benefits.map((benefit, index) => (
+        <article class="feature-card">
+          <span class="feature-number">{String(index + 1).padStart(2, "0")}</span>
+          <h3>{benefit}</h3>
+          <p>Permissões e histórico mantêm o trabalho rastreável sem expor informações fora da equipe autorizada.</p>
+        </article>
+      ))}
+    </div>
+  </section>
+  <section class="section split-section">
+    <div>
+      <span class="eyebrow">COMO FUNCIONA</span>
+      <h2>Do registro ao acompanhamento</h2>
+    </div>
+    <ol class="steps">
+      {steps.map((step) => <li>{step}</li>)}
+    </ol>
+  </section>
+  <section class="section related-links">
+    <h2>Continue explorando</h2>
+    <div>{related.map((item) => <a href={item.href}>{item.label}<span aria-hidden="true"> →</span></a>)}</div>
+  </section>
+</MarketingLayout>

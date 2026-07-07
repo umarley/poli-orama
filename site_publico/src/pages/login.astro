@@ -1,0 +1,17 @@
+---
+const loginUrl = import.meta.env.PUBLIC_APP_LOGIN_URL || "http://localhost:5173/login";
+---
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="robots" content="noindex,nofollow" />
+    <meta http-equiv="refresh" content={`0;url=${loginUrl}`} />
+    <link rel="canonical" href={loginUrl} />
+    <title>Entrar na Vurix Eleitoral</title>
+  </head>
+  <body>
+    <p>Redirecionando para o painel. <a href={loginUrl}>Continuar agora</a>.</p>
+    <script is:inline define:vars={{ loginUrl }}>window.location.replace(loginUrl);</script>
+  </body>
+</html>

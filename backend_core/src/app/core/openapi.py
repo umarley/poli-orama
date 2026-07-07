@@ -10,5 +10,6 @@ OPENAPI_TAGS = [
     {"name": "Importacao e ETL", "description": "Importacoes, staging e qualidade."},
     {"name": "Agenda", "description": "Agenda e eventos."},
     {"name": "Demandas", "description": "Demandas e atendimentos."},
+    {"name": "Comunicacao", "description": "Interacoes, canais e relacionamento."},
     {"name": "Dashboard", "description": "Dashboards e relatorios."},
 ]

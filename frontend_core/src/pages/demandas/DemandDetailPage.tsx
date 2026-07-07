@@ -9,6 +9,7 @@ import dayjs from 'dayjs';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
+import { AttachmentsPanel } from '@/components/arquivos/AttachmentsPanel';
 import { AppToast } from '@/components/feedback/AppToast';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
@@ -138,12 +139,10 @@ export function DemandDetailPage() {
             ]} />,
         },
         {
-          key: 'attachments', label: `Anexos (${item?.anexos.length ?? 0})`,
-          children: <Table rowKey={(row) => String(row.id)} dataSource={item?.anexos ?? []}
-            columns={[
-              { title: 'Arquivo', dataIndex: 'nome_original' },
-              { title: 'Descrição', dataIndex: 'descricao' },
-            ]} />,
+          key: 'attachments', label: 'Anexos',
+          children: <AttachmentsPanel entity="demanda" entityId={id}
+            allowedTypeCodes={['comprovante', 'documento_pessoal', 'imagem', 'pdf']}
+            canEdit={permissions.includes('demandas.editar')} />,
         },
       ]} />
       <Modal open={modal !== null}

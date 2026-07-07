@@ -68,7 +68,9 @@ Escopo: frontend autenticado, backend principal, jobs assincronos, site publico,
 | `SPEC-10-dashboards-relatorios.md` | KPIs, relatorios basicos, filtros e exportacoes controladas | P1 |
 | `SPEC-11-arquivos-anexos-datalake.md` | Upload, storage, anexos, fotos, convites e documentos | P2 |
 | `SPEC-12-site-publico-comercial.md` | Site publico, SEO, leads, planos e contratacao | P1 |
+| `SPEC-12B-site-publico-pos-mvp.md` | Blog, cases e checkout real do site publico | P2 |
 | `SPEC-13-comunicacao-datas-redes.md` | Interacoes, datas comemorativas, comunicacao e redes sociais | P2/P3 |
+| `SPEC-13B-comunicacao-datas-redes-pos-mvp.md` | Consentimento, campanhas e integracoes sociais pos-MVP | P2/P3 |
 | `SPEC-14-modo-eleicao.md` | Operacao do dia da votacao e acompanhamento operacional | P3 |
 | `SPEC-15-nlp-ml-inteligencia-avancada.md` | Classificacao, previsoes, score de risco e recomendacoes | P3 |
 | `SPEC-16-qualidade-seguranca-lgpd-deploy.md` | Testes, LGPD, observabilidade, backup, deploy e go-live | P0/P1 |

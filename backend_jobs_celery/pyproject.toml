@@ -10,9 +10,13 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "celery[redis]>=5.6,<6",
+  "boto3>=1.35,<2",
   "openpyxl>=3.1,<4",
+  "pillow>=11,<13",
   "psycopg[binary]>=3.2,<4",
+  "pypdf>=5,<7",
   "pydantic-settings>=2.7,<3",
+  "pytesseract>=0.3.13,<1",
 ]
 
 [project.optional-dependencies]
@@ -46,5 +50,5 @@ strict = true
 packages = ["jobs"]
 
 [[tool.mypy.overrides]]
-module = ["celery.*", "openpyxl.*"]
+module = ["boto3.*", "celery.*", "openpyxl.*", "PIL.*", "pypdf.*", "pytesseract.*"]
 ignore_missing_imports = true

@@ -28,6 +28,7 @@ import dayjs from 'dayjs';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
+import { AttachmentsPanel } from '@/components/arquivos/AttachmentsPanel';
 import { AppToast } from '@/components/feedback/AppToast';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
@@ -392,6 +393,18 @@ export function EventDetailPage() {
                   </Card>
                 </Col>
               </Row>
+            ),
+          },
+          {
+            key: 'attachments',
+            label: 'Anexos',
+            children: (
+              <AttachmentsPanel
+                entity="evento"
+                entityId={eventId}
+                allowedTypeCodes={['convite', 'pauta', 'imagem', 'pdf']}
+                canEdit={permissions.includes('agenda.editar')}
+              />
             ),
           },
           {

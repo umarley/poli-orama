@@ -1,0 +1,12 @@
+---
+import LegalLayout from "../layouts/LegalLayout.astro";
+const email = import.meta.env.PUBLIC_SUPPORT_EMAIL || "contato@vurix.com.br";
+---
+<LegalLayout title="LGPD e direitos do titular | Vurix Eleitoral" description="Canal e orientações para exercer direitos previstos na LGPD." effectiveDate="06/07/2026" version="1.0">
+  <h1>LGPD e direitos do titular</h1>
+  <p>A Vurix mantém um canal para dúvidas e solicitações relacionadas ao tratamento de dados pessoais.</p>
+  <h2>Como fazer uma solicitação</h2><p>Envie uma mensagem para <a href={`mailto:${email}?subject=Solicitação LGPD`}>{email}</a> com o assunto “Solicitação LGPD”. Para proteger o titular, poderemos pedir informações adicionais estritamente necessárias à confirmação de identidade.</p>
+  <h2>Direitos disponíveis</h2><ul><li>Confirmação da existência de tratamento e acesso.</li><li>Correção de dados incompletos, inexatos ou desatualizados.</li><li>Anonimização, bloqueio ou eliminação, quando aplicável.</li><li>Informação sobre compartilhamentos e consequências da negativa de consentimento.</li><li>Revogação do consentimento quando esta for a base legal utilizada.</li></ul>
+  <h2>Prazo e resposta</h2><p>A solicitação será analisada conforme sua natureza e os prazos legais. Alguns dados poderão ser mantidos para cumprimento de obrigação legal, prevenção a fraude ou exercício regular de direitos.</p>
+  <h2>Dados de eleitores</h2><p>O site público não recebe planilhas ou bases eleitorais. Operações com dados no produto autenticado exigem permissões e responsabilidade do contratante quanto à base legal e à finalidade.</p>
+</LegalLayout>

@@ -1,7 +1,7 @@
 ---
-import { CommercialForm } from '../components/CommercialForm';
-import BaseLayout from '../layouts/BaseLayout.astro';
+import { CommercialForm } from "../components/CommercialForm";
+import MarketingLayout from "../layouts/MarketingLayout.astro";
 ---
-<BaseLayout title="Agendar demonstração | Vurix Eleitoral" description="Solicite uma demonstração da plataforma.">
-  <section class="section"><span class="eyebrow">DEMONSTRAÇÃO</span><h1>Veja a plataforma aplicada à sua operação</h1><CommercialForm kind="lead" client:load /></section>
-</BaseLayout>
+<MarketingLayout title="Agendar demonstração | Vurix Eleitoral" description="Solicite uma demonstração da plataforma Vurix Eleitoral.">
+  <section class="form-page"><div><span class="eyebrow">DEMONSTRAÇÃO</span><h1>Veja a plataforma aplicada à sua operação</h1><p>Em uma conversa objetiva, entendemos sua estrutura e apresentamos os módulos relevantes. Não solicitamos bases eleitorais neste formulário.</p><ul class="check-list"><li>Visão dos módulos e permissões</li><li>Fluxo entre campo e coordenação</li><li>Planos e próximos passos</li></ul></div><CommercialForm kind="demo" client:load /></section>
+</MarketingLayout>

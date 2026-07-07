@@ -1,0 +1,14 @@
+---
+import LegalLayout from "../layouts/LegalLayout.astro";
+const email = import.meta.env.PUBLIC_SUPPORT_EMAIL || "contato@vurix.com.br";
+---
+<LegalLayout title="Política de privacidade | Vurix Eleitoral" description="Saiba como a Vurix trata dados pessoais no site público." effectiveDate="06/07/2026" version="1.0">
+  <h1>Política de privacidade</h1>
+  <p>Esta política descreve o tratamento de dados pessoais realizado no site público da Vurix Eleitoral. O texto deve passar por revisão jurídica antes da publicação definitiva.</p>
+  <h2>1. Dados tratados</h2><p>Nos formulários, tratamos nome, e-mail, telefone, organização, mensagem e dados mínimos necessários ao pré-cadastro comercial. Também podemos registrar parâmetros UTM, página de origem e referência de navegação para atribuição comercial.</p>
+  <h2>2. Finalidades</h2><p>Usamos os dados para responder contatos, agendar demonstrações, processar pré-cadastros, prevenir abuso, manter registros de consentimento e cumprir obrigações legais.</p>
+  <h2>3. Compartilhamento</h2><p>Dados podem ser processados por fornecedores de infraestrutura, comunicação, analytics autorizado e checkout hospedado, sob contratos e controles compatíveis com a finalidade.</p>
+  <h2>4. Retenção e segurança</h2><p>Mantemos os dados pelo período necessário à finalidade, à defesa de direitos e ao cumprimento de obrigações. Aplicamos controles técnicos e organizacionais proporcionais ao risco.</p>
+  <h2>5. Direitos do titular</h2><p>Você pode solicitar confirmação, acesso, correção, anonimização, eliminação quando aplicável e informações sobre compartilhamento.</p>
+  <h2>6. Contato</h2><p>Solicitações podem ser enviadas para <a href={`mailto:${email}`}>{email}</a>. Para detalhes, consulte nossa <a href="/lgpd">página de LGPD</a>.</p>
+</LegalLayout>

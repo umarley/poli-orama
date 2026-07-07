@@ -26,5 +26,4 @@ profissao = _reference_table("profissao", "cadastro", Integer)
 religiao = _reference_table("religiao", "cadastro", SmallInteger)
 partido = _reference_table("partido", "cadastro", SmallInteger)
 
-arquivo = _reference_table("arquivo", "arquivo", BigInteger)
 eleicao = _reference_table("eleicao", "eleicao", BigInteger)

@@ -4,6 +4,7 @@ import type { PaginatedResponse } from '@/types/api';
 import type {
   BuscaRapidaItem,
   Comunidade,
+  EstadoCivil,
   Hierarquia,
   IndicacaoGraph,
   IndicacaoGraphFilters,
@@ -55,6 +56,11 @@ export async function buscarPessoas(query: string) {
 
 export async function listarTiposPessoa() {
   const { data } = await httpClient.get<PessoaTipo[]>(`${base}/pessoas/tipos`);
+  return data;
+}
+
+export async function listarEstadosCivis() {
+  const { data } = await httpClient.get<EstadoCivil[]>(`${base}/estados-civis`);
   return data;
 }
 

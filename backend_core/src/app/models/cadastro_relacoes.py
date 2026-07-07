@@ -248,7 +248,7 @@ class Comunidade(Base):
     lider_responsavel_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("cadastro.lideranca.id")
     )
-    municipio_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("global.municipio.id"))
+    codigo_municipio_ibge: Mapped[int | None] = mapped_column(Integer, ForeignKey("global.municipio.id"))
     territorio_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("territorio.territorio.id", ondelete="SET NULL")
     )

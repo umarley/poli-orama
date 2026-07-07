@@ -1,0 +1,25 @@
+---
+import BaseLayout from "./BaseLayout.astro";
+interface Props {
+  title: string;
+  description: string;
+  canonicalPath?: string;
+  image?: string;
+  noindex?: boolean;
+  structuredData?: Record<string, unknown>[];
+  publishedAt?: string;
+  updatedAt?: string;
+}
+const { publishedAt, updatedAt, ...props } = Astro.props;
+---
+<BaseLayout {...props} type="article">
+  <article class="article-shell">
+    {(publishedAt || updatedAt) && (
+      <p class="article-meta">
+        {publishedAt && <time datetime={publishedAt}>Publicado em {publishedAt}</time>}
+        {updatedAt && <span>Atualizado em {updatedAt}</span>}
+      </p>
+    )}
+    <slot />
+  </article>
+</BaseLayout>

@@ -1,12 +1,26 @@
 ---
-import { PricingGrid } from '../components/PricingGrid';
-import BaseLayout from '../layouts/BaseLayout.astro';
+import { PricingGrid } from "../components/PricingGrid";
+import { planosFallback } from "../data/planos";
+import MarketingLayout from "../layouts/MarketingLayout.astro";
+const structuredData = planosFallback.map((plan) => ({
+  "@context": "https://schema.org",
+  "@type": "Product",
+  name: `Vurix Eleitoral ${plan.nome}`,
+  description: plan.descricao,
+  brand: { "@type": "Brand", name: "Vurix Eleitoral" },
+  offers: {
+    "@type": "Offer",
+    price: plan.preco_mensal,
+    priceCurrency: plan.moeda,
+    availability: "https://schema.org/OnlineOnly",
+    url: new URL(`/contratar?plano=${plan.slug}`, Astro.site),
+  },
+}));
 ---
-<BaseLayout title="Planos | Vurix Eleitoral" description="Compare os planos ativos da plataforma Vurix Eleitoral.">
-  <section class="section">
-    <span class="eyebrow">PLANOS</span>
-    <h1>Estrutura para cada fase da campanha</h1>
-    <p class="muted">Os planos são carregados da API comercial e mantêm uma opção estática caso ela esteja temporariamente indisponível.</p>
+<MarketingLayout title="Planos | Vurix Eleitoral" description="Compare planos, limites e recursos da plataforma Vurix Eleitoral." structuredData={structuredData}>
+  <section class="section pricing-section">
+    <div class="section-heading centered"><span class="eyebrow">PLANOS</span><h1>Estrutura para cada fase da campanha</h1><p>Comece com o necessário e evolua conforme a operação cresce. Preços anuais exibem o equivalente mensal.</p></div>
     <PricingGrid client:load />
   </section>
-</BaseLayout>
+  <section class="section comparison"><h2>Compare os principais recursos</h2><div class="table-scroll"><table><thead><tr><th>Recurso</th><th>Essencial</th><th>Profissional</th><th>Operação</th><th>Enterprise</th></tr></thead><tbody><tr><th>Cadastros e equipe</th><td>Incluído</td><td>Incluído</td><td>Incluído</td><td>Personalizado</td></tr><tr><th>Território e metas</th><td>—</td><td>Incluído</td><td>Incluído</td><td>Personalizado</td></tr><tr><th>Modo eleição</th><td>—</td><td>—</td><td>Incluído</td><td>Personalizado</td></tr><tr><th>Suporte</th><td>Padrão</td><td>Padrão</td><td>Prioritário</td><td>Dedicado</td></tr></tbody></table></div><p class="fine-print">Valores e limites são referências comerciais e podem ser atualizados. A contratação só é ativada após aprovação comercial ou confirmação confiável do pagamento.</p></section>
+</MarketingLayout>

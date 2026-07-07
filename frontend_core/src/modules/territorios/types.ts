@@ -87,8 +87,8 @@ export interface TerritorioTreeNode extends Territorio {
 export interface TerritorioInput {
   tipo_territorio_id: number;
   nome: string;
-  estado_id?: number;
-  municipio_id?: number;
+  codigo_uf_ibge?: number;
+  codigo_municipio_ibge?: number;
   bairro_id?: number;
   zona_eleitoral_id?: number;
   secao_eleitoral_id?: number;

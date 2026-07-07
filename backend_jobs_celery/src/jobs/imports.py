@@ -1,7 +1,7 @@
 """Leitura, staging, deduplicacao e carga aprovada de importacoes."""
 
 import csv
-from pathlib import Path
+from io import BytesIO
 from typing import Any
 
 import psycopg
@@ -9,7 +9,9 @@ from openpyxl import load_workbook
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from jobs.config import get_settings
 from jobs.database import normalize_database_url
+from jobs.file_storage import read_object
 from jobs.import_rules import (
     automatic_mapping,
     name_similarity,
@@ -34,7 +36,7 @@ class ImportProcessor:
             config = connection.execute(
                 """
                 SELECT i.id, i.status, i.mapeamento_colunas, i.parametros,
-                       a.caminho, a.extensao
+                       a.caminho, a.extensao, a.provedor_storage, a.bucket
                 FROM etl.importacao i
                 JOIN etl.importacao_arquivo ia ON ia.importacao_id = i.id
                 JOIN arquivo.arquivo a ON a.id = ia.arquivo_id
@@ -44,8 +46,14 @@ class ImportProcessor:
             ).fetchone()
             if not config or config["status"] == "cancelada":
                 raise LookupError("Importacao nao encontrada ou cancelada.")
+            content = read_object(
+                get_settings(),
+                provider=str(config["provedor_storage"]),
+                bucket=config["bucket"],
+                key=str(config["caminho"]),
+            )
             rows, headers = self._read_rows(
-                Path(config["caminho"]),
+                content,
                 str(config["extensao"]),
                 dict(config["parametros"] or {}),
             )
@@ -72,18 +80,15 @@ class ImportProcessor:
                 (tenant_id, import_id),
             )
             connection.execute(
-                "DELETE FROM etl.staging_pessoa "
-                "WHERE tenant_id = %s AND importacao_id = %s",
+                "DELETE FROM etl.staging_pessoa WHERE tenant_id = %s AND importacao_id = %s",
                 (tenant_id, import_id),
             )
             connection.execute(
-                "DELETE FROM etl.erro_importacao "
-                "WHERE tenant_id = %s AND importacao_id = %s",
+                "DELETE FROM etl.erro_importacao WHERE tenant_id = %s AND importacao_id = %s",
                 (tenant_id, import_id),
             )
             connection.execute(
-                "DELETE FROM etl.importacao_linha "
-                "WHERE tenant_id = %s AND importacao_id = %s",
+                "DELETE FROM etl.importacao_linha WHERE tenant_id = %s AND importacao_id = %s",
                 (tenant_id, import_id),
             )
 
@@ -232,8 +237,7 @@ class ImportProcessor:
                             (person_id, row["id"]),
                         )
                         connection.execute(
-                            "UPDATE etl.importacao_linha SET status = 'processada' "
-                            "WHERE id = %s",
+                            "UPDATE etl.importacao_linha SET status = 'processada' WHERE id = %s",
                             (row["importacao_linha_id"],),
                         )
                     loaded += 1
@@ -275,14 +279,14 @@ class ImportProcessor:
 
     @staticmethod
     def _read_rows(
-        path: Path, extension: str, parameters: dict[str, Any]
+        raw_content: bytes, extension: str, parameters: dict[str, Any]
     ) -> tuple[list[dict[str, Any]], list[str]]:
         if extension == "csv":
             content: str
             try:
-                content = path.read_text(encoding=str(parameters.get("encoding", "utf-8-sig")))
+                content = raw_content.decode(encoding=str(parameters.get("encoding", "utf-8-sig")))
             except UnicodeDecodeError:
-                content = path.read_text(encoding="latin-1")
+                content = raw_content.decode(encoding="latin-1")
             sample = content[:4096]
             delimiter = str(parameters.get("separador") or "")
             if not delimiter:
@@ -297,7 +301,7 @@ class ImportProcessor:
                 ],
                 headers,
             )
-        workbook = load_workbook(path, read_only=True, data_only=True)
+        workbook = load_workbook(BytesIO(raw_content), read_only=True, data_only=True)
         sheet_name = parameters.get("aba")
         sheet = workbook[str(sheet_name)] if sheet_name else workbook.worksheets[0]
         values = sheet.iter_rows(values_only=True)
@@ -314,11 +318,7 @@ class ImportProcessor:
     def _normalize_row(
         raw: dict[str, Any], mapping: dict[str, str]
     ) -> tuple[dict[str, Any], list[tuple[str, str | None, str]]]:
-        data = {
-            target: raw.get(source)
-            for source, target in mapping.items()
-            if target
-        }
+        data = {target: raw.get(source) for source, target in mapping.items() if target}
         errors: list[tuple[str, str | None, str]] = []
         name = str(data.get("nome_completo") or "").strip()
         if not name:
@@ -349,9 +349,7 @@ class ImportProcessor:
         except ValueError as exc:
             errors.append(("cep", str(data.get("cep") or "")[:200], str(exc)))
         normalized["dados_extras"] = {
-            key: value
-            for key, value in raw.items()
-            if key not in mapping or not mapping[key]
+            key: value for key, value in raw.items() if key not in mapping or not mapping[key]
         }
         return normalized, errors
 
@@ -446,11 +444,7 @@ class ImportProcessor:
         candidate_id: int | None = None
         criterion: str | None = None
         for name, query, value in checks:
-            params = (
-                (tenant_id, *value)
-                if isinstance(value, tuple)
-                else (tenant_id, value)
-            )
+            params = (tenant_id, *value) if isinstance(value, tuple) else (tenant_id, value)
             row = connection.execute(query, params).fetchone()
             if row:
                 candidate_id, criterion = int(row["id"]), name
@@ -490,9 +484,7 @@ class ImportProcessor:
             ).fetchall()
             best: tuple[int, float] | None = None
             for candidate in candidates:
-                similarity = name_similarity(
-                    data["nome_completo"], candidate["nome_completo"]
-                )
+                similarity = name_similarity(data["nome_completo"], candidate["nome_completo"])
                 same_birth = (
                     data.get("data_nascimento")
                     and candidate["data_nascimento"] == data["data_nascimento"]

@@ -1,0 +1,10 @@
+---
+import MarketingLayout from "../../layouts/MarketingLayout.astro";
+---
+<MarketingLayout title="Checkout não concluído | Vurix Eleitoral" description="O checkout não foi concluído. Seu pré-cadastro pode ter sido salvo." noindex>
+  <section class="status-page failure-state"><span class="status-icon" aria-hidden="true">!</span><span class="eyebrow">CHECKOUT NÃO CONCLUÍDO</span><h1>Não foi possível abrir o pagamento</h1><p>Seu pré-cadastro pode ter sido registrado. Nenhuma cobrança foi realizada. Tente novamente ou fale com a equipe comercial para continuar.</p><div class="actions"><a class="button" href="/planos">Voltar aos planos</a><a class="button secondary" href="/contato">Falar com a equipe</a></div></section>
+  <script>
+    import { track } from "../../lib/analytics";
+    track("checkout_failure", { reason: new URLSearchParams(window.location.search).get("motivo") || "unknown" });
+  </script>
+</MarketingLayout>

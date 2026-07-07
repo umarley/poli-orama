@@ -16,6 +16,7 @@ from app.models import (
     Comunidade,
     Eleitor,
     Endereco,
+    EstadoCivil,
     HierarquiaLideranca,
     Indicacao,
     Lideranca,
@@ -719,6 +720,21 @@ class CadastroRepository(BaseRepository[Pessoa]):
     async def list_person_types(self) -> list[PessoaTipo]:
         result = await self.session.scalars(select(PessoaTipo).order_by(PessoaTipo.nome))
         return list(result.all())
+
+    async def list_marital_statuses(self) -> list[EstadoCivil]:
+        result = await self.session.scalars(
+            select(EstadoCivil).order_by(EstadoCivil.ordem, EstadoCivil.nome)
+        )
+        return list(result.all())
+
+    async def marital_status_exists(self, marital_status_id: int) -> bool:
+        return bool(
+            await self.session.scalar(
+                select(func.count())
+                .select_from(EstadoCivil)
+                .where(EstadoCivil.id == marital_status_id)
+            )
+        )
 
     async def list_leaderships(self, tenant_id: int) -> list[Lideranca]:
         result = await self.session.scalars(

@@ -52,5 +52,15 @@ if settings.demand_deadlines_enabled:
         "task": "jobs.demandas.enqueue_deadline_alerts",
         "schedule": crontab(hour=settings.demand_deadlines_hour, minute=0),
     }
+if settings.dashboard_materialization_enabled:
+    beat_schedule["dashboard-materializacao-diaria"] = {
+        "task": "jobs.dashboard.enqueue_materialization",
+        "schedule": crontab(hour=settings.dashboard_materialization_hour, minute=0),
+    }
+if settings.scheduled_reports_enabled:
+    beat_schedule["relatorios-agendados-diarios"] = {
+        "task": "jobs.dashboard.enqueue_scheduled_reports",
+        "schedule": crontab(hour=settings.scheduled_reports_hour, minute=0),
+    }
 if beat_schedule:
     celery_app.conf.beat_schedule = beat_schedule

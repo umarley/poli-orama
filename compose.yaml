@@ -11,6 +11,19 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173,http://localhost:4321,http://127.0.0.1:4321}
       JWT_SECRET: ${JWT_SECRET:-local-compose-jwt-secret-change-before-production}
       MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:-local-compose-mfa-key-change-before-production}
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
+      STORAGE_LOCAL_PATH: /data/arquivos
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-vurix-arquivos}
+      STORAGE_ENDPOINT_URL: ${STORAGE_ENDPOINT_URL:-}
+      STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-}
+      STORAGE_USE_SSL: ${STORAGE_USE_SSL:-true}
+      SEAWEED_FILER_URL: ${SEAWEED_FILER_URL:-}
+      SEAWEED_PROJECT_NAME: ${SEAWEED_PROJECT_NAME:-}
+      SEAWEED_USERNAME: ${SEAWEED_USERNAME:-}
+      SEAWEED_PASSWORD: ${SEAWEED_PASSWORD:-}
+      SEAWEED_TIMEOUT_SECONDS: ${SEAWEED_TIMEOUT_SECONDS:-30}
     ports:
       - "127.0.0.1:8000:8000"
     healthcheck:
@@ -26,6 +39,8 @@ services:
       retries: 5
       start_period: 10s
     restart: unless-stopped
+    volumes:
+      - file_storage:/data/arquivos
 
   frontend:
     build:
@@ -81,6 +96,14 @@ services:
       DEMAND_DEADLINES_ENABLED: ${DEMAND_DEADLINES_ENABLED:-true}
       DEMAND_DEADLINES_HOUR: ${DEMAND_DEADLINES_HOUR:-7}
       DEMAND_DEADLINES_LEAD_DAYS: ${DEMAND_DEADLINES_LEAD_DAYS:-3}
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
+      STORAGE_LOCAL_PATH: /data/arquivos
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-vurix-arquivos}
+      STORAGE_ENDPOINT_URL: ${STORAGE_ENDPOINT_URL:-}
+      STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-}
+      STORAGE_USE_SSL: ${STORAGE_USE_SSL:-true}
     depends_on:
       redis:
         condition: service_healthy
@@ -91,6 +114,8 @@ services:
       retries: 5
       start_period: 15s
     restart: unless-stopped
+    volumes:
+      - file_storage:/data/arquivos
 
   worker-beat:
     build:
@@ -160,6 +185,8 @@ services:
       - "./database/migrations/011 - agenda_eventos.sql:/docker-entrypoint-initdb.d/011-agenda.sql:ro"
       - "./database/migrations/012 - demandas_atendimentos.sql:/docker-entrypoint-initdb.d/012-demandas.sql:ro"
       - "./database/migrations/016 - demandas_indices_alertas.sql:/docker-entrypoint-initdb.d/016-demandas-alertas.sql:ro"
+      - "./database/migrations/018 - arquivos_anexos_datalake.sql:/docker-entrypoint-initdb.d/018-arquivos.sql:ro"
+      - "./database/migrations/019 - estados_civis_escolaridades_partidos.sql:/docker-entrypoint-initdb.d/019-catalogos-cadastro.sql:ro"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -169,5 +196,6 @@ services:
     restart: unless-stopped
 
 volumes:
+  file_storage:
   postgres_data:
   redis_data:

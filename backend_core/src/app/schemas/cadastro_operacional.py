@@ -71,6 +71,13 @@ class PessoaTipoResponse(CadastroSchema):
     descricao: str | None
 
 
+class EstadoCivilResponse(CadastroSchema):
+    id: int
+    codigo: str
+    nome: str
+    ordem: int
+
+
 class LiderancaOperacionalResponse(LiderancaResponse):
     territorio_ids: list[int] = Field(default_factory=list)
 

@@ -234,7 +234,7 @@ class PessoaBase(CadastroSchema):
     apelido: str | None = Field(default=None, max_length=120)
     sexo: Sexo | None = None
     data_nascimento: date | None = None
-    estado_civil: str | None = Field(default=None, max_length=30)
+    estado_civil: int | None = Field(default=None, ge=1)
     escolaridade_id: int | None = Field(default=None, ge=1)
     profissao_id: int | None = Field(default=None, ge=1)
     religiao_id: int | None = Field(default=None, ge=1)
@@ -267,7 +267,7 @@ class PessoaUpdate(CadastroSchema):
     apelido: str | None = Field(default=None, max_length=120)
     sexo: Sexo | None = None
     data_nascimento: date | None = None
-    estado_civil: str | None = Field(default=None, max_length=30)
+    estado_civil: int | None = Field(default=None, ge=1)
     escolaridade_id: int | None = Field(default=None, ge=1)
     profissao_id: int | None = Field(default=None, ge=1)
     religiao_id: int | None = Field(default=None, ge=1)

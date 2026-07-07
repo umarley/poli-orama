@@ -6,6 +6,7 @@ import {
   FlagOutlined,
   GlobalOutlined,
   ImportOutlined,
+  FileTextOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
   ShareAltOutlined,
@@ -30,6 +31,12 @@ export const navigationItems: NavigationItem[] = [
     key: '/dashboard',
     label: 'Painel de controle',
     icon: <DashboardOutlined />,
+    permission: 'dashboard.visualizar',
+  },
+  {
+    key: '/relatorios',
+    label: 'Relatórios',
+    icon: <FileTextOutlined />,
     permission: 'dashboard.visualizar',
   },
   {

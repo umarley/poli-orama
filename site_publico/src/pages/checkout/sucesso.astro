@@ -1,0 +1,10 @@
+---
+import MarketingLayout from "../../layouts/MarketingLayout.astro";
+---
+<MarketingLayout title="Solicitação recebida | Vurix Eleitoral" description="Sua solicitação de contratação foi recebida." noindex>
+  <section class="status-page success-state"><span class="status-icon" aria-hidden="true">✓</span><span class="eyebrow">SOLICITAÇÃO RECEBIDA</span><h1>Seu pré-cadastro está em processamento</h1><p>A equipe acompanhará a contratação. A ativação da plataforma ocorre somente após aprovação comercial ou confirmação confiável do pagamento.</p><div class="actions"><a class="button" href="/">Voltar ao início</a><a class="button secondary" href="/contato">Falar com a equipe</a></div></section>
+  <script>
+    import { track } from "../../lib/analytics";
+    track("checkout_success", { status: new URLSearchParams(window.location.search).get("status") || "received" });
+  </script>
+</MarketingLayout>

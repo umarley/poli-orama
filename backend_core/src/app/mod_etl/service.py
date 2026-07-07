@@ -4,12 +4,9 @@ import csv
 import hashlib
 import io
 import logging
-import re
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
-import anyio
 from celery import Celery
 from fastapi.encoders import jsonable_encoder
 
@@ -17,6 +14,7 @@ from app.audit.service import AuditService
 from app.auth.access import RequestActor
 from app.core.config import Settings
 from app.core.errors import BusinessRuleError, ResourceNotFoundError
+from app.mod_arquivos.storage import get_storage, sanitize_filename
 from app.mod_etl.repository import EtlRepository
 from app.mod_etl.schemas import (
     ColumnMappingUpdate,
@@ -36,9 +34,7 @@ class EtlService:
         self.repository = repository
         self.settings = settings
 
-    async def create_source(
-        self, actor: RequestActor, payload: SourceCreate
-    ) -> dict[str, Any]:
+    async def create_source(self, actor: RequestActor, payload: SourceCreate) -> dict[str, Any]:
         item = await self.repository.create_source(actor.tenant_id, payload)
         await self._audit(actor, "criar", "fonte_dado", item["id"], None, item)
         await self.repository.commit()
@@ -52,9 +48,7 @@ class EtlService:
             raise ResourceNotFoundError("Fonte de dado", source_id)
         if current["tenant_id"] is None:
             raise BusinessRuleError("Fontes globais nao podem ser alteradas.")
-        updated = await self.repository.update_source(
-            actor.tenant_id, source_id, payload
-        )
+        updated = await self.repository.update_source(actor.tenant_id, source_id, payload)
         assert updated is not None
         await self._audit(actor, "editar", "fonte_dado", source_id, current, updated)
         await self.repository.commit()
@@ -87,14 +81,13 @@ class EtlService:
                 f"O arquivo deve possuir no maximo {self.settings.import_max_file_mb} MB.",
                 code="invalid_import_file_size",
             )
-        safe_original = re.sub(r"[^A-Za-z0-9._-]", "_", Path(filename).name)
-        stored_name = f"{uuid4().hex}{extension}"
-        destination = await anyio.to_thread.run_sync(
-            self._write_file,
-            self.settings.import_storage_path,
-            actor.tenant_id,
-            stored_name,
-            content,
+        safe_original = sanitize_filename(filename)
+        storage = get_storage(self.settings)
+        stored = await storage.save(
+            tenant_id=actor.tenant_id,
+            filename=safe_original,
+            extension=extension.removeprefix("."),
+            content=content,
         )
         try:
             import_id = await self.repository.create_import(
@@ -106,17 +99,17 @@ class EtlService:
                 mapping=mapping,
                 file_data={
                     "original_name": safe_original,
-                    "stored_name": stored_name,
+                    "stored_name": stored.stored_name,
                     "mime_type": content_type,
                     "extension": extension.removeprefix("."),
                     "size": len(content),
                     "sha256": hashlib.sha256(content).hexdigest(),
-                    "path": str(destination),
+                    "provider": stored.provider,
+                    "bucket": stored.bucket,
+                    "path": stored.key,
                 },
             )
-            job_id = await self.repository.create_job(
-                actor.tenant_id, import_id, "validar"
-            )
+            job_id = await self.repository.create_job(actor.tenant_id, import_id, "validar")
             await self._audit(
                 actor,
                 "criar",
@@ -132,7 +125,7 @@ class EtlService:
             )
             await self.repository.commit()
         except Exception:
-            await anyio.to_thread.run_sync(self._delete_file, destination)
+            await storage.delete(bucket=stored.bucket, key=stored.key)
             raise
         self._dispatch(
             "jobs.etl.process_import",
@@ -169,9 +162,7 @@ class EtlService:
         )
         job: JobResponse | None = None
         if payload.reprocessar:
-            job_id = await self.repository.create_job(
-                actor.tenant_id, import_id, "validar"
-            )
+            job_id = await self.repository.create_job(actor.tenant_id, import_id, "validar")
             job = JobResponse(job_id=job_id, importacao_id=import_id)
         await self.repository.commit()
         if job:
@@ -187,15 +178,9 @@ class EtlService:
 
     async def approve(self, actor: RequestActor, import_id: int) -> JobResponse:
         current = await self._require_import(actor.tenant_id, import_id)
-        if not await self.repository.approve(
-            actor.tenant_id, import_id, actor.user_id
-        ):
-            raise BusinessRuleError(
-                "A importacao deve estar validada e possuir linhas validas."
-            )
-        job_id = await self.repository.create_job(
-            actor.tenant_id, import_id, "carregar"
-        )
+        if not await self.repository.approve(actor.tenant_id, import_id, actor.user_id):
+            raise BusinessRuleError("A importacao deve estar validada e possuir linhas validas.")
+        job_id = await self.repository.create_job(actor.tenant_id, import_id, "carregar")
         await self._audit(
             actor,
             "editar",
@@ -225,9 +210,7 @@ class EtlService:
         )
         await self.repository.commit()
 
-    async def summary(
-        self, tenant_id: int, import_id: int
-    ) -> ImportSummary:
+    async def summary(self, tenant_id: int, import_id: int) -> ImportSummary:
         summary = await self.repository.summary(tenant_id, import_id)
         if summary is None:
             raise ResourceNotFoundError("Importacao", import_id)
@@ -250,9 +233,7 @@ class EtlService:
             )
         return output.getvalue().encode("utf-8-sig")
 
-    async def _require_import(
-        self, tenant_id: int, import_id: int
-    ) -> dict[str, Any]:
+    async def _require_import(self, tenant_id: int, import_id: int) -> dict[str, Any]:
         item = await self.repository.get_import(tenant_id, import_id)
         if item is None:
             raise ResourceNotFoundError("Importacao", import_id)
@@ -260,30 +241,9 @@ class EtlService:
 
     def _dispatch(self, task: str, kwargs: dict[str, Any]) -> None:
         try:
-            Celery(broker=self.settings.celery_broker_url).send_task(
-                task, kwargs=kwargs
-            )
+            Celery(broker=self.settings.celery_broker_url).send_task(task, kwargs=kwargs)
         except Exception:
             logger.exception("Falha ao despachar job %s; registro permanece enfileirado.", task)
-
-    @staticmethod
-    def _write_file(
-        storage_path: str,
-        tenant_id: int,
-        stored_name: str,
-        content: bytes,
-    ) -> Path:
-        tenant_dir = Path(storage_path).resolve() / str(tenant_id)
-        tenant_dir.mkdir(parents=True, exist_ok=True)
-        destination = (tenant_dir / stored_name).resolve()
-        if tenant_dir not in destination.parents:
-            raise BusinessRuleError("Caminho de armazenamento invalido.")
-        destination.write_bytes(content)
-        return destination
-
-    @staticmethod
-    def _delete_file(path: Path) -> None:
-        path.unlink(missing_ok=True)
 
     async def _audit(
         self,

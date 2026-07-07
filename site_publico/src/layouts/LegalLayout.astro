@@ -1,0 +1,20 @@
+---
+import BaseLayout from "./BaseLayout.astro";
+interface Props {
+  title: string;
+  description: string;
+  canonicalPath?: string;
+  image?: string;
+  noindex?: boolean;
+  structuredData?: Record<string, unknown>[];
+  effectiveDate: string;
+  version: string;
+}
+const { effectiveDate, version, ...props } = Astro.props;
+---
+<BaseLayout {...props}>
+  <article class="legal-content">
+    <p class="legal-meta">Versão {version} · Vigência em <time datetime={effectiveDate}>{effectiveDate}</time></p>
+    <slot />
+  </article>
+</BaseLayout>

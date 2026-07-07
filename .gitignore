@@ -44,6 +44,8 @@
 /site_publico/.env.*
 !/site_publico/.env.example
 /site_publico/*.log
+/site_publico/playwright-report/
+/site_publico/test-results/
 
 # Backend Python
 /backend_core/.env
@@ -58,6 +60,7 @@
 !/backend_core/tests/
 /backend_core/tests/*
 !/backend_core/tests/test_cadastro_*.py
+!/backend_core/tests/test_dashboard_*.py
 !/backend_core/tests/conftest.py
 /backend_core/htmlcov/
 /backend_core/**/__pycache__/

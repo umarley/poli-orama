@@ -1,11 +1,80 @@
 ---
-import BaseLayout from '../layouts/BaseLayout.astro';
+import MarketingLayout from "../layouts/MarketingLayout.astro";
+
+const faq = [
+  { question: "A plataforma comprova votos individuais?", answer: "Não. A Vurix organiza indicadores operacionais, metas e registros declarados pela equipe, sem prometer comprovação individual de voto." },
+  { question: "Posso importar uma base de eleitores pelo site público?", answer: "Não. O site público não recebe dados de eleitores. Importações ocorrem somente no ambiente autenticado, com permissões e controles apropriados." },
+  { question: "A solução atende equipes de tamanhos diferentes?", answer: "Sim. Os planos variam por usuários, volume de registros, armazenamento e recursos habilitados." },
+  { question: "Como conheço a plataforma?", answer: "Solicite uma demonstração. A equipe apresenta o fluxo adequado à sua operação e esclarece os próximos passos." },
+];
+const structuredData = [
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "Vurix Eleitoral",
+    applicationCategory: "BusinessApplication",
+    operatingSystem: "Web",
+    description: "Plataforma de gestão e inteligência operacional para campanhas eleitorais.",
+    offers: { "@type": "AggregateOffer", priceCurrency: "BRL", lowPrice: "299", offerCount: "4" },
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faq.map((item) => ({
+      "@type": "Question",
+      name: item.question,
+      acceptedAnswer: { "@type": "Answer", text: item.answer },
+    })),
+  },
+];
 ---
-<BaseLayout title="Vurix Eleitoral | Inteligência para campanhas" description="Organize dados, equipe, território e metas em uma plataforma eleitoral integrada.">
+
+<MarketingLayout
+  title="Vurix Eleitoral | Gestão e inteligência para campanhas"
+  description="Organize equipe, território, lideranças, metas, agenda e demandas em uma plataforma eleitoral integrada."
+  structuredData={structuredData}
+>
   <section class="hero">
-    <span class="eyebrow">INTELIGÊNCIA ELEITORAL</span>
-    <h1>Uma operação organizada decide melhor.</h1>
-    <p>Centralize pessoas, lideranças, territórios, metas, agenda e demandas com isolamento e visão gerencial.</p>
-    <div class="actions"><a class="button" href="/demo">Agendar demo</a><a class="button secondary" href="/planos">Ver planos</a></div>
+    <span class="eyebrow">OPERAÇÃO ELEITORAL INTEGRADA</span>
+    <h1>Clareza para coordenar cada frente da campanha.</h1>
+    <p>Reúna dados, equipe, território e execução em um fluxo seguro — da organização diária à tomada de decisão.</p>
+    <div class="actions">
+      <a class="button" href="/demo">Agendar demonstração</a>
+      <a class="button secondary" href="/planos">Ver planos</a>
+    </div>
+    <div class="trust-row" aria-label="Principais atributos">
+      <span>Dados isolados por operação</span><span>Permissões por perfil</span><span>Visão gerencial</span>
+    </div>
   </section>
-</BaseLayout>
+  <section class="section">
+    <div class="section-heading">
+      <span class="eyebrow">UMA ÚNICA FONTE DE VERDADE</span>
+      <h2>Menos planilhas dispersas. Mais execução coordenada.</h2>
+      <p>Conecte o trabalho de campo à coordenação sem perder contexto, responsáveis ou histórico.</p>
+    </div>
+    <div class="feature-grid">
+      <article class="feature-card"><span class="feature-number">01</span><h3>Base organizada</h3><p>Cadastros consistentes, segmentação e histórico de relacionamento em ambiente controlado.</p><a href="/recursos/cadastro-eleitoral">Conhecer cadastro eleitoral →</a></article>
+      <article class="feature-card"><span class="feature-number">02</span><h3>Território visível</h3><p>Mapas, áreas de atuação e leitura territorial apoiam a distribuição de esforços.</p><a href="/recursos/territorio-mapas">Explorar território e mapas →</a></article>
+      <article class="feature-card"><span class="feature-number">03</span><h3>Metas acompanhadas</h3><p>Lideranças, responsáveis e evolução ficam visíveis para correções de rota.</p><a href="/recursos/metas-liderancas">Ver metas e lideranças →</a></article>
+      <article class="feature-card"><span class="feature-number">04</span><h3>Rotina conectada</h3><p>Agenda, demandas e comunicação reduzem perda de informação entre equipes.</p><a href="/recursos/agenda-demandas">Ver agenda e demandas →</a></article>
+    </div>
+  </section>
+  <section class="section statement">
+    <span class="eyebrow">DO CAMPO À COORDENAÇÃO</span>
+    <h2>Cada registro alimenta uma visão operacional comum.</h2>
+    <div class="flow" aria-label="Fluxo de dados da plataforma">
+      <span>Cadastro</span><i>→</i><span>Território</span><i>→</i><span>Mobilização</span><i>→</i><span>Indicadores</span>
+    </div>
+    <a class="text-link" href="/plataforma">Entenda como a plataforma funciona →</a>
+  </section>
+  <section class="section faq">
+    <div class="section-heading"><span class="eyebrow">PERGUNTAS FREQUENTES</span><h2>O essencial antes de avançar</h2></div>
+    <div>
+      {faq.map((item) => <details><summary>{item.question}</summary><p>{item.answer}</p></details>)}
+    </div>
+  </section>
+  <section class="cta-band">
+    <div><span class="eyebrow">PRÓXIMO PASSO</span><h2>Veja a Vurix aplicada à sua operação.</h2></div>
+    <a class="button light" href="/demo">Agendar demonstração</a>
+  </section>
+</MarketingLayout>

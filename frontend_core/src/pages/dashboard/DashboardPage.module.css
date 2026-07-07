@@ -3,6 +3,10 @@
   gap: 20px;
 }
 
+.widgetAlert {
+  margin-bottom: 12px;
+}
+
 .summaryCard {
   position: relative;
   height: 100%;

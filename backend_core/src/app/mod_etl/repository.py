@@ -41,9 +41,7 @@ class EtlRepository:
         row = result.mappings().first()
         return dict(row) if row else None
 
-    async def create_source(
-        self, tenant_id: int, payload: SourceCreate
-    ) -> dict[str, Any]:
+    async def create_source(self, tenant_id: int, payload: SourceCreate) -> dict[str, Any]:
         result = await self.session.execute(
             text(
                 "INSERT INTO etl.fonte_dado "
@@ -154,7 +152,7 @@ class EtlRepository:
                     "(tenant_id, nome_original, nome_armazenado, mime_type, extensao, "
                     "tamanho_bytes, hash_sha256, provedor_storage, bucket, caminho, criado_por) "
                     "VALUES (:tenant_id, :original_name, :stored_name, :mime_type, "
-                    ":extension, :size, :sha256, 'local', 'importacoes', :path, :user_id) "
+                    ":extension, :size, :sha256, :provider, :bucket, :path, :user_id) "
                     "RETURNING id"
                 ),
                 {"tenant_id": tenant_id, "user_id": user_id, **file_data},
@@ -171,6 +169,30 @@ class EtlRepository:
                 "import_id": import_id,
                 "file_id": arquivo_id,
                 "file_name": file_data["original_name"],
+            },
+        )
+        type_id = await self.session.scalar(
+            text(
+                "SELECT id FROM arquivo.tipo_anexo "
+                "WHERE codigo='planilha' AND (tenant_id IS NULL OR tenant_id=:tenant_id) "
+                "ORDER BY tenant_id NULLS LAST LIMIT 1"
+            ),
+            {"tenant_id": tenant_id},
+        )
+        await self.session.execute(
+            text(
+                "INSERT INTO arquivo.anexo "
+                "(tenant_id,arquivo_id,tipo_anexo_id,entidade_tipo,entidade_id,"
+                "descricao,criado_por) VALUES "
+                "(:tenant_id,:file_id,:type_id,'importacao',:import_id,"
+                "'Arquivo fonte da importacao',:user_id)"
+            ),
+            {
+                "tenant_id": tenant_id,
+                "file_id": arquivo_id,
+                "type_id": type_id,
+                "import_id": import_id,
+                "user_id": user_id,
             },
         )
         return import_id
@@ -198,9 +220,7 @@ class EtlRepository:
         )
         return bool(cast(CursorResult[Any], result).rowcount)
 
-    async def create_job(
-        self, tenant_id: int, import_id: int, operation: str
-    ) -> int:
+    async def create_job(self, tenant_id: int, import_id: int, operation: str) -> int:
         job_id = int(
             await self.session.scalar(
                 text(
@@ -212,9 +232,7 @@ class EtlRepository:
                 {
                     "tenant_id": tenant_id,
                     "reference": f"importacao:{import_id}:{operation}",
-                    "params": json.dumps(
-                        {"importacao_id": import_id, "operacao": operation}
-                    ),
+                    "params": json.dumps({"importacao_id": import_id, "operacao": operation}),
                 },
             )
         )
@@ -227,16 +245,12 @@ class EtlRepository:
             ),
             {
                 "job_id": job_id,
-                "context": json.dumps(
-                    {"importacao_id": import_id, "operacao": operation}
-                ),
+                "context": json.dumps({"importacao_id": import_id, "operacao": operation}),
             },
         )
         return job_id
 
-    async def approve(
-        self, tenant_id: int, import_id: int, user_id: int
-    ) -> bool:
+    async def approve(self, tenant_id: int, import_id: int, user_id: int) -> bool:
         result = await self.session.execute(
             text(
                 "UPDATE etl.importacao SET aprovado_por = :user_id, aprovado_em = now(), "
@@ -285,9 +299,7 @@ class EtlRepository:
             "avisos": warnings,
         }
 
-    async def errors(
-        self, tenant_id: int, import_id: int
-    ) -> list[dict[str, Any]]:
+    async def errors(self, tenant_id: int, import_id: int) -> list[dict[str, Any]]:
         result = await self.session.execute(
             text(
                 "SELECT e.id, l.numero_linha, e.etapa, e.campo, e.valor, "
@@ -301,9 +313,7 @@ class EtlRepository:
         )
         return [dict(row) for row in result.mappings()]
 
-    async def duplicates(
-        self, tenant_id: int, import_id: int
-    ) -> list[dict[str, Any]]:
+    async def duplicates(self, tenant_id: int, import_id: int) -> list[dict[str, Any]]:
         result = await self.session.execute(
             text(
                 "SELECT d.id, d.staging_pessoa_id, d.pessoa_candidata_id, "

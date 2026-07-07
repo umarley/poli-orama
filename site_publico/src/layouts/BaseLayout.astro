@@ -1,41 +1,93 @@
 ---
-import '../styles/global.css';
+import "../styles/global.css";
+import Footer from "../components/Footer.astro";
+import Header from "../components/Header.astro";
 
-interface Props {
+export interface Props {
   title: string;
   description: string;
+  canonicalPath?: string;
+  image?: string;
+  noindex?: boolean;
+  type?: "website" | "article";
+  structuredData?: Record<string, unknown>[];
 }
 
-const { title, description } = Astro.props;
-const loginUrl = import.meta.env.PUBLIC_APP_LOGIN_URL || 'http://localhost:5173/login';
+const {
+  title,
+  description,
+  canonicalPath = Astro.url.pathname,
+  image = "/og-default.svg",
+  noindex = false,
+  type = "website",
+  structuredData = [],
+} = Astro.props;
+const site = Astro.site || new URL(import.meta.env.PUBLIC_SITE_URL || "http://localhost:4321");
+const canonical = new URL(canonicalPath, site);
+const socialImage = new URL(image, site);
+const environment = import.meta.env.PUBLIC_ENVIRONMENT || "development";
+const shouldNoindex = noindex || environment === "staging";
+const analyticsProvider = import.meta.env.PUBLIC_ANALYTICS_PROVIDER || "none";
+const analyticsId = import.meta.env.PUBLIC_ANALYTICS_ID || "";
+const organizationSchema = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: "Vurix Eleitoral",
+  url: site.toString(),
+  logo: new URL("/logo.svg", site).toString(),
+};
 ---
 
 <!doctype html>
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content={description} />
-    <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)} />
+    <meta name="robots" content={shouldNoindex ? "noindex,nofollow" : "index,follow"} />
+    <link rel="canonical" href={canonical} />
+    <meta property="og:locale" content="pt_BR" />
+    <meta property="og:site_name" content="Vurix Eleitoral" />
+    <meta property="og:type" content={type} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={socialImage} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={socialImage} />
+    <meta name="theme-color" content="#113b5c" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>{title}</title>
+    {[organizationSchema, ...structuredData].map((item) => (
+      <script is:inline type="application/ld+json" set:html={JSON.stringify(item)} />
+    ))}
+    {analyticsProvider === "plausible" && analyticsId && (
+      <script is:inline defer data-domain={analyticsId} src="https://plausible.io/js/script.js"></script>
+    )}
+    {analyticsProvider === "google" && analyticsId && (
+      <>
+        <script is:inline async src={`https://www.googletagmanager.com/gtag/js?id=${analyticsId}`}></script>
+        <script is:inline define:vars={{ analyticsId }}>
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){window.dataLayer.push(arguments);}
+          gtag("js", new Date());
+          gtag("config", analyticsId, { send_page_view: false });
+        </script>
+      </>
+    )}
   </head>
   <body>
-    <header class="site-header">
-      <a class="brand" href="/">Vurix <span>Eleitoral</span></a>
-      <nav aria-label="Navegação principal">
-        <a href="/planos">Planos</a>
-        <a href="/demo">Agendar demo</a>
-        <a href="/contato">Contato</a>
-        <a class="button secondary" href={loginUrl}>Entrar</a>
-      </nav>
-    </header>
-    <main>
-      <slot />
-    </main>
-    <footer>
-      <strong>Vurix Eleitoral</strong>
-      <span>Inteligência e operação para campanhas.</span>
-      <nav><a href="/contato">Contato e privacidade</a></nav>
-    </footer>
+    <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+    <Header />
+    <main id="conteudo"><slot /></main>
+    <Footer />
+    <script>
+      import { captureAttribution } from "../lib/attribution";
+      import { track } from "../lib/analytics";
+      captureAttribution();
+      track("page_view");
+    </script>
   </body>
 </html>

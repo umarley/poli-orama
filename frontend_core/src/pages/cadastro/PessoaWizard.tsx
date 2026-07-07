@@ -12,13 +12,14 @@ import {
   Switch,
 } from 'antd';
 import type { Dayjs } from 'dayjs';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { ElectoralLocationFields } from '@/components/territorios/ElectoralLocationFields';
 import { buscarPessoas, criarPessoa } from '@/modules/cadastro/pessoas-service';
 import type {
   BuscaRapidaItem,
+  EstadoCivil,
   Lideranca,
   PessoaCreateInput,
   PessoaTipo,
@@ -33,7 +34,7 @@ interface WizardValues {
   apelido?: string;
   sexo?: 'M' | 'F' | 'O' | 'N';
   data_nascimento?: Dayjs;
-  estado_civil?: string;
+  estado_civil?: number;
   tipo_documento?: TipoDocumento;
   documento?: string;
   tipo_contato?: TipoContato;
@@ -57,8 +58,39 @@ interface PessoaWizardProps {
   open: boolean;
   tipos: PessoaTipo[];
   liderancas: Lideranca[];
+  estadosCivis: EstadoCivil[];
   onClose: () => void;
   onCreated: (id: number) => void;
+}
+
+const phoneContactTypes = new Set<TipoContato>(['whatsapp', 'celular', 'telefone']);
+
+function formatPhoneContact(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 11);
+  if (!digits) return '';
+  if (digits.length <= 2) return `(${digits}`;
+
+  const areaCode = digits.slice(0, 2);
+  const number = digits.slice(2);
+  if (number.length <= 4) return `(${areaCode}) ${number}`;
+  if (number.length <= 8) {
+    return `(${areaCode}) ${number.slice(0, 4)}-${number.slice(4)}`;
+  }
+  return `(${areaCode}) ${number.slice(0, 5)}-${number.slice(5)}`;
+}
+
+function formatCpfDocument(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 11);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+  if (digits.length <= 9) {
+    return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+  }
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+}
+
+function onlyDigits(value: string): string {
+  return value.replace(/\D/g, '');
 }
 
 const stepFields: Array<Array<keyof WizardValues>> = [
@@ -76,12 +108,33 @@ const stepFields: Array<Array<keyof WizardValues>> = [
   ],
 ];
 
-export function PessoaWizard({ open, tipos, liderancas, onClose, onCreated }: PessoaWizardProps) {
+export function PessoaWizard({
+  open,
+  tipos,
+  liderancas,
+  estadosCivis,
+  onClose,
+  onCreated,
+}: PessoaWizardProps) {
   const [form] = Form.useForm<WizardValues>();
+  const documentType = Form.useWatch('tipo_documento', form) ?? 'cpf';
+  const contactType = Form.useWatch('tipo_contato', form) ?? 'whatsapp';
+  const isCpfDocument = documentType === 'cpf';
+  const isPhoneContact = phoneContactTypes.has(contactType);
   const [step, setStep] = useState(0);
   const [duplicates, setDuplicates] = useState<BuscaRapidaItem[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const currentDocument = form.getFieldValue('documento');
+    if (currentDocument) {
+      const nextDocument = isCpfDocument ? formatCpfDocument(currentDocument) : onlyDigits(currentDocument);
+      if (nextDocument !== currentDocument) {
+        form.setFieldValue('documento', nextDocument);
+      }
+    }
+  }, [documentType, form, isCpfDocument]);
 
   const close = () => {
     form.resetFields();
@@ -256,7 +309,11 @@ export function PessoaWizard({ open, tipos, liderancas, onClose, onCreated }: Pe
             </Col>
             <Col xs={24} md={8}>
               <Form.Item name="data_nascimento" label="Nascimento">
-                <DatePicker format="DD/MM/YYYY" style={{ width: '100%' }} />
+                <DatePicker
+                  format={{ format: 'DD/MM/YYYY', type: 'mask' }}
+                  placeholder="DD/MM/AAAA"
+                  style={{ width: '100%' }}
+                />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
@@ -274,7 +331,16 @@ export function PessoaWizard({ open, tipos, liderancas, onClose, onCreated }: Pe
             </Col>
             <Col xs={24} md={8}>
               <Form.Item name="estado_civil" label="Estado civil">
-                <Input />
+                <Select
+                  allowClear
+                  showSearch
+                  optionFilterProp="label"
+                  placeholder="Selecione"
+                  options={estadosCivis.map((item) => ({
+                    value: item.id,
+                    label: item.nome,
+                  }))}
+                />
               </Form.Item>
             </Col>
           </Row>
@@ -294,8 +360,17 @@ export function PessoaWizard({ open, tipos, liderancas, onClose, onCreated }: Pe
               </Form.Item>
             </Col>
             <Col xs={24} md={16}>
-              <Form.Item name="documento" label="Número">
-                <Input onBlur={checkDuplicates} />
+              <Form.Item
+                name="documento"
+                label="Número"
+                normalize={(value: string) => (isCpfDocument ? formatCpfDocument(value) : value)}
+              >
+                <Input
+                  inputMode={isCpfDocument ? 'numeric' : undefined}
+                  maxLength={isCpfDocument ? 14 : undefined}
+                  placeholder={isCpfDocument ? '###.###.###-##' : undefined}
+                  onBlur={checkDuplicates}
+                />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
@@ -311,8 +386,37 @@ export function PessoaWizard({ open, tipos, liderancas, onClose, onCreated }: Pe
               </Form.Item>
             </Col>
             <Col xs={24} md={16}>
-              <Form.Item name="contato" label="Contato">
-                <Input onBlur={checkDuplicates} />
+              <Form.Item
+                name="contato"
+                label="Contato"
+                normalize={(value: string) =>
+                  isPhoneContact ? formatPhoneContact(value) : value
+                }
+                rules={[
+                  {
+                    validator: (_, value?: string) => {
+                      if (!value) return Promise.resolve();
+                      if (contactType === 'email') {
+                        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+                          ? Promise.resolve()
+                          : Promise.reject(new Error('Informe um e-mail válido.'));
+                      }
+                      const digitCount = value.replace(/\D/g, '').length;
+                      return digitCount === 10 || digitCount === 11
+                        ? Promise.resolve()
+                        : Promise.reject(
+                            new Error('Informe um telefone com DDD e 10 ou 11 dígitos.'),
+                          );
+                    },
+                  },
+                ]}
+              >
+                <Input
+                  inputMode={isPhoneContact ? 'tel' : 'email'}
+                  maxLength={isPhoneContact ? 15 : undefined}
+                  placeholder={isPhoneContact ? '(##) #####-####' : 'nome@exemplo.com'}
+                  onBlur={checkDuplicates}
+                />
               </Form.Item>
             </Col>
           </Row>
