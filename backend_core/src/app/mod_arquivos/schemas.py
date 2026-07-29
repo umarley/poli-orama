@@ -15,6 +15,7 @@ EntityType = Literal[
     "comunidade",
     "lideranca",
     "convite",
+    "tenant",
 ]
 
 

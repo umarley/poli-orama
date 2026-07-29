@@ -14,6 +14,8 @@ export interface DemandCatalog {
 
 export interface Demand {
   id: number;
+  origem_contexto: 'campanha' | 'gabinete' | 'institucional';
+  campanha_eleicao_id: number | null;
   protocolo: string | null;
   titulo: string | null;
   descricao: string;
@@ -70,6 +72,8 @@ export interface DemandFilters {
 }
 
 export interface DemandInput {
+  origem_contexto?: 'campanha' | 'gabinete' | 'institucional';
+  campanha_eleicao_id?: number;
   titulo?: string;
   descricao: string;
   pessoa_solicitante_id?: number;

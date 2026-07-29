@@ -15,9 +15,11 @@ from app.core.router import router as health_router
 from app.mod_agenda.router import router as agenda_router
 from app.mod_arquivos.router import router as arquivos_router
 from app.mod_cadastro.router import router as cadastro_router
+from app.mod_callcenter.router import router as callcenter_router
 from app.mod_comunicacao.router import router as comunicacao_router
 from app.mod_dashboard.router import router as dashboard_router
 from app.mod_demandas.router import router as demandas_router
+from app.mod_eleicoes.router import router as eleicoes_router
 from app.mod_etl.router import router as etl_router
 from app.mod_metas.router import router as metas_router
 from app.mod_territorio.router import router as territorio_router
@@ -64,11 +66,13 @@ app.include_router(public_router)
 app.include_router(auth_router, prefix=settings.api_v1_prefix)
 app.include_router(tenants_router, prefix=settings.api_v1_prefix)
 app.include_router(cadastro_router, prefix=settings.api_v1_prefix)
+app.include_router(callcenter_router, prefix=settings.api_v1_prefix)
 app.include_router(comunicacao_router, prefix=settings.api_v1_prefix)
 app.include_router(territorio_router, prefix=settings.api_v1_prefix)
 app.include_router(metas_router, prefix=settings.api_v1_prefix)
 app.include_router(agenda_router, prefix=settings.api_v1_prefix)
 app.include_router(arquivos_router, prefix=settings.api_v1_prefix)
 app.include_router(demandas_router, prefix=settings.api_v1_prefix)
+app.include_router(eleicoes_router, prefix=settings.api_v1_prefix)
 app.include_router(etl_router, prefix=settings.api_v1_prefix)
 app.include_router(dashboard_router, prefix=settings.api_v1_prefix)

@@ -1,12 +1,15 @@
 import asyncio
-from datetime import date
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.access import RequestActor
 from app.core.errors import BusinessRuleError
+from app.mod_cadastro.repository import CadastroRepository
 from app.mod_cadastro.router import router
 from app.mod_cadastro.service import CadastroService
 from app.schemas.cadastro import (
@@ -16,6 +19,8 @@ from app.schemas.cadastro import (
 )
 from app.schemas.cadastro_operacional import (
     HierarquiaInput,
+    HierarquiaStatusInput,
+    IndicacaoPessoaInput,
     PessoaCadastroCreate,
     PessoaFiltros,
     PessoaMergeRequest,
@@ -125,6 +130,61 @@ def test_hierarchy_cycle_is_rejected() -> None:
     assert error.value.code == "leadership_cycle"
 
 
+@pytest.mark.asyncio
+async def test_person_cannot_receive_two_active_leaderships() -> None:
+    repository = AsyncMock()
+    repository.get_person.return_value = SimpleNamespace(id=2, tenant_id=10)
+    repository.hierarchy_would_cycle.return_value = False
+    repository.active_hierarchy_for_person.return_value = SimpleNamespace(id=99)
+    service = CadastroService(repository)
+
+    with pytest.raises(BusinessRuleError) as error:
+        await service.add_hierarchy(
+            make_actor(),
+            HierarquiaInput(lideranca_superior_id=1, pessoa_subordinada_id=2),
+        )
+
+    assert error.value.code == "person_already_has_active_leadership"
+    repository.add_hierarchy.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_new_hierarchy_uses_current_active_campaign() -> None:
+    session = MagicMock(spec=AsyncSession)
+    session.scalar = AsyncMock(return_value=37)
+    session.flush = AsyncMock()
+    repository = CadastroRepository(session)
+
+    item = await repository.add_hierarchy(
+        10,
+        HierarquiaInput(lideranca_superior_id=1, pessoa_subordinada_id=2),
+    )
+
+    assert item.tenant_id == 10
+    assert item.campanha_eleicao_id == 37
+    assert session.scalar.await_args.args[1] == {"tenant_id": 10}
+    session.add.assert_called_once_with(item)
+    session.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_inactive_link_cannot_be_reactivated_when_another_is_active() -> None:
+    repository = AsyncMock()
+    repository.hierarchy.return_value = SimpleNamespace(
+        id=10, pessoa_subordinada_id=2, ativo=False, data_fim=date.today()
+    )
+    repository.active_hierarchy_for_person.return_value = SimpleNamespace(id=11)
+    service = CadastroService(repository)
+
+    with pytest.raises(BusinessRuleError) as error:
+        await service.set_hierarchy_status(
+            make_actor(), 10, HierarquiaStatusInput(ativo=True)
+        )
+
+    assert error.value.code == "person_already_has_active_leadership"
+    repository.set_hierarchy_status.assert_not_awaited()
+
+
 def test_cadastro_router_exposes_required_operational_routes() -> None:
     paths = {route.path for route in router.routes}
     assert {
@@ -196,3 +256,57 @@ def test_indication_graph_maps_nodes_and_direction() -> None:
     assert {node.nome for node in graph.nodes} == {"Origem", "Destino"}
     assert graph.edges[0].origem_id == 10
     assert graph.edges[0].destino_id == 11
+
+
+@pytest.mark.asyncio
+async def test_indication_uses_url_person_as_indicator() -> None:
+    repository = AsyncMock()
+    repository.get_person.side_effect = lambda tenant_id, person_id: SimpleNamespace(
+        id=person_id, tenant_id=tenant_id
+    )
+    repository.person_has_indication.return_value = False
+    repository.add_indication.return_value = SimpleNamespace(
+        id=50,
+        tenant_id=10,
+        pessoa_indicante_id=100,
+        pessoa_indicada_id=200,
+        pessoa_indicada_nome=None,
+        origem="visita",
+        contexto="Apresentacao no comite",
+        data_indicacao=date(2026, 7, 21),
+        criado_em=datetime.now(UTC),
+    )
+    service = CadastroService(repository)
+
+    await service.add_indication(
+        make_actor(),
+        100,
+        IndicacaoPessoaInput(
+            pessoa_indicada_id=200,
+            origem="visita",
+            contexto="Apresentacao no comite",
+            data_indicacao=date(2026, 7, 21),
+        ),
+    )
+
+    args = repository.add_indication.await_args.args
+    assert args[0:2] == (10, 200)
+    assert args[2].pessoa_indicante_id == 100
+
+
+@pytest.mark.asyncio
+async def test_person_can_only_be_indicated_once() -> None:
+    repository = AsyncMock()
+    repository.get_person.side_effect = lambda tenant_id, person_id: SimpleNamespace(
+        id=person_id, tenant_id=tenant_id
+    )
+    repository.person_has_indication.return_value = True
+    service = CadastroService(repository)
+
+    with pytest.raises(BusinessRuleError) as error:
+        await service.add_indication(
+            make_actor(), 100, IndicacaoPessoaInput(pessoa_indicada_id=200)
+        )
+
+    assert error.value.code == "person_already_indicated"
+    repository.add_indication.assert_not_awaited()

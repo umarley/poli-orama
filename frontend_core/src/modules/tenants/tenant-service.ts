@@ -54,6 +54,22 @@ export async function updateTenantConfiguration(
   return data;
 }
 
+export async function uploadTenantLogo(file: File): Promise<TenantConfiguration> {
+  const body = new FormData();
+  body.append('arquivo', file);
+  const { data } = await httpClient.post<TenantConfiguration>(
+    '/api/v1/me/tenant/configuracao/logo',
+    body,
+    { headers: { 'Content-Type': 'multipart/form-data' } },
+  );
+  return data;
+}
+
+export async function getTenantLogoBlob(url: string): Promise<Blob> {
+  const { data } = await httpClient.get<Blob>(url, { responseType: 'blob' });
+  return data;
+}
+
 export async function getPlanUsage(): Promise<PlanUsage> {
   const { data } = await httpClient.get<PlanUsage>('/api/v1/me/tenant/assinatura');
   return data;

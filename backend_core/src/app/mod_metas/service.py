@@ -50,6 +50,15 @@ class MetaService:
     def __init__(self, repository: MetaRepository) -> None:
         self.repository = repository
 
+    async def active_campaign_id(self, actor: RequestActor) -> int:
+        campaign_id = await self.repository.active_campaign_id(actor.tenant_id)
+        if campaign_id is None:
+            raise BusinessRuleError(
+                "Nao existe campanha eleitoral ativa para registrar ou consultar metas.",
+                code="active_campaign_required",
+            )
+        return campaign_id
+
     async def accessible_territories(
         self, actor: RequestActor, access: TerritorialAccess
     ) -> set[int] | None:
@@ -82,10 +91,6 @@ class MetaService:
     async def create_period(
         self, actor: RequestActor, payload: GoalPeriodCreate
     ) -> dict[str, Any]:
-        if payload.eleicao_id and not await self.repository.election_exists(
-            actor.tenant_id, payload.eleicao_id
-        ):
-            raise ResourceNotFoundError("Eleicao", payload.eleicao_id)
         item = await self.repository.create_period(actor.tenant_id, payload)
         await self._audit(actor, "criar", "periodo_meta", item["id"], None, item)
         await self.repository.commit()
@@ -101,10 +106,6 @@ class MetaService:
         end = payload.data_fim or current["data_fim"]
         if end < start:
             raise BusinessRuleError("A data final deve ser igual ou posterior a inicial.")
-        if payload.eleicao_id and not await self.repository.election_exists(
-            actor.tenant_id, payload.eleicao_id
-        ):
-            raise ResourceNotFoundError("Eleicao", payload.eleicao_id)
         updated = await self.repository.update_period(actor.tenant_id, period_id, payload)
         assert updated is not None
         await self._audit(actor, "editar", "periodo_meta", period_id, current, updated)
@@ -185,20 +186,27 @@ class MetaService:
             accessible_ids=accessible_ids,
             coordinator_id=payload.coordenador_id,
         )
-        goal_id = await self.repository.create_goal(actor.tenant_id, actor.user_id, payload)
-        created = await self.repository.get_goal(actor.tenant_id, goal_id)
+        campaign_id = await self.active_campaign_id(actor)
+        goal_id = await self.repository.create_goal(
+            actor.tenant_id, campaign_id, actor.user_id, payload
+        )
+        created = await self.repository.get_goal(actor.tenant_id, goal_id, campaign_id)
         assert created is not None
         person_ids = await self.goal_person_ids(actor.tenant_id, created)
         base = len(person_ids)
+        confirmed = len(
+            await self.repository.confirmed_person_ids(
+                actor.tenant_id, goal_id, person_ids
+            )
+        )
         engagement = await self.repository.average_person_engagement(
             actor.tenant_id, person_ids
         )
-        percentage = self.percentage(base, payload.quantidade_meta)
+        percentage = self.percentage(confirmed, payload.quantidade_meta)
         threshold = await self.repository.risk_threshold(actor.tenant_id)
         risk_status = self.risk_status(percentage, threshold)
         initial_tracking = GoalTrackingCreate(
             data_referencia=date.today(),
-            quantidade_projetada=base,
             observacao="Calculo inicial automatico",
         )
         await self.repository.upsert_tracking(
@@ -207,6 +215,8 @@ class MetaService:
             goal_id,
             initial_tracking,
             base_count=base,
+            projected_count=base,
+            confirmed_count=confirmed,
             percentage=percentage,
             risk_status=risk_status,
         )
@@ -272,7 +282,9 @@ class MetaService:
             ),
         )
         await self.repository.update_goal(actor.tenant_id, goal_id, payload)
-        updated = await self.repository.get_goal(actor.tenant_id, goal_id)
+        updated = await self.repository.get_goal(
+            actor.tenant_id, goal_id, current["campanha_eleicao_id"]
+        )
         assert updated is not None
         await self.persist_goal_state(actor, updated)
         await self._audit(
@@ -310,7 +322,8 @@ class MetaService:
     async def ensure_goal_access(
         self, actor: RequestActor, access: TerritorialAccess, goal_id: int
     ) -> dict[str, Any]:
-        goal = await self.repository.get_goal(actor.tenant_id, goal_id)
+        campaign_id = await self.active_campaign_id(actor)
+        goal = await self.repository.get_goal(actor.tenant_id, goal_id, campaign_id)
         if goal is None:
             raise ResourceNotFoundError("Meta", goal_id)
         if access.unrestricted:
@@ -323,6 +336,7 @@ class MetaService:
             leader_id=None,
             period_id=None,
             status=None,
+            campaign_id=campaign_id,
             accessible_ids=accessible_ids,
         )
         if not any(item["id"] == goal_id for item in visible):
@@ -342,6 +356,7 @@ class MetaService:
         accessible_ids = await self.accessible_territories(actor, access)
         if territory_id and accessible_ids is not None and territory_id not in accessible_ids:
             raise AuthorizationError("Territorio fora do escopo permitido.")
+        campaign_id = await self.active_campaign_id(actor)
         goals = await self.repository.list_goals(
             actor.tenant_id,
             actor.user_id,
@@ -349,6 +364,7 @@ class MetaService:
             leader_id=leader_id,
             period_id=period_id,
             status=status,
+            campaign_id=campaign_id,
             accessible_ids=accessible_ids,
         )
         return [await self.enrich_goal(actor.tenant_id, goal) for goal in goals]
@@ -370,12 +386,17 @@ class MetaService:
     ) -> set[int]:
         targets = await self.repository.list_targets(tenant_id, goal["id"])
         if not targets and goal["tipo_codigo"] == "global":
-            return await self.repository.global_person_ids(tenant_id)
+            return await self.repository.global_person_ids(
+                tenant_id, goal["campanha_eleicao_id"]
+            )
         person_ids: set[int] = set()
         for target in targets:
             person_ids.update(
                 await self.repository.target_person_ids(
-                    tenant_id, target["tipo_alvo"], target["alvo_id"]
+                    tenant_id,
+                    goal["campanha_eleicao_id"],
+                    target["tipo_alvo"],
+                    target["alvo_id"],
                 )
             )
         return person_ids
@@ -392,14 +413,9 @@ class MetaService:
         engagement = await self.repository.average_person_engagement(
             tenant_id, person_ids
         )
-        latest = tracking[0] if tracking else None
-        current = (
-            latest["quantidade_confirmada"]
-            if latest and latest["quantidade_confirmada"] is not None
-            else (
-                latest["quantidade_projetada"]
-                if latest and latest["quantidade_projetada"] is not None
-                else base
+        current = len(
+            await self.repository.confirmed_person_ids(
+                tenant_id, goal["id"], person_ids
             )
         )
         percentage = self.percentage(current, goal["quantidade_meta"])
@@ -435,14 +451,9 @@ class MetaService:
         tracking = await self.repository.list_tracking(actor.tenant_id, goal["id"])
         person_ids = await self.goal_person_ids(actor.tenant_id, goal)
         base = len(person_ids)
-        latest = tracking[0] if tracking else None
-        current = (
-            latest["quantidade_confirmada"]
-            if latest and latest["quantidade_confirmada"] is not None
-            else (
-                latest["quantidade_projetada"]
-                if latest and latest["quantidade_projetada"] is not None
-                else base
+        current = len(
+            await self.repository.confirmed_person_ids(
+                actor.tenant_id, goal["id"], person_ids
             )
         )
         percentage = self.percentage(current, goal["quantidade_meta"])
@@ -479,15 +490,15 @@ class MetaService:
             raise BusinessRuleError("Meta encerrada nao aceita novo acompanhamento.")
         person_ids = await self.goal_person_ids(actor.tenant_id, goal)
         base = len(person_ids)
+        confirmed = len(
+            await self.repository.confirmed_person_ids(
+                actor.tenant_id, goal_id, person_ids
+            )
+        )
         engagement = await self.repository.average_person_engagement(
             actor.tenant_id, person_ids
         )
-        current = (
-            payload.quantidade_confirmada
-            if payload.quantidade_confirmada is not None
-            else payload.quantidade_projetada or 0
-        )
-        percentage = self.percentage(current, goal["quantidade_meta"])
+        percentage = self.percentage(confirmed, goal["quantidade_meta"])
         threshold = await self.repository.risk_threshold(actor.tenant_id)
         risk_status = self.risk_status(percentage, threshold)
         tracking = await self.repository.upsert_tracking(
@@ -496,6 +507,8 @@ class MetaService:
             goal_id,
             payload,
             base_count=base,
+            projected_count=base,
+            confirmed_count=confirmed,
             percentage=percentage,
             risk_status=risk_status,
         )
@@ -568,11 +581,12 @@ class MetaService:
         ranking_date: date | None = None,
     ) -> list[LeadershipRankingResponse]:
         reference = ranking_date or date.today()
+        campaign_id = await self.active_campaign_id(actor)
         accessible_ids = await self.accessible_territories(actor, access)
         visible_leader_ids = await self.repository.visible_leader_ids(
             actor.tenant_id, actor.user_id, accessible_ids
         )
-        metrics = await self.repository.ranking_metrics(actor.tenant_id)
+        metrics = await self.repository.ranking_metrics(actor.tenant_id, campaign_id)
         raw_goals = await self.repository.list_goals(
             actor.tenant_id,
             actor.user_id,
@@ -580,6 +594,7 @@ class MetaService:
             leader_id=None,
             period_id=None,
             status=None,
+            campaign_id=campaign_id,
             accessible_ids=None,
         )
         active_goals = [
@@ -606,13 +621,19 @@ class MetaService:
             target = sum(goal.quantidade_meta for goal in leader_goals)
             current = sum(goal.quantidade_atual for goal in leader_goals)
             percentage = self.percentage(current, target)
-            confirmations = 0
-            for goal in leader_goals:
-                tracking = await self.repository.list_tracking(
-                    actor.tenant_id, goal.id
-                )
-                if tracking:
-                    confirmations += tracking[0]["quantidade_confirmada"] or 0
+            confirmations = len(
+                {
+                    person_id
+                    for goal in leader_goals
+                    for person_id in await self.repository.confirmed_person_ids(
+                        actor.tenant_id,
+                        goal.id,
+                        await self.goal_person_ids(
+                            actor.tenant_id, goal.model_dump()
+                        ),
+                    )
+                }
+            )
             points = ranking_score(
                 percentage,
                 metric["total_cadastros"],
@@ -638,11 +659,14 @@ class MetaService:
         )
         for position, row in enumerate(ranking_rows, 1):
             row["posicao"] = position
-        await self.repository.replace_ranking(actor.tenant_id, reference, ranking_rows)
+        await self.repository.replace_ranking(
+            actor.tenant_id, campaign_id, reference, ranking_rows
+        )
         await self.repository.commit()
         results = [
             LeadershipRankingResponse(
                 id=position,
+                campanha_eleicao_id=campaign_id,
                 lideranca_id=row["lideranca_id"],
                 nome_lideranca=row["nome_lideranca"],
                 data_referencia=reference,
@@ -674,7 +698,10 @@ class MetaService:
         visible_leader_ids = await self.repository.visible_leader_ids(
             actor.tenant_id, actor.user_id, accessible_ids
         )
-        rows = await self.repository.list_ranking(actor.tenant_id, ranking_date)
+        campaign_id = await self.active_campaign_id(actor)
+        rows = await self.repository.list_ranking(
+            actor.tenant_id, campaign_id, ranking_date
+        )
         if not rows:
             return await self.recalculate_ranking(actor, access, ranking_date)
         threshold = await self.repository.risk_threshold(actor.tenant_id)
@@ -692,6 +719,7 @@ class MetaService:
                 leader_id=row["lideranca_id"],
                 period_id=None,
                 status=None,
+                campaign_id=campaign_id,
                 accessible_ids=None,
             )
             enriched = [

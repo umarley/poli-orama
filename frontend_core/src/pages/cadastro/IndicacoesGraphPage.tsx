@@ -1,23 +1,12 @@
 import { ApartmentOutlined, FilterOutlined, SearchOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
-import {
-  Alert,
-  Button,
-  Card,
-  DatePicker,
-  Empty,
-  Form,
-  Input,
-  Select,
-  Space,
-  Spin,
-  Statistic,
-} from 'antd';
+import { Alert, Button, Card, DatePicker, Empty, Form, Input, Select, Space, Spin } from 'antd';
 import type { Dayjs } from 'dayjs';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { PageHeader } from '@/components/layout/PageHeader';
+import { LocalizedStatistic as Statistic } from '@/components/data/LocalizedStatistic';
 import { buscarPessoas, obterGrafoIndicacoes } from '@/modules/cadastro/pessoas-service';
 import type {
   IndicacaoGraphEdge,
@@ -70,20 +59,24 @@ function layoutGraph(nodes: IndicacaoGraphNode[], edges: IndicacaoGraphEdge[]) {
     const level = levels.get(node.id) ?? 0;
     groups.set(level, [...(groups.get(level) ?? []), node]);
   });
+  const maxColumns = Math.max(1, ...[...groups.values()].map((items) => items.length));
+  const canvasWidth = Math.max(920, 100 + maxColumns * 230);
   const positions = new Map<number, Position>();
   groups.forEach((items, level) => {
+    const groupWidth = (items.length - 1) * 230 + 190;
+    const horizontalOffset = (canvasWidth - groupWidth) / 2;
     items
       .sort((left, right) => left.nome.localeCompare(right.nome, 'pt-BR'))
       .forEach((node, index) => {
-        positions.set(node.id, { x: 50 + level * 270, y: 44 + index * 108 });
+        positions.set(node.id, { x: horizontalOffset + index * 230, y: 44 + level * 130 });
       });
   });
   const maxLevel = Math.max(0, ...levels.values());
-  const maxRows = Math.max(1, ...[...groups.values()].map((items) => items.length));
   return {
     positions,
-    width: Math.max(920, 300 + maxLevel * 270),
-    height: Math.max(480, 100 + maxRows * 108),
+    rootId: roots[0]?.id ?? nodes[0]?.id,
+    width: canvasWidth,
+    height: Math.max(480, 150 + maxLevel * 130),
   };
 }
 
@@ -92,6 +85,7 @@ export function IndicacoesGraphPage() {
   const [form] = Form.useForm<FilterForm>();
   const [filters, setFilters] = useState<IndicacaoGraphFilters>({ profundidade: 3 });
   const [personSearch, setPersonSearch] = useState('');
+  const graphViewportRef = useRef<HTMLDivElement>(null);
   const peopleQuery = useQuery({
     queryKey: ['cadastro', 'busca-grafo', personSearch],
     queryFn: () => buscarPessoas(personSearch),
@@ -103,6 +97,23 @@ export function IndicacoesGraphPage() {
   });
   const graph = graphQuery.data;
   const layout = useMemo(() => layoutGraph(graph?.nodes ?? [], graph?.edges ?? []), [graph]);
+
+  useEffect(() => {
+    const viewport = graphViewportRef.current;
+    const rootPosition =
+      layout.rootId !== undefined ? layout.positions.get(layout.rootId) : undefined;
+    if (!viewport || !rootPosition) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      const rootCenter = rootPosition.x + 95;
+      viewport.scrollTo({
+        left: Math.max(0, rootCenter - viewport.clientWidth / 2),
+        top: 0,
+        behavior: 'auto',
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [layout]);
 
   const applyFilters = (values: FilterForm) => {
     setFilters({
@@ -201,7 +212,7 @@ export function IndicacoesGraphPage() {
         {!graphQuery.isPending && !graph?.nodes.length ? (
           <Empty description="Nenhuma indicação encontrada para os filtros selecionados." />
         ) : (
-          <div className={styles.graphViewport}>
+          <div ref={graphViewportRef} className={styles.graphViewport}>
             <div className={styles.canvas} style={{ width: layout.width, height: layout.height }}>
               <svg
                 className={styles.edges}
@@ -230,10 +241,10 @@ export function IndicacoesGraphPage() {
                     <line
                       key={edge.id}
                       className={styles.edge}
-                      x1={source.x + 190}
-                      y1={source.y + 37}
-                      x2={target.x}
-                      y2={target.y + 37}
+                      x1={source.x + 95}
+                      y1={source.y + 74}
+                      x2={target.x + 95}
+                      y2={target.y}
                       markerEnd="url(#arrow)"
                     >
                       <title>{edge.origem || 'Indicação direta'}</title>

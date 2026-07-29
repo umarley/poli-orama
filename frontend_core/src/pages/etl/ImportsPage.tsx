@@ -10,7 +10,6 @@ import {
   Row,
   Select,
   Space,
-  Statistic,
   Table,
   Tag,
   Upload,
@@ -20,14 +19,12 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { AppToast } from '@/components/feedback/AppToast';
+import { LocalizedStatistic as Statistic } from '@/components/data/LocalizedStatistic';
 import { PageHeader } from '@/components/layout/PageHeader';
-import {
-  createImport,
-  listImports,
-  listSources,
-} from '@/modules/etl/etl-service';
+import { createImport, listImports, listSources } from '@/modules/etl/etl-service';
 import { normalizeApiError } from '@/services/api/api-error';
 import { useSessionStore } from '@/stores/session-store';
+import { formatInteger } from '@/utils/number-format';
 
 interface UploadForm {
   fonte_dado_id: number;
@@ -49,9 +46,7 @@ const statusColors: Record<string, string> = {
 export function ImportsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const canCreate = useSessionStore((state) =>
-    state.user?.permissions.includes('etl.criar'),
-  );
+  const canCreate = useSessionStore((state) => state.user?.permissions.includes('etl.criar'));
   const [modalOpen, setModalOpen] = useState(false);
   const [form] = Form.useForm<UploadForm>();
   const imports = useQuery({
@@ -100,15 +95,34 @@ export function ImportsPage() {
         }
       />
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={12} lg={6}><Card><Statistic title="Importações" value={data.length} /></Card></Col>
         <Col xs={12} lg={6}>
-          <Card><Statistic title="Processando" value={data.filter((item) => item.status === 'processando').length} /></Card>
+          <Card>
+            <Statistic title="Importações" value={data.length} />
+          </Card>
         </Col>
         <Col xs={12} lg={6}>
-          <Card><Statistic title="Com erros" value={data.reduce((sum, item) => sum + item.linhas_erro, 0)} /></Card>
+          <Card>
+            <Statistic
+              title="Processando"
+              value={data.filter((item) => item.status === 'processando').length}
+            />
+          </Card>
         </Col>
         <Col xs={12} lg={6}>
-          <Card><Statistic title="Carregadas" value={data.reduce((sum, item) => sum + item.linhas_carregadas, 0)} /></Card>
+          <Card>
+            <Statistic
+              title="Com erros"
+              value={data.reduce((sum, item) => sum + item.linhas_erro, 0)}
+            />
+          </Card>
+        </Col>
+        <Col xs={12} lg={6}>
+          <Card>
+            <Statistic
+              title="Carregadas"
+              value={data.reduce((sum, item) => sum + item.linhas_carregadas, 0)}
+            />
+          </Card>
         </Col>
       </Row>
       <Card>
@@ -130,10 +144,10 @@ export function ImportsPage() {
                 </Space>
               ),
             },
-            { title: 'Total', dataIndex: 'total_linhas' },
-            { title: 'Válidas', dataIndex: 'linhas_validas' },
-            { title: 'Erros', dataIndex: 'linhas_erro' },
-            { title: 'Duplicadas', dataIndex: 'linhas_duplicadas' },
+            { title: 'Total', dataIndex: 'total_linhas', render: formatInteger },
+            { title: 'Válidas', dataIndex: 'linhas_validas', render: formatInteger },
+            { title: 'Erros', dataIndex: 'linhas_erro', render: formatInteger },
+            { title: 'Duplicadas', dataIndex: 'linhas_duplicadas', render: formatInteger },
             {
               title: 'Status',
               dataIndex: 'status',
@@ -152,12 +166,24 @@ export function ImportsPage() {
       >
         <Form form={form} layout="vertical">
           <Form.Item name="fonte_dado_id" label="Fonte" rules={[{ required: true }]}>
-            <Select options={(sources.data ?? []).map((item) => ({ value: item.id, label: item.nome }))} />
+            <Select
+              options={(sources.data ?? []).map((item) => ({ value: item.id, label: item.nome }))}
+            />
           </Form.Item>
-          <Form.Item name="descricao" label="Descrição"><Input /></Form.Item>
+          <Form.Item name="descricao" label="Descrição">
+            <Input />
+          </Form.Item>
           <Row gutter={12}>
-            <Col span={12}><Form.Item name="separador" label="Separador CSV"><Input placeholder="Automático" maxLength={1} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="aba" label="Aba Excel"><Input placeholder="Primeira aba" /></Form.Item></Col>
+            <Col span={12}>
+              <Form.Item name="separador" label="Separador CSV">
+                <Input placeholder="Automático" maxLength={1} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="aba" label="Aba Excel">
+                <Input placeholder="Primeira aba" />
+              </Form.Item>
+            </Col>
           </Row>
           <Form.Item
             name="arquivo"

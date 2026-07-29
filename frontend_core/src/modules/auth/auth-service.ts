@@ -1,6 +1,13 @@
 import { httpClient } from '@/services/api/http-client';
 
-import type { AuthenticationResponse, AuthUser, LoginInput, MfaSetup, UserSession } from './types';
+import type {
+  AuthenticationResponse,
+  AuthUser,
+  LoginInput,
+  MfaSetup,
+  TenantSwitchInput,
+  UserSession,
+} from './types';
 
 export async function login(payload: LoginInput): Promise<AuthenticationResponse> {
   const { data } = await httpClient.post<AuthenticationResponse>('/api/v1/auth/login', payload);
@@ -9,6 +16,14 @@ export async function login(payload: LoginInput): Promise<AuthenticationResponse
 
 export async function logout(): Promise<void> {
   await httpClient.post('/api/v1/auth/logout');
+}
+
+export async function switchTenant(payload: TenantSwitchInput): Promise<AuthenticationResponse> {
+  const { data } = await httpClient.post<AuthenticationResponse>(
+    '/api/v1/auth/switch-tenant',
+    payload,
+  );
+  return data;
 }
 
 export async function getCurrentUser(): Promise<AuthUser> {

@@ -133,3 +133,29 @@ imprime os slugs, perfis e e-mails que podem ser usados no login.
 Use `--database-url` para informar a conexao diretamente. URLs no formato
 `postgresql+asyncpg://` tambem sao aceitas. O script somente permite os ambientes
 `local` e `test`.
+
+### Massa completa para demonstração
+
+Com os tenants 17, 18 e 19 já existentes e os catálogos globais/eleitorais
+importados, valide a massa completa sem persistir alterações:
+
+```powershell
+python database/seeds/seed_application_demo.py --env-file backend_core/.env --dry-run
+```
+
+Depois do dry-run bem-sucedido, grave os dados:
+
+```powershell
+python database/seeds/seed_application_demo.py --env-file backend_core/.env
+```
+
+O script usa `lote-1.json` no tenant 17, `lote-2.json` no tenant 18 e os lotes
+3, 4 e 5 no tenant 19. Ele cria pessoas, documentos, contatos, endereços e
+coordenadas, dados eleitorais, segmentações, territórios, hierarquia de líderes,
+equipes, comunidades, núcleos familiares, indicações, interações, metas,
+eventos e demandas. A execução é idempotente: somente a massa marcada com
+`[SEED DEMO]` é substituída. Para validar apenas o tenant em uso:
+
+```powershell
+python database/seeds/seed_application_demo.py --env-file backend_core/.env --tenants 19 --dry-run
+```

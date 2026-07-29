@@ -1,12 +1,6 @@
 import { httpClient } from '@/services/api/http-client';
 
-import type {
-  DataImport,
-  DataSource,
-  ImportDuplicate,
-  ImportError,
-  ImportSummary,
-} from './types';
+import type { DataImport, DataSource, ImportDuplicate, ImportError, ImportSummary } from './types';
 
 const base = '/api/v1/etl';
 
@@ -26,16 +20,12 @@ export async function getImport(id: number) {
 }
 
 export async function getImportSummary(id: number) {
-  const { data } = await httpClient.get<ImportSummary>(
-    `${base}/importacoes/${id}/resumo`,
-  );
+  const { data } = await httpClient.get<ImportSummary>(`${base}/importacoes/${id}/resumo`);
   return data;
 }
 
 export async function getImportErrors(id: number) {
-  const { data } = await httpClient.get<ImportError[]>(
-    `${base}/importacoes/${id}/erros`,
-  );
+  const { data } = await httpClient.get<ImportError[]>(`${base}/importacoes/${id}/erros`);
   return data;
 }
 
@@ -65,10 +55,7 @@ export async function createImport(payload: {
   return data;
 }
 
-export async function updateMapping(
-  id: number,
-  mapping: Record<string, string>,
-) {
+export async function updateMapping(id: number, mapping: Record<string, string>) {
   const { data } = await httpClient.put(`${base}/importacoes/${id}/mapeamento`, {
     mapeamento: mapping,
     parametros: {},
@@ -87,10 +74,9 @@ export async function cancelImport(id: number) {
 }
 
 export async function downloadErrorReport(id: number) {
-  const { data } = await httpClient.get<Blob>(
-    `${base}/importacoes/${id}/relatorio-erros.csv`,
-    { responseType: 'blob' },
-  );
+  const { data } = await httpClient.get<Blob>(`${base}/importacoes/${id}/relatorio-erros.csv`, {
+    responseType: 'blob',
+  });
   const url = URL.createObjectURL(data);
   const anchor = document.createElement('a');
   anchor.href = url;

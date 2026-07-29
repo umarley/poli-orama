@@ -20,7 +20,6 @@ import {
   Row,
   Select,
   Space,
-  Statistic,
   Tag,
   Typography,
 } from 'antd';
@@ -29,6 +28,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { PageHeader } from '@/components/layout/PageHeader';
+import { LocalizedStatistic as Statistic } from '@/components/data/LocalizedStatistic';
 import { listarLiderancas } from '@/modules/cadastro/pessoas-service';
 import {
   getBirthdays,
@@ -39,6 +39,7 @@ import {
 import type { DashboardFilters } from '@/modules/dashboard/types';
 import { listarTerritorios } from '@/modules/territorios/territorios-service';
 import { useSessionStore } from '@/stores/session-store';
+import { formatInteger, formatNumber } from '@/utils/number-format';
 
 import styles from './DashboardPage.module.css';
 
@@ -73,7 +74,7 @@ export function DashboardPage() {
   });
   const leaders = useQuery({
     queryKey: ['cadastro', 'liderancas', 'dashboard-options'],
-    queryFn: listarLiderancas,
+    queryFn: () => listarLiderancas(),
   });
   const enabled = (widget: string) =>
     !configuration.data || configuration.data.widgets.includes(widget);
@@ -122,9 +123,7 @@ export function DashboardPage() {
               value: item.id,
               label: item.nome,
             }))}
-            onChange={(territorio_id) =>
-              setFilters((current) => ({ ...current, territorio_id }))
-            }
+            onChange={(territorio_id) => setFilters((current) => ({ ...current, territorio_id }))}
           />
           <Select
             allowClear
@@ -135,9 +134,7 @@ export function DashboardPage() {
               value: item.id,
               label: item.apelido_campanha || `Liderança #${item.id}`,
             }))}
-            onChange={(lideranca_id) =>
-              setFilters((current) => ({ ...current, lideranca_id }))
-            }
+            onChange={(lideranca_id) => setFilters((current) => ({ ...current, lideranca_id }))}
           />
         </Space>
       </Card>
@@ -156,21 +153,25 @@ export function DashboardPage() {
           <Col xs={24} md={12} xl={8}>
             <Card loading={overview.isPending} title="Cadastros" extra={<TeamOutlined />}>
               <Row gutter={12}>
-                <Col span={8}><Statistic title="Total" value={data?.cadastros.total ?? 0} /></Col>
+                <Col span={8}>
+                  <Statistic title="Total" value={data?.cadastros.total ?? 0} />
+                </Col>
                 <Col span={8}>
                   <Statistic title="Novos" value={data?.cadastros.novos_periodo ?? 0} />
                 </Col>
                 <Col span={8}>
                   <Statistic
-                    title="Pendentes"
+                    title="Incompletos"
                     value={data?.cadastros.incompletos_pendentes ?? 0}
-                    valueStyle={{ color: data?.cadastros.incompletos_pendentes ? '#d46b08' : undefined }}
+                    valueStyle={{
+                      color: data?.cadastros.incompletos_pendentes ? '#d46b08' : undefined,
+                    }}
                   />
                 </Col>
               </Row>
               <Typography.Text type="secondary">
-                Completude média: {data?.cadastros.completude_media ?? 0}% · Duplicidades:{' '}
-                {data?.cadastros.duplicidades_abertas ?? 0}
+                Completude média: {formatNumber(data?.cadastros.completude_media)}% · Duplicidades:{' '}
+                {formatInteger(data?.cadastros.duplicidades_abertas)}
               </Typography.Text>
             </Card>
           </Col>
@@ -215,7 +216,7 @@ export function DashboardPage() {
                 </Col>
               </Row>
               <Typography.Text type="secondary">
-                Atingimento médio: {data?.metas.percentual_medio ?? 0}%
+                Atingimento médio: {formatNumber(data?.metas.percentual_medio)}%
               </Typography.Text>
             </Card>
           </Col>
@@ -285,7 +286,14 @@ export function DashboardPage() {
               )}
               <List
                 dataSource={(birthdays.data?.mes ?? []).slice(0, 8)}
-                locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Nenhum aniversariante no mês" /> }}
+                locale={{
+                  emptyText: (
+                    <Empty
+                      image={Empty.PRESENTED_IMAGE_SIMPLE}
+                      description="Nenhum aniversariante no mês"
+                    />
+                  ),
+                }}
                 renderItem={(item) => (
                   <List.Item extra={<Tag>{dayjs(item.data_nascimento).format('DD/MM')}</Tag>}>
                     <List.Item.Meta

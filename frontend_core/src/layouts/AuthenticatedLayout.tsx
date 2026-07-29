@@ -18,34 +18,80 @@ import {
   Input,
   Layout,
   Menu,
+  Modal,
+  Select,
   Space,
   Tooltip,
   Typography,
 } from 'antd';
-import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import { canViewNavigationItem, getNavigationLabel, navigationItems } from '@/app/navigation';
 import { Brand } from '@/components/brand/Brand';
 import { ToastBridge } from '@/components/feedback/ToastBridge';
-import { logout } from '@/modules/auth/auth-service';
-import { useSessionStore } from '@/stores/session-store';
+import { AppToast } from '@/components/feedback/AppToast';
+import { logout, switchTenant } from '@/modules/auth/auth-service';
+import { getCurrentCampaign } from '@/modules/eleicoes/eleicoes-service';
+import { listTenants } from '@/modules/tenants/tenant-service';
+import { normalizeApiError } from '@/services/api/api-error';
+import { mapAuthUser, useSessionStore } from '@/stores/session-store';
 
 import styles from './AuthenticatedLayout.module.css';
 
 const { Header, Sider, Content, Footer } = Layout;
 
 export function AuthenticatedLayout() {
+  const queryClient = useQueryClient();
   const screens = Grid.useBreakpoint();
   const location = useLocation();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [tenantModalOpen, setTenantModalOpen] = useState(false);
+  const [selectedTenantId, setSelectedTenantId] = useState<number>();
+  const [switchingTenant, setSwitchingTenant] = useState(false);
   const user = useSessionStore((state) => state.user);
   const tenant = useSessionStore((state) => state.tenant);
   const currentCampaign = useSessionStore((state) => state.currentCampaign);
+  const setCurrentCampaign = useSessionStore((state) => state.setCurrentCampaign);
   const clearSession = useSessionStore((state) => state.clearSession);
+  const setSession = useSessionStore((state) => state.setSession);
+  const isSaasManager = user?.profiles.includes('gestor_saas') ?? false;
   const isMobile = screens.md === false;
+  const currentCampaignQuery = useQuery({
+    queryKey: ['current-campaign'],
+    queryFn: getCurrentCampaign,
+  });
+  const tenantsQuery = useQuery({
+    queryKey: ['tenants', 'switcher'],
+    queryFn: () => listTenants({}),
+    enabled: isSaasManager && tenantModalOpen,
+  });
+
+  useEffect(() => {
+    if (currentCampaignQuery.isSuccess) {
+      const campaign = currentCampaignQuery.data;
+      setCurrentCampaign(
+        campaign
+          ? {
+              id: campaign.uuid_publico,
+              name: campaign.nome,
+              office: campaign.cargo_pleiteado,
+              active: campaign.ativa,
+              election: {
+                id: String(campaign.eleicao_id),
+                year: campaign.eleicao_ano,
+                type: campaign.eleicao_tipo,
+                round: campaign.eleicao_turno,
+                date: campaign.eleicao_data,
+              },
+            }
+          : null,
+      );
+    }
+  }, [currentCampaignQuery.data, currentCampaignQuery.isSuccess, setCurrentCampaign]);
   const visibleMenuItems = navigationItems
     .filter((item) => canViewNavigationItem(item, user?.permissions ?? [], user?.profiles ?? []))
     .map((item) => ({ ...item }));
@@ -67,6 +113,41 @@ export function AuthenticatedLayout() {
     } finally {
       clearSession();
       navigate('/login', { replace: true });
+    }
+  };
+
+  const handleTenantSwitch = async () => {
+    if (!selectedTenantId) return;
+    setSwitchingTenant(true);
+    try {
+      const authentication = await switchTenant({
+        tenant_id: selectedTenantId,
+        dispositivo: window.navigator.userAgent.slice(0, 180),
+      });
+      const selectedTenant = authentication.usuario.tenant;
+      await queryClient.cancelQueries();
+      setSession(
+        mapAuthUser(authentication.usuario),
+        {
+          id: selectedTenant.id,
+          name: selectedTenant.nome,
+          slug: selectedTenant.slug,
+          status: selectedTenant.status,
+        },
+        null,
+        authentication.access_token,
+        authentication.refresh_token,
+        authentication.expires_in,
+      );
+      queryClient.clear();
+      setTenantModalOpen(false);
+      setSelectedTenantId(undefined);
+      AppToast.success(`Tenant alterado para ${selectedTenant.nome}.`);
+      navigate('/dashboard', { replace: true });
+    } catch (error) {
+      AppToast.error(normalizeApiError(error).message);
+    } finally {
+      setSwitchingTenant(false);
     }
   };
 
@@ -169,6 +250,16 @@ export function AuthenticatedLayout() {
                 trigger={['click']}
                 menu={{
                   items: [
+                    ...(isSaasManager
+                      ? [
+                          {
+                            key: 'tenant',
+                            label: 'Selecionar tenant',
+                            icon: <SafetyCertificateOutlined />,
+                            onClick: () => setTenantModalOpen(true),
+                          },
+                        ]
+                      : []),
                     {
                       key: 'security',
                       label: 'Segurança e acessos',
@@ -205,9 +296,37 @@ export function AuthenticatedLayout() {
         </Content>
 
         <Footer className={styles.footer}>
-          Vurix Eleitoral · Plataforma de inteligência para campanhas
+          Poliorama · Plataforma de inteligência para campanhas
         </Footer>
       </Layout>
+      <Modal
+        open={tenantModalOpen}
+        title="Selecionar tenant para suporte"
+        okText="Acessar tenant"
+        cancelText="Cancelar"
+        okButtonProps={{ disabled: !selectedTenantId }}
+        confirmLoading={switchingTenant}
+        onOk={() => void handleTenantSwitch()}
+        onCancel={() => setTenantModalOpen(false)}
+      >
+        <Typography.Paragraph type="secondary">
+          A nova sessão será aberta no contexto do cliente escolhido, mantendo seu perfil de Gestor
+          SaaS.
+        </Typography.Paragraph>
+        <Select
+          showSearch
+          style={{ width: '100%' }}
+          placeholder="Selecione um tenant"
+          loading={tenantsQuery.isPending}
+          value={selectedTenantId}
+          optionFilterProp="label"
+          onChange={setSelectedTenantId}
+          options={(tenantsQuery.data?.items ?? []).map((item) => ({
+            value: item.id,
+            label: `${item.nome} (${item.slug})`,
+          }))}
+        />
+      </Modal>
     </Layout>
   );
 }

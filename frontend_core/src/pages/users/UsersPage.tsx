@@ -62,8 +62,8 @@ const scopeLabels: Record<TerritorialAccess['tipo_escopo'], string> = {
 };
 
 const scopeIdFields = {
-  estado: 'estado_id',
-  municipio: 'municipio_id',
+  estado: 'codigo_uf_ibge',
+  municipio: 'codigo_municipio_ibge',
   bairro: 'bairro_id',
   zona_eleitoral: 'zona_eleitoral_id',
   secao_eleitoral: 'secao_eleitoral_id',
@@ -73,6 +73,9 @@ const scopeIdFields = {
 export function UsersPage() {
   const queryClient = useQueryClient();
   const permissions = useSessionStore((state) => state.user?.permissions ?? []);
+  const isSaasManager = useSessionStore(
+    (state) => state.user?.profiles.includes('gestor_saas') ?? false,
+  );
   const [filters, setFilters] = useState<{ query?: string; status?: string }>({});
   const [editing, setEditing] = useState<UserRecord | null>(null);
   const [userModalOpen, setUserModalOpen] = useState(false);
@@ -275,10 +278,14 @@ export function UsersPage() {
     </div>
   );
 
+  const visibleProfiles = (profiles.data ?? []).filter(
+    (profile) => profile.codigo !== 'gestor_saas' || isSaasManager,
+  );
+
   const profilesTab = (
     <Card loading={profiles.isPending}>
       <Collapse
-        items={(profiles.data ?? []).map((profile) => ({
+        items={visibleProfiles.map((profile) => ({
           key: profile.id,
           label: (
             <Space>
@@ -349,7 +356,7 @@ export function UsersPage() {
           >
             <Select
               mode="multiple"
-              options={profiles.data?.map((profile) => ({
+              options={visibleProfiles.map((profile) => ({
                 value: profile.id,
                 label: profile.nome,
               }))}

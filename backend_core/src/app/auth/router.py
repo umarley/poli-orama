@@ -23,6 +23,7 @@ from app.auth.schemas import (
     ResetPasswordRequest,
     ResetPasswordResponse,
     SessionResponse,
+    TenantSwitchRequest,
     TerritorialAccessReplace,
     TerritorialAccessResponse,
     TokenResponse,
@@ -79,6 +80,26 @@ async def refresh(
     service: Annotated[AuthService, Depends(get_public_auth_service)],
 ) -> TokenResponse:
     return await service.refresh(payload.refresh_token)
+
+
+@router.post(
+    "/auth/switch-tenant",
+    response_model=TokenResponse,
+    tags=["Autenticacao"],
+    summary="Troca o tenant de suporte do gestor SaaS",
+)
+async def switch_tenant(
+    payload: TenantSwitchRequest,
+    request: Request,
+    actor: Annotated[RequestActor, Depends(get_current_user)],
+    service: Annotated[AuthService, Depends(get_auth_service)],
+) -> TokenResponse:
+    return await service.switch_tenant(
+        actor,
+        payload,
+        ip_address=_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+    )
 
 
 @router.post(

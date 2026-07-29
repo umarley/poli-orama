@@ -18,6 +18,7 @@ ENTITY_TABLES: dict[str, tuple[str, str]] = {
     "comunidade": ("cadastro.comunidade", "ativo"),
     "lideranca": ("cadastro.lideranca", "ativo"),
     "convite": ("agenda.convite", "TRUE"),
+    "tenant": ("public.tenant", "excluido_em IS NULL"),
 }
 
 
@@ -80,6 +81,18 @@ class FileRepository:
         return dict(row) if row else None
 
     async def entity_exists(self, tenant_id: int, entity_type: EntityType, entity_id: int) -> bool:
+        if entity_type == "tenant":
+            if entity_id != tenant_id:
+                return False
+            return bool(
+                await self.session.scalar(
+                    text(
+                        "SELECT EXISTS(SELECT 1 FROM public.tenant "
+                        "WHERE id=:tenant_id AND excluido_em IS NULL)"
+                    ),
+                    {"tenant_id": tenant_id},
+                )
+            )
         table, predicate = ENTITY_TABLES[entity_type]
         return bool(
             await self.session.scalar(

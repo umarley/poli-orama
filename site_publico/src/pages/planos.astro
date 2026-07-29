@@ -5,9 +5,9 @@ import MarketingLayout from "../layouts/MarketingLayout.astro";
 const structuredData = planosFallback.map((plan) => ({
   "@context": "https://schema.org",
   "@type": "Product",
-  name: `Vurix Eleitoral ${plan.nome}`,
+  name: `Poliorama ${plan.nome}`,
   description: plan.descricao,
-  brand: { "@type": "Brand", name: "Vurix Eleitoral" },
+  brand: { "@type": "Brand", name: "Poliorama" },
   offers: {
     "@type": "Offer",
     price: plan.preco_mensal,
@@ -17,7 +17,7 @@ const structuredData = planosFallback.map((plan) => ({
   },
 }));
 ---
-<MarketingLayout title="Planos | Vurix Eleitoral" description="Compare planos, limites e recursos da plataforma Vurix Eleitoral." structuredData={structuredData}>
+<MarketingLayout title="Planos | Poliorama" description="Compare planos, limites e recursos da plataforma Poliorama." structuredData={structuredData}>
   <section class="section pricing-section">
     <div class="section-heading centered"><span class="eyebrow">PLANOS</span><h1>Estrutura para cada fase da campanha</h1><p>Comece com o necessário e evolua conforme a operação cresce. Preços anuais exibem o equivalente mensal.</p></div>
     <PricingGrid client:load />

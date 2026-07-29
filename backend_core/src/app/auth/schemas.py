@@ -82,6 +82,11 @@ class RefreshRequest(BaseModel):
     refresh_token: str = Field(min_length=20, max_length=4096)
 
 
+class TenantSwitchRequest(BaseModel):
+    tenant_id: int = Field(ge=1)
+    dispositivo: str | None = Field(default=None, max_length=180)
+
+
 TerritorialScopeType = Literal[
     "estado",
     "municipio",
@@ -93,8 +98,8 @@ TerritorialScopeType = Literal[
 ]
 
 _SCOPE_FIELD = {
-    "estado": "estado_id",
-    "municipio": "municipio_id",
+    "estado": "codigo_uf_ibge",
+    "municipio": "codigo_municipio_ibge",
     "bairro": "bairro_id",
     "zona_eleitoral": "zona_eleitoral_id",
     "secao_eleitoral": "secao_eleitoral_id",
@@ -104,8 +109,8 @@ _SCOPE_FIELD = {
 
 class TerritorialAccessInput(BaseModel):
     tipo_escopo: TerritorialScopeType
-    estado_id: int | None = Field(default=None, ge=1)
-    municipio_id: int | None = Field(default=None, ge=1)
+    codigo_uf_ibge: int | None = Field(default=None, ge=1)
+    codigo_municipio_ibge: int | None = Field(default=None, ge=1)
     bairro_id: int | None = Field(default=None, ge=1)
     zona_eleitoral_id: int | None = Field(default=None, ge=1)
     secao_eleitoral_id: int | None = Field(default=None, ge=1)
@@ -140,8 +145,8 @@ class TerritorialAccessReplace(BaseModel):
         keys = [
             (
                 access.tipo_escopo,
-                access.estado_id,
-                access.municipio_id,
+                access.codigo_uf_ibge,
+                access.codigo_municipio_ibge,
                 access.bairro_id,
                 access.zona_eleitoral_id,
                 access.secao_eleitoral_id,

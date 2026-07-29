@@ -9,7 +9,6 @@ import {
   Descriptions,
   Form,
   Input,
-  InputNumber,
   Modal,
   Popconfirm,
   Row,
@@ -26,18 +25,13 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { AppToast } from '@/components/feedback/AppToast';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { GoalProgress } from '@/components/metas/GoalProgress';
-import {
-  cancelarMeta,
-  obterMeta,
-  registrarAcompanhamento,
-} from '@/modules/metas/metas-service';
+import { cancelarMeta, obterMeta, registrarAcompanhamento } from '@/modules/metas/metas-service';
 import { normalizeApiError } from '@/services/api/api-error';
 import { useSessionStore } from '@/stores/session-store';
+import { formatInteger, formatNumber, formatPercent } from '@/utils/number-format';
 
 interface TrackingForm {
   data_referencia: Dayjs;
-  quantidade_projetada?: number;
-  quantidade_confirmada?: number;
   observacao?: string;
 }
 
@@ -46,9 +40,7 @@ export function GoalDetailPage() {
   const goalId = Number(id);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const canEdit = useSessionStore((state) =>
-    state.user?.permissions.includes('metas.editar'),
-  );
+  const canEdit = useSessionStore((state) => state.user?.permissions.includes('metas.editar'));
   const [trackingModal, setTrackingModal] = useState(false);
   const [form] = Form.useForm<TrackingForm>();
   const goal = useQuery({
@@ -61,8 +53,6 @@ export function GoalDetailPage() {
     mutationFn: (values: TrackingForm) =>
       registrarAcompanhamento(goalId, {
         data_referencia: values.data_referencia.format('YYYY-MM-DD'),
-        quantidade_projetada: values.quantidade_projetada,
-        quantidade_confirmada: values.quantidade_confirmada,
         observacao: values.observacao,
       }),
     onSuccess: async () => {
@@ -109,7 +99,9 @@ export function GoalDetailPage() {
                 description="Metas canceladas deixam de participar dos cálculos ativos."
                 onConfirm={() => cancelMutation.mutate()}
               >
-                <Button danger icon={<StopOutlined />}>Cancelar meta</Button>
+                <Button danger icon={<StopOutlined />}>
+                  Cancelar meta
+                </Button>
               </Popconfirm>
             </Space>
           ) : undefined
@@ -134,7 +126,7 @@ export function GoalDetailPage() {
             {item && (
               <Space direction="vertical">
                 <Typography.Title level={2}>
-                  {Number(item.score_risco).toFixed(1)}
+                  {formatNumber(item.score_risco, 1, 1)}
                 </Typography.Title>
                 <Tag color={item.em_risco ? 'error' : 'success'}>
                   {item.em_risco ? '⚠ Requer atenção' : 'Dentro do esperado'}
@@ -155,7 +147,7 @@ export function GoalDetailPage() {
             <Descriptions.Item label="Período">{item.periodo_nome}</Descriptions.Item>
             <Descriptions.Item label="Status">{item.status}</Descriptions.Item>
             <Descriptions.Item label="Base vinculada">
-              {item.quantidade_eleitores_vinculados}
+              {formatInteger(item.quantidade_eleitores_vinculados)}
             </Descriptions.Item>
             <Descriptions.Item label="Alvos">
               {item.alvos.map((target) => target.nome_alvo || `#${target.alvo_id}`).join(', ') ||
@@ -174,13 +166,25 @@ export function GoalDetailPage() {
               pagination={false}
               dataSource={item?.acompanhamentos ?? []}
               columns={[
-                { title: 'Data', dataIndex: 'data_referencia' },
-                { title: 'Projetada', dataIndex: 'quantidade_projetada' },
-                { title: 'Confirmada', dataIndex: 'quantidade_confirmada' },
+                {
+                  title: 'Data',
+                  dataIndex: 'data_referencia',
+                  render: (value: string) => dayjs(value).format('DD/MM/YYYY'),
+                },
+                {
+                  title: 'Projetada',
+                  dataIndex: 'quantidade_projetada',
+                  render: (value: number | null) => (value == null ? '—' : formatInteger(value)),
+                },
+                {
+                  title: 'Confirmada',
+                  dataIndex: 'quantidade_confirmada',
+                  render: (value: number | null) => (value == null ? '—' : formatInteger(value)),
+                },
                 {
                   title: '%',
                   dataIndex: 'percentual_atingido',
-                  render: (value: string) => `${Number(value).toFixed(1)}%`,
+                  render: (value: string) => formatPercent(value),
                 },
                 { title: 'Risco', dataIndex: 'situacao_risco' },
                 { title: 'Observação', dataIndex: 'observacao' },
@@ -189,7 +193,13 @@ export function GoalDetailPage() {
           </Card>
         </Col>
         <Col xs={24} xl={10}>
-          <Card title={<Space><AlertOutlined /> Alertas</Space>}>
+          <Card
+            title={
+              <Space>
+                <AlertOutlined /> Alertas
+              </Space>
+            }
+          >
             {item?.alertas.length ? (
               <Timeline
                 items={item.alertas.map((alert) => ({
@@ -219,20 +229,15 @@ export function GoalDetailPage() {
       >
         <Form form={form} layout="vertical" initialValues={{ data_referencia: dayjs() }}>
           <Form.Item name="data_referencia" label="Data" rules={[{ required: true }]}>
-            <DatePicker style={{ width: '100%' }} />
+            <DatePicker format="DD/MM/YYYY" style={{ width: '100%' }} />
           </Form.Item>
-          <Row gutter={12}>
-            <Col span={12}>
-              <Form.Item name="quantidade_projetada" label="Projeção">
-                <InputNumber min={0} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="quantidade_confirmada" label="Confirmação operacional">
-                <InputNumber min={0} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-          </Row>
+          <Alert
+            type="info"
+            showIcon
+            message="Projeção e confirmação são calculadas automaticamente"
+            description="A projeção considera os liderados ativos e a confirmação considera as declarações registradas pelo Call Center."
+            style={{ marginBottom: 16 }}
+          />
           <Form.Item name="observacao" label="Observação">
             <Input.TextArea rows={3} />
           </Form.Item>

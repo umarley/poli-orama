@@ -23,7 +23,6 @@ export interface GoalPeriod {
   data_inicio: string;
   data_fim: string;
   ciclo: string | null;
-  eleicao_id: number | null;
   ativo: boolean;
   criado_em: string;
   atualizado_em: string;
@@ -69,6 +68,8 @@ export interface GoalAlert {
 export interface Goal {
   id: number;
   tenant_id: number;
+  campanha_eleicao_id: number;
+  campanha_nome: string;
   tipo_meta_voto_id: number;
   tipo_codigo: string;
   tipo_nome: string;
@@ -111,6 +112,7 @@ export interface GoalSummary {
 
 export interface LeadershipRanking {
   id: number;
+  campanha_eleicao_id: number;
   lideranca_id: number;
   nome_lideranca: string;
   data_referencia: string;

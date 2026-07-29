@@ -27,6 +27,9 @@ class User(Base):
     tenant_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("public.tenant.id", ondelete="CASCADE")
     )
+    usuario_plataforma_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("auth.usuario.id", ondelete="RESTRICT")
+    )
     pessoa_id: Mapped[int | None] = mapped_column(BigInteger)
     nome: Mapped[str] = mapped_column(String(180))
     email: Mapped[str] = mapped_column(String(254))

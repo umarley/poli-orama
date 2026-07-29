@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from sqlalchemy import Select, delete, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import selectinload
 
 from app.audit.service import AuditService
 from app.core.errors import BusinessRuleError
@@ -20,6 +21,7 @@ from app.models import (
     HierarquiaLideranca,
     Indicacao,
     Lideranca,
+    LiderancaTerritorio,
     NucleoFamiliar,
     Pessoa,
     PessoaComplementoPolitico,
@@ -380,6 +382,32 @@ class CadastroRepository(BaseRepository[Pessoa]):
         await self.session.flush()
         return person
 
+    async def calculate_registration_completeness(
+        self, tenant_id: int, person_id: int, user_id: int
+    ) -> Decimal:
+        value = await self.session.scalar(
+            text(
+                """
+                UPDATE cadastro.pessoa
+                   SET completude_cadastral = cadastro.calcular_completude_cadastral(id),
+                       atualizado_por = :user_id,
+                       atualizado_em = now()
+                 WHERE tenant_id = :tenant_id
+                   AND id = :person_id
+                   AND excluido_em IS NULL
+                RETURNING completude_cadastral
+                """
+            ),
+            {"tenant_id": tenant_id, "person_id": person_id, "user_id": user_id},
+        )
+        if value is None:
+            raise BusinessRuleError(
+                "Nao foi possivel calcular a completude cadastral.",
+                code="registration_completeness_not_calculated",
+            )
+        self.session.expire_all()
+        return Decimal(value)
+
     async def deactivate_person(self, person: Pessoa, user_id: int) -> None:
         now = datetime.now(UTC)
         person.ativo = False
@@ -547,8 +575,13 @@ class CadastroRepository(BaseRepository[Pessoa]):
         for field, value in payload.model_dump(exclude_unset=True, exclude={"endereco"}).items():
             setattr(item, field, value)
         if payload.endereco is not None:
-            for field, value in payload.endereco.model_dump(exclude_unset=True).items():
+            address_values = payload.endereco.model_dump(exclude_unset=True)
+            for field, value in address_values.items():
                 setattr(item.endereco, field, value)
+            if "latitude" in address_values or "longitude" in address_values:
+                item.endereco.geocodificado = (
+                    item.endereco.latitude is not None and item.endereco.longitude is not None
+                )
             item.endereco.atualizado_em = datetime.now(UTC)
         await self.session.flush()
         return item
@@ -563,6 +596,25 @@ class CadastroRepository(BaseRepository[Pessoa]):
             criado_em=datetime.now(UTC),
         )
         self.session.add(item)
+        await self.session.flush()
+        return item
+
+    async def social(
+        self, tenant_id: int, person_id: int, social_id: int
+    ) -> PessoaRedeSocial | None:
+        return await self.session.scalar(
+            select(PessoaRedeSocial).where(
+                PessoaRedeSocial.id == social_id,
+                PessoaRedeSocial.tenant_id == tenant_id,
+                PessoaRedeSocial.pessoa_id == person_id,
+            )
+        )
+
+    async def update_social(
+        self, item: PessoaRedeSocial, payload: PessoaRedeSocialInput
+    ) -> PessoaRedeSocial:
+        for field, value in payload.model_dump().items():
+            setattr(item, field, value)
         await self.session.flush()
         return item
 
@@ -624,6 +676,16 @@ class CadastroRepository(BaseRepository[Pessoa]):
         self.session.add(item)
         await self.session.flush()
         return item
+
+    async def person_has_indication(self, tenant_id: int, person_id: int) -> bool:
+        return bool(
+            await self.session.scalar(
+                select(Indicacao.id).where(
+                    Indicacao.tenant_id == tenant_id,
+                    Indicacao.pessoa_indicada_id == person_id,
+                )
+            )
+        )
 
     async def upsert_political(
         self, tenant_id: int, person_id: int, payload: ComplementoPoliticoInput
@@ -706,10 +768,27 @@ class CadastroRepository(BaseRepository[Pessoa]):
                 HierarquiaLideranca.pessoa_subordinada_id == person_id,
             )
         )
+        indication_rows = await self.session.execute(
+            select(Indicacao, Pessoa.nome_completo)
+            .outerjoin(
+                Pessoa,
+                (Pessoa.id == Indicacao.pessoa_indicada_id)
+                & (Pessoa.tenant_id == Indicacao.tenant_id),
+            )
+            .where(
+                Indicacao.tenant_id == tenant_id,
+                Indicacao.pessoa_indicante_id == person_id,
+            )
+            .order_by(Indicacao.data_indicacao.desc(), Indicacao.id.desc())
+        )
+        indications: list[Indicacao] = []
+        for indication, indicated_name in indication_rows.all():
+            indication.pessoa_indicada_nome = indicated_name
+            indications.append(indication)
         return {
             "redes_sociais": await many(PessoaRedeSocial, PessoaRedeSocial.pessoa_id == person_id),
             "tipos": list(type_result.all()),
-            "indicacoes": await many(Indicacao, Indicacao.pessoa_indicada_id == person_id),
+            "indicacoes": indications,
             "complemento_politico": political,
             "tags": list(tags.all()),
             "comunidades": list(communities.all()),
@@ -727,6 +806,12 @@ class CadastroRepository(BaseRepository[Pessoa]):
         )
         return list(result.all())
 
+    async def list_religions(self) -> list[dict[str, Any]]:
+        result = await self.session.execute(
+            text("SELECT id, nome FROM cadastro.religiao ORDER BY nome")
+        )
+        return [{"id": int(row.id), "nome": str(row.nome)} for row in result]
+
     async def marital_status_exists(self, marital_status_id: int) -> bool:
         return bool(
             await self.session.scalar(
@@ -736,45 +821,206 @@ class CadastroRepository(BaseRepository[Pessoa]):
             )
         )
 
-    async def list_leaderships(self, tenant_id: int) -> list[Lideranca]:
-        result = await self.session.scalars(
+    async def list_leaderships(
+        self,
+        tenant_id: int,
+        query: str | None = None,
+        coordinator_id: int | None = None,
+        territory_id: int | None = None,
+        leadership_type: str | None = None,
+    ) -> list[Lideranca]:
+        statement = (
             select(Lideranca)
-            .where(Lideranca.tenant_id == tenant_id, Lideranca.ativo.is_(True))
-            .order_by(Lideranca.tipo_lideranca, Lideranca.id)
+            .join(Pessoa, Pessoa.id == Lideranca.pessoa_id)
+            .options(
+                selectinload(Lideranca.pessoa),
+                selectinload(Lideranca.coordenador).selectinload(Lideranca.pessoa),
+            )
+            .where(
+                Lideranca.tenant_id == tenant_id,
+                Pessoa.tenant_id == tenant_id,
+                Lideranca.ativo.is_(True),
+            )
+        )
+        if query:
+            term = f"%{query.strip()}%"
+            statement = statement.where(
+                or_(
+                    func.unaccent(Pessoa.nome_completo).ilike(func.unaccent(term)),
+                    func.unaccent(Lideranca.apelido_campanha).ilike(func.unaccent(term)),
+                )
+            )
+        if coordinator_id is not None:
+            statement = statement.where(Lideranca.coordenador_id == coordinator_id)
+        if leadership_type is not None:
+            statement = statement.where(Lideranca.tipo_lideranca == leadership_type)
+        if territory_id is not None:
+            statement = statement.where(
+                Lideranca.id.in_(
+                    select(LiderancaTerritorio.lideranca_id).where(
+                        LiderancaTerritorio.tenant_id == tenant_id,
+                        LiderancaTerritorio.territorio_id == territory_id,
+                    )
+                )
+            )
+        result = await self.session.scalars(
+            statement.order_by(Lideranca.tipo_lideranca, Lideranca.id)
         )
         return list(result.all())
 
     async def leadership_territories(
         self, tenant_id: int, leadership_ids: list[int]
-    ) -> dict[int, list[int]]:
+    ) -> dict[int, list[dict[str, Any]]]:
         if not leadership_ids:
             return {}
         rows = await self.session.execute(
             text(
-                "SELECT lideranca_id, territorio_id "
-                "FROM territorio.lideranca_territorio "
-                "WHERE tenant_id = :tenant_id AND lideranca_id = ANY(:leadership_ids)"
+                "SELECT lt.lideranca_id, t.id AS territorio_id, t.nome "
+                "FROM territorio.lideranca_territorio lt "
+                "JOIN territorio.territorio t "
+                "  ON t.id = lt.territorio_id AND t.tenant_id = lt.tenant_id "
+                "WHERE lt.tenant_id = :tenant_id "
+                "  AND lt.lideranca_id = ANY(:leadership_ids) "
+                "ORDER BY t.nome, t.id"
             ),
             {"tenant_id": tenant_id, "leadership_ids": leadership_ids},
         )
-        result: dict[int, list[int]] = {}
-        for leadership_id, territory_id in rows:
-            result.setdefault(int(leadership_id), []).append(int(territory_id))
+        result: dict[int, list[dict[str, Any]]] = {}
+        for leadership_id, territory_id, territory_name in rows:
+            result.setdefault(int(leadership_id), []).append(
+                {"id": int(territory_id), "nome": str(territory_name)}
+            )
         return result
 
-    async def list_hierarchy(self, tenant_id: int) -> list[HierarquiaLideranca]:
-        result = await self.session.scalars(
+    async def leadership_person_tags(
+        self, tenant_id: int, leadership_ids: list[int]
+    ) -> dict[int, list[dict[str, Any]]]:
+        if not leadership_ids:
+            return {}
+        rows = await self.session.execute(
+            text(
+                "SELECT l.id AS lideranca_id, t.id AS tag_id, t.nome, t.cor "
+                "FROM cadastro.lideranca l "
+                "JOIN cadastro.pessoa_tag pt "
+                "  ON pt.pessoa_id = l.pessoa_id AND pt.tenant_id = l.tenant_id "
+                "JOIN cadastro.tag t "
+                "  ON t.id = pt.tag_id AND t.tenant_id = pt.tenant_id "
+                "WHERE l.tenant_id = :tenant_id "
+                "  AND l.id = ANY(:leadership_ids) "
+                "  AND t.ativo = TRUE "
+                "ORDER BY t.nome, t.id"
+            ),
+            {"tenant_id": tenant_id, "leadership_ids": leadership_ids},
+        )
+        result: dict[int, list[dict[str, Any]]] = {}
+        for leadership_id, tag_id, tag_name, tag_color in rows:
+            result.setdefault(int(leadership_id), []).append(
+                {
+                    "id": int(tag_id),
+                    "nome": str(tag_name),
+                    "cor": str(tag_color) if tag_color else None,
+                }
+            )
+        return result
+
+    async def list_hierarchy(
+        self,
+        tenant_id: int,
+        person_query: str | None = None,
+        superior_id: int | None = None,
+        role: str | None = None,
+    ) -> list[HierarquiaLideranca]:
+        statement = (
             select(HierarquiaLideranca)
+            .join(Pessoa, Pessoa.id == HierarquiaLideranca.pessoa_subordinada_id)
             .where(
                 HierarquiaLideranca.tenant_id == tenant_id,
-                HierarquiaLideranca.ativo.is_(True),
+                Pessoa.tenant_id == tenant_id,
             )
-            .order_by(
+        )
+        if person_query:
+            term = f"%{person_query.strip()}%"
+            statement = statement.where(
+                func.unaccent(Pessoa.nome_completo).ilike(func.unaccent(term))
+            )
+        if superior_id is not None:
+            statement = statement.where(
+                HierarquiaLideranca.lideranca_superior_id == superior_id
+            )
+        if role is not None:
+            statement = statement.where(HierarquiaLideranca.papel_subordinado == role)
+        result = await self.session.scalars(
+            statement.order_by(
                 HierarquiaLideranca.lideranca_superior_id,
                 HierarquiaLideranca.pessoa_subordinada_id,
             )
         )
         return list(result.all())
+
+    async def hierarchy(self, tenant_id: int, hierarchy_id: int) -> HierarquiaLideranca | None:
+        return await self.session.scalar(
+            select(HierarquiaLideranca).where(
+                HierarquiaLideranca.tenant_id == tenant_id,
+                HierarquiaLideranca.id == hierarchy_id,
+            )
+        )
+
+    async def active_hierarchy_for_person(
+        self, tenant_id: int, person_id: int, *, exclude_id: int | None = None
+    ) -> HierarquiaLideranca | None:
+        statement = select(HierarquiaLideranca).where(
+            HierarquiaLideranca.tenant_id == tenant_id,
+            HierarquiaLideranca.pessoa_subordinada_id == person_id,
+            HierarquiaLideranca.ativo.is_(True),
+        )
+        if exclude_id is not None:
+            statement = statement.where(HierarquiaLideranca.id != exclude_id)
+        return await self.session.scalar(statement.limit(1))
+
+    async def set_hierarchy_status(
+        self, item: HierarquiaLideranca, active: bool
+    ) -> HierarquiaLideranca:
+        item.ativo = active
+        item.data_fim = None if active else date.today()
+        if active:
+            item.campanha_eleicao_id = await self._active_campaign_id(item.tenant_id)
+        await self.session.flush()
+        return item
+
+    async def delete_hierarchy(self, item: HierarquiaLideranca) -> None:
+        await self.session.delete(item)
+
+    async def delete_leadership(self, item: Lideranca) -> None:
+        await self.session.delete(item)
+
+    async def hierarchy_names(
+        self, tenant_id: int, hierarchy_ids: list[int]
+    ) -> dict[int, dict[str, str]]:
+        if not hierarchy_ids:
+            return {}
+        rows = await self.session.execute(
+            text(
+                "SELECT h.id, superior.nome_completo AS superior_nome, "
+                "       subordinada.nome_completo AS subordinada_nome "
+                "FROM cadastro.hierarquia_lideranca h "
+                "JOIN cadastro.lideranca l "
+                "  ON l.id = h.lideranca_superior_id AND l.tenant_id = h.tenant_id "
+                "JOIN cadastro.pessoa superior "
+                "  ON superior.id = l.pessoa_id AND superior.tenant_id = h.tenant_id "
+                "JOIN cadastro.pessoa subordinada "
+                "  ON subordinada.id = h.pessoa_subordinada_id "
+                " AND subordinada.tenant_id = h.tenant_id "
+                "WHERE h.tenant_id = :tenant_id AND h.id = ANY(:hierarchy_ids)"
+            ),
+            {"tenant_id": tenant_id, "hierarchy_ids": hierarchy_ids},
+        )
+        return {
+            int(row.id): {
+                "lideranca_superior_nome": str(row.superior_nome),
+                "pessoa_subordinada_nome": str(row.subordinada_nome),
+            }
+            for row in rows
+        }
 
     async def replace_person_types(
         self, tenant_id: int, person_id: int, type_ids: list[int]
@@ -860,10 +1106,31 @@ class CadastroRepository(BaseRepository[Pessoa]):
         )
 
     async def add_hierarchy(self, tenant_id: int, payload: HierarquiaInput) -> HierarquiaLideranca:
-        item = HierarquiaLideranca(tenant_id=tenant_id, **payload.model_dump())
+        item = HierarquiaLideranca(
+            tenant_id=tenant_id,
+            campanha_eleicao_id=await self._active_campaign_id(tenant_id),
+            **payload.model_dump(),
+        )
         self.session.add(item)
         await self.session.flush()
         return item
+
+    async def _active_campaign_id(self, tenant_id: int) -> int | None:
+        campaign_id = await self.session.scalar(
+            text(
+                """
+                SELECT id
+                  FROM eleicao.campanha_eleicao
+                 WHERE tenant_id = :tenant_id
+                   AND ativa
+                   AND data_encerramento IS NULL
+                 ORDER BY data_ativacao DESC NULLS LAST, id DESC
+                 LIMIT 1
+                """
+            ),
+            {"tenant_id": tenant_id},
+        )
+        return int(campaign_id) if campaign_id is not None else None
 
     async def add_relationship(
         self, tenant_id: int, origin_id: int, payload: RelacionamentoInput
@@ -899,13 +1166,25 @@ class CadastroRepository(BaseRepository[Pessoa]):
         )
         return result
 
-    async def list_nuclei(self, tenant_id: int) -> list[NucleoFamiliar]:
-        result = await self.session.scalars(
-            select(NucleoFamiliar)
-            .where(NucleoFamiliar.tenant_id == tenant_id)
-            .order_by(NucleoFamiliar.nome, NucleoFamiliar.id)
+    async def list_nuclei(self, tenant_id: int) -> list[dict[str, Any]]:
+        result = await self.session.execute(
+            text(
+                """
+                SELECT n.id, n.tenant_id, n.nome, n.pessoa_referencia_id,
+                       p.nome_completo AS pessoa_referencia_nome,
+                       n.endereco_id, n.quantidade_membros,
+                       n.criado_em, n.atualizado_em
+                  FROM cadastro.nucleo_familiar n
+             LEFT JOIN cadastro.pessoa p
+                    ON p.id = n.pessoa_referencia_id
+                   AND p.tenant_id = n.tenant_id
+                 WHERE n.tenant_id = :tenant_id
+              ORDER BY n.nome, n.id
+                """
+            ),
+            {"tenant_id": tenant_id},
         )
-        return list(result.all())
+        return [dict(row) for row in result.mappings()]
 
     async def add_nucleus_member(
         self, tenant_id: int, nucleus: NucleoFamiliar, payload: VinculoNucleoInput
@@ -931,12 +1210,66 @@ class CadastroRepository(BaseRepository[Pessoa]):
         nucleus.atualizado_em = datetime.now(UTC)
         return item
 
+    async def nucleus_people(self, tenant_id: int, nucleus_id: int) -> list[dict[str, Any]]:
+        rows = await self.session.execute(
+            select(
+                Pessoa.id,
+                Pessoa.nome_completo,
+                Pessoa.data_nascimento,
+                PessoaNucleoFamiliar.parentesco,
+                PessoaNucleoFamiliar.observacao,
+            )
+            .join(
+                PessoaNucleoFamiliar,
+                (PessoaNucleoFamiliar.pessoa_id == Pessoa.id)
+                & (PessoaNucleoFamiliar.tenant_id == Pessoa.tenant_id),
+            )
+            .where(
+                Pessoa.tenant_id == tenant_id,
+                PessoaNucleoFamiliar.nucleo_familiar_id == nucleus_id,
+            )
+            .order_by(Pessoa.nome_completo, Pessoa.id)
+        )
+        return [dict(row) for row in rows.mappings().all()]
+
+    async def remove_nucleus_member(
+        self, tenant_id: int, nucleus: NucleoFamiliar, person_id: int
+    ) -> bool:
+        result = await self.session.execute(
+            delete(PessoaNucleoFamiliar).where(
+                PessoaNucleoFamiliar.tenant_id == tenant_id,
+                PessoaNucleoFamiliar.nucleo_familiar_id == nucleus.id,
+                PessoaNucleoFamiliar.pessoa_id == person_id,
+            )
+        )
+        if result.rowcount:
+            nucleus.quantidade_membros = int(
+                (
+                    await self.session.scalar(
+                        select(func.count()).where(
+                            PessoaNucleoFamiliar.tenant_id == tenant_id,
+                            PessoaNucleoFamiliar.nucleo_familiar_id == nucleus.id,
+                        )
+                    )
+                )
+                or 0
+            )
+            nucleus.atualizado_em = datetime.now(UTC)
+        return bool(result.rowcount)
+
     async def create_community(self, tenant_id: int, payload: ComunidadeInput) -> Comunidade:
         now = datetime.now(UTC)
         item = Comunidade(
             tenant_id=tenant_id, **payload.model_dump(), criado_em=now, atualizado_em=now
         )
         self.session.add(item)
+        await self.session.flush()
+        return item
+
+    async def update_community(self, item: Comunidade, payload: ComunidadeInput) -> Comunidade:
+        for field, value in payload.model_dump().items():
+            setattr(item, field, value)
+        item.atualizado_em = datetime.now(UTC)
         await self.session.flush()
         return item
 
@@ -963,6 +1296,41 @@ class CadastroRepository(BaseRepository[Pessoa]):
         self.session.add(item)
         await self.session.flush()
         return item
+
+    async def community_people(
+        self, tenant_id: int, community_id: int
+    ) -> list[dict[str, Any]]:
+        rows = await self.session.execute(
+            select(
+                Pessoa.id,
+                Pessoa.nome_completo,
+                Pessoa.data_nascimento,
+                PessoaComunidade.papel,
+            )
+            .join(
+                PessoaComunidade,
+                (PessoaComunidade.pessoa_id == Pessoa.id)
+                & (PessoaComunidade.tenant_id == Pessoa.tenant_id),
+            )
+            .where(
+                Pessoa.tenant_id == tenant_id,
+                PessoaComunidade.comunidade_id == community_id,
+            )
+            .order_by(Pessoa.nome_completo, Pessoa.id)
+        )
+        return [dict(row) for row in rows.mappings().all()]
+
+    async def remove_community_member(
+        self, tenant_id: int, community_id: int, person_id: int
+    ) -> bool:
+        result = await self.session.execute(
+            delete(PessoaComunidade).where(
+                PessoaComunidade.tenant_id == tenant_id,
+                PessoaComunidade.comunidade_id == community_id,
+                PessoaComunidade.pessoa_id == person_id,
+            )
+        )
+        return bool(result.rowcount)
 
     async def create_tag(self, tenant_id: int, payload: TagInput) -> Tag:
         item = Tag(
@@ -1003,6 +1371,31 @@ class CadastroRepository(BaseRepository[Pessoa]):
         self.session.add(item)
         await self.session.flush()
         return item
+
+    async def tag_people(self, tenant_id: int, tag_id: int) -> list[Pessoa]:
+        result = await self.session.scalars(
+            select(Pessoa)
+            .join(
+                PessoaTag,
+                (PessoaTag.pessoa_id == Pessoa.id) & (PessoaTag.tenant_id == Pessoa.tenant_id),
+            )
+            .where(
+                Pessoa.tenant_id == tenant_id,
+                PessoaTag.tag_id == tag_id,
+            )
+            .order_by(Pessoa.nome_completo, Pessoa.id)
+        )
+        return list(result.all())
+
+    async def remove_person_tag(self, tenant_id: int, tag_id: int, person_id: int) -> bool:
+        result = await self.session.execute(
+            delete(PessoaTag).where(
+                PessoaTag.tenant_id == tenant_id,
+                PessoaTag.tag_id == tag_id,
+                PessoaTag.pessoa_id == person_id,
+            )
+        )
+        return bool(result.rowcount)
 
     async def create_validation(
         self, tenant_id: int, person_id: int, payload: ValidacaoInput
@@ -1212,7 +1605,7 @@ class CadastroRepository(BaseRepository[Pessoa]):
                     "zona_eleitoral_id",
                     "secao_eleitoral_id",
                     "local_votacao_id",
-                    "municipio_voto_id",
+                    "codigo_municipio_ibge",
                 ):
                     if getattr(principal_voter, field) is None:
                         setattr(principal_voter, field, getattr(source_voter, field))
@@ -1589,6 +1982,16 @@ class CadastroRepository(BaseRepository[Pessoa]):
                 raise BusinessRuleError(
                     "Titulo eleitoral ja cadastrado neste tenant.",
                     code="voter_title_already_exists",
+                ) from exc
+            if "uq_indicacao_pessoa_indicada_tenant" in message:
+                raise BusinessRuleError(
+                    "Esta pessoa ja foi indicada.",
+                    code="person_already_indicated",
+                ) from exc
+            if "uq_hierarquia_pessoa_ativa_tenant" in message:
+                raise BusinessRuleError(
+                    "Esta pessoa ja possui uma lideranca ativa.",
+                    code="person_already_has_active_leadership",
                 ) from exc
             raise BusinessRuleError(
                 "Registro duplicado ou referencia invalida.",

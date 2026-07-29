@@ -1,9 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-import { Alert, Card, Progress, Skeleton, Statistic, Typography } from 'antd';
+import { Alert, Card, Progress, Skeleton, Typography } from 'antd';
 
 import { PageHeader } from '@/components/layout/PageHeader';
+import { LocalizedStatistic as Statistic } from '@/components/data/LocalizedStatistic';
 import { getPlanUsage } from '@/modules/tenants/tenant-service';
 import { normalizeApiError } from '@/services/api/api-error';
+import { formatInteger, formatNumber } from '@/utils/number-format';
 
 import styles from './TenantPages.module.css';
 
@@ -41,7 +43,9 @@ export function SubscriptionPage() {
                 <Statistic title="Usuários" value={usage.data?.usuarios ?? 0} />
                 <Progress
                   percent={percentage(usage.data?.usuarios ?? 0, plan?.limite_usuarios)}
-                  format={() => `${usage.data?.usuarios ?? 0} / ${plan?.limite_usuarios ?? '∞'}`}
+                  format={() =>
+                    `${formatInteger(usage.data?.usuarios)} / ${plan?.limite_usuarios == null ? '∞' : formatInteger(plan.limite_usuarios)}`
+                  }
                 />
               </div>
             </Card>
@@ -50,7 +54,9 @@ export function SubscriptionPage() {
                 <Statistic title="Pessoas" value={usage.data?.pessoas ?? 0} />
                 <Progress
                   percent={percentage(usage.data?.pessoas ?? 0, plan?.limite_pessoas)}
-                  format={() => `${usage.data?.pessoas ?? 0} / ${plan?.limite_pessoas ?? '∞'}`}
+                  format={() =>
+                    `${formatInteger(usage.data?.pessoas)} / ${plan?.limite_pessoas == null ? '∞' : formatInteger(plan.limite_pessoas)}`
+                  }
                 />
               </div>
             </Card>
@@ -59,7 +65,9 @@ export function SubscriptionPage() {
                 <Statistic title="Armazenamento (MB)" value={storage} precision={1} />
                 <Progress
                   percent={percentage(storage, plan?.limite_armazenamento_mb)}
-                  format={() => `${storage.toFixed(1)} / ${plan?.limite_armazenamento_mb ?? '∞'}`}
+                  format={() =>
+                    `${formatNumber(storage, 1, 1)} / ${plan?.limite_armazenamento_mb == null ? '∞' : formatInteger(plan.limite_armazenamento_mb)}`
+                  }
                 />
               </div>
             </Card>

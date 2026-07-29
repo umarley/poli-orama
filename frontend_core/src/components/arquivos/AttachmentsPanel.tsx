@@ -6,19 +6,7 @@ import {
   PlusOutlined,
 } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  Button,
-  Card,
-  Form,
-  Image,
-  Input,
-  Modal,
-  Select,
-  Space,
-  Table,
-  Tag,
-  Upload,
-} from 'antd';
+import { Button, Card, Form, Image, Input, Modal, Select, Space, Table, Tag, Upload } from 'antd';
 import type { UploadFile } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -34,6 +22,7 @@ import {
 } from '@/modules/arquivos/arquivos-service';
 import type { Attachment, AttachmentEntity } from '@/modules/arquivos/types';
 import { normalizeApiError } from '@/services/api/api-error';
+import { formatInteger, formatNumber } from '@/utils/number-format';
 
 interface UploadValues {
   typeId: number;
@@ -51,9 +40,9 @@ interface AttachmentsPanelProps {
 
 function formatSize(bytes: number | null) {
   if (bytes == null) return '—';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes < 1024) return `${formatInteger(bytes)} B`;
+  if (bytes < 1024 * 1024) return `${formatNumber(bytes / 1024, 1, 1)} KB`;
+  return `${formatNumber(bytes / 1024 / 1024, 1, 1)} MB`;
 }
 
 export function AttachmentsPanel({

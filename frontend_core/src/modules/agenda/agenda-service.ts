@@ -66,10 +66,7 @@ export async function addParticipant(
   return data;
 }
 
-export async function addLeadership(
-  id: number,
-  payload: { lideranca_id: number; papel?: string },
-) {
+export async function addLeadership(id: number, payload: { lideranca_id: number; papel?: string }) {
   const { data } = await httpClient.post<EventLeadership>(
     `${base}/eventos/${id}/liderancas`,
     payload,
@@ -98,10 +95,7 @@ export async function addAgendaItem(
   id: number,
   payload: { titulo: string; descricao?: string; encaminhamento?: string; ordem?: number },
 ) {
-  const { data } = await httpClient.post<EventAgendaItem>(
-    `${base}/eventos/${id}/pautas`,
-    payload,
-  );
+  const { data } = await httpClient.post<EventAgendaItem>(`${base}/eventos/${id}/pautas`, payload);
   return data;
 }
 
@@ -109,10 +103,7 @@ export async function recordAttendance(
   id: number,
   payload: Omit<EventAttendance, 'id' | 'registrado_por' | 'registrado_em'>,
 ) {
-  const { data } = await httpClient.put<EventAttendance>(
-    `${base}/eventos/${id}/presenca`,
-    payload,
-  );
+  const { data } = await httpClient.put<EventAttendance>(`${base}/eventos/${id}/presenca`, payload);
   return data;
 }
 
@@ -128,10 +119,7 @@ export async function createDemand(
     prazo?: string;
   },
 ) {
-  const { data } = await httpClient.post<EventDemand>(
-    `${base}/eventos/${id}/demandas`,
-    payload,
-  );
+  const { data } = await httpClient.post<EventDemand>(`${base}/eventos/${id}/demandas`, payload);
   return data;
 }
 

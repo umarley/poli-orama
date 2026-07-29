@@ -13,7 +13,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_name: str = "Vurix Eleitoral API"
+    app_name: str = "Poliorama API"
     app_version: str = "0.1.0"
     environment: Literal["local", "test", "staging", "production"] = "local"
     log_level: str = "INFO"
@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     session_idle_minutes: int = Field(default=120, ge=5, le=10080)
     session_touch_interval_seconds: int = Field(default=60, ge=10, le=600)
     password_min_length: int = Field(default=12, ge=10, le=128)
-    mfa_issuer: str = "Vurix Eleitoral"
+    mfa_issuer: str = "Poliorama"
     mfa_encryption_key: str = Field(
         default="local-mfa-encryption-key-change-me-32-bytes",
         min_length=32,

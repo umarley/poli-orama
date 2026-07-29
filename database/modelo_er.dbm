@@ -1774,9 +1774,6 @@ END;
 	<column name="coordenador_id">
 		<type name="bigint" length="0"/>
 	</column>
-	<column name="meta_votos">
-		<type name="integer" length="0"/>
-	</column>
 	<column name="apelido_campanha">
 		<type name="character varying" length="120"/>
 	</column>
@@ -1791,9 +1788,6 @@ END;
 	</column>
 	<constraint name="lideranca_tipo_lideranca_check" type="ck-constr" table="cadastro.lideranca">
 			<expression> <![CDATA[((tipo_lideranca)::text = ANY ((ARRAY['coordenador_geral'::character varying, 'coordenador_territorial'::character varying, 'lider'::character varying, 'sublider'::character varying])::text[]))]]> </expression>
-	</constraint>
-	<constraint name="lideranca_meta_votos_check" type="ck-constr" table="cadastro.lideranca">
-			<expression> <![CDATA[((meta_votos IS NULL) OR (meta_votos >= 0))]]> </expression>
 	</constraint>
 	<constraint name="lideranca_pkey" type="pk-constr" table="cadastro.lideranca">
 		<columns names="id" ref-type="src-columns"/>

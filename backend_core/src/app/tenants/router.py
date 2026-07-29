@@ -1,11 +1,14 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query, status
+from fastapi import APIRouter, Depends, File, Path, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.access import get_db_session
 from app.core.config import get_settings
+from app.core.errors import BusinessRuleError
 from app.core.pagination import ListParams, Page, list_params
+from app.mod_arquivos.repository import FileRepository
+from app.mod_arquivos.service import FileService
 from app.tenants.access import RequestActor, require_actor, require_saas_admin, require_tenant_admin
 from app.tenants.repository import CommercialRepository, TenantRepository
 from app.tenants.schemas import (
@@ -31,6 +34,12 @@ def get_commercial_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> CommercialService:
     return CommercialService(CommercialRepository(session), get_settings())
+
+
+def get_file_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> FileService:
+    return FileService(FileRepository(session), get_settings())
 
 
 @router.get("/tenants", response_model=Page[TenantResponse], summary="Lista tenants")
@@ -135,6 +144,41 @@ async def update_current_tenant_configuration(
     service: Annotated[TenantManagementService, Depends(get_tenant_service)],
 ) -> TenantConfiguracaoResponse:
     return await service.update_configuration(actor.tenant_id, payload)
+
+
+@router.post(
+    "/me/tenant/configuracao/logo",
+    response_model=TenantConfiguracaoResponse,
+    summary="Envia o logotipo do tenant atual",
+)
+async def upload_current_tenant_logo(
+    actor: Annotated[RequestActor, Depends(require_tenant_admin)],
+    service: Annotated[TenantManagementService, Depends(get_tenant_service)],
+    file_service: Annotated[FileService, Depends(get_file_service)],
+    arquivo: Annotated[UploadFile, File()],
+) -> TenantConfiguracaoResponse:
+    attachment_types = await file_service.repository.list_types(actor.tenant_id)
+    image_type = next((item for item in attachment_types if item["codigo"] == "imagem"), None)
+    if image_type is None:
+        raise BusinessRuleError("Tipo de anexo 'imagem' nao configurado.")
+
+    limit = get_settings().photo_max_file_mb * 1024 * 1024
+    content = await arquivo.read(limit + 1)
+    attachment = await file_service.upload(
+        actor,
+        entity_type="tenant",
+        entity_id=actor.tenant_id,
+        type_id=image_type["id"],
+        description="Logotipo do tenant",
+        filename=arquivo.filename or "logotipo",
+        content_type=arquivo.content_type,
+        content=content,
+        photo_only=True,
+    )
+    return await service.update_configuration(
+        actor.tenant_id,
+        TenantConfiguracaoUpdate(logo_url=attachment.preview_url),
+    )
 
 
 @router.get(

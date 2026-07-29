@@ -42,6 +42,8 @@ class CatalogOut(S):
 
 
 class DemandIn(S):
+    origem_contexto: Literal["campanha", "gabinete", "institucional"] = "institucional"
+    campanha_eleicao_id: int | None = Field(default=None, ge=1)
     titulo: str | None = Field(default=None, max_length=180)
     descricao: str = Field(min_length=2)
     pessoa_solicitante_id: int | None = Field(default=None, ge=1)
@@ -66,6 +68,8 @@ class DemandIn(S):
 
 
 class DemandPatch(S):
+    origem_contexto: Literal["campanha", "gabinete", "institucional"] | None = None
+    campanha_eleicao_id: int | None = Field(default=None, ge=1)
     titulo: str | None = None
     descricao: str | None = None
     categoria_demanda_id: int | None = None
@@ -97,6 +101,8 @@ class AttendanceIn(S):
 
 class DemandOut(S):
     id: int
+    origem_contexto: Literal["campanha", "gabinete", "institucional"]
+    campanha_eleicao_id: int | None
     protocolo: str | None
     titulo: str | None
     descricao: str

@@ -100,12 +100,22 @@ class HierarquiaLideranca(Base):
             name="uq_hierarquia_lideranca",
         ),
         Index("ix_hierarquia_pessoa_sub", "pessoa_subordinada_id"),
+        Index(
+            "ix_hierarquia_campanha_lideranca",
+            "tenant_id",
+            "campanha_eleicao_id",
+            "lideranca_superior_id",
+        ),
         {"schema": "cadastro"},
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     tenant_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("public.tenant.id", ondelete="CASCADE"), nullable=False
+    )
+    campanha_eleicao_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("eleicao.campanha_eleicao.id", ondelete="RESTRICT"),
     )
     lideranca_superior_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("cadastro.lideranca.id", ondelete="CASCADE"), nullable=False
@@ -248,7 +258,10 @@ class Comunidade(Base):
     lider_responsavel_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("cadastro.lideranca.id")
     )
-    codigo_municipio_ibge: Mapped[int | None] = mapped_column(Integer, ForeignKey("global.municipio.id"))
+    codigo_municipio_ibge: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("global.municipio.codigo_ibge"),
+    )
     territorio_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("territorio.territorio.id", ondelete="SET NULL")
     )

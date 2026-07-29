@@ -13,6 +13,7 @@ from app.auth.access import (
     get_territorial_access,
     require_permission,
 )
+from app.core.errors import AuthorizationError
 from app.core.pagination import ListParams, Page, list_params
 from app.mod_cadastro.repository import CadastroRepository
 from app.mod_cadastro.service import CadastroService
@@ -37,16 +38,21 @@ from app.schemas.cadastro_operacional import (
     ComplementoPoliticoInput,
     ComplementoPoliticoResponse,
     ComunidadeInput,
+    ComunidadePessoaResponse,
     ComunidadeResponse,
     EstadoCivilResponse,
     HierarquiaInput,
     HierarquiaResponse,
+    HierarquiaStatusInput,
     IndicacaoGraphResponse,
-    IndicacaoInput,
+    IndicacaoPessoaInput,
     IndicacaoResponse,
     LiderancaOperacionalResponse,
     NucleoFamiliarInput,
     NucleoFamiliarResponse,
+    NucleoPessoaResponse,
+    PapelComunidadeResponse,
+    ParentescoResponse,
     PessoaCadastroCreate,
     PessoaDetalheResponse,
     PessoaFiltros,
@@ -59,9 +65,11 @@ from app.schemas.cadastro_operacional import (
     PessoaTipoResponse,
     RelacionamentoInput,
     RelacionamentoResponse,
+    ReligiaoResponse,
     SuspeitaDuplicidadeResolve,
     SuspeitaDuplicidadeResponse,
     TagInput,
+    TagPessoaResponse,
     TagResponse,
     TagUpdate,
     ValidacaoInput,
@@ -74,6 +82,16 @@ from app.schemas.cadastro_operacional import (
 )
 
 router = APIRouter(prefix="/cadastro", tags=["Cadastro"])
+SEGMENTATION_MANAGER_PROFILES = frozenset(
+    {"gestor_saas", "gestor", "coordenador_territorial"}
+)
+
+
+def ensure_segmentation_manager(actor: RequestActor) -> None:
+    if not SEGMENTATION_MANAGER_PROFILES.intersection(actor.profiles):
+        raise AuthorizationError(
+            "Apenas gestores e coordenadores territoriais podem criar segmentacoes."
+        )
 
 
 class TypeIdsInput(BaseModel):
@@ -152,6 +170,18 @@ async def list_marital_statuses(
 
 
 @router.get(
+    "/religioes",
+    response_model=list[ReligiaoResponse],
+    summary="Lista religioes",
+)
+async def list_religions(
+    _: Annotated[RequestActor, Depends(require_permission("cadastro", "visualizar"))],
+    service: Annotated[CadastroService, Depends(get_cadastro_service)],
+) -> list[ReligiaoResponse]:
+    return await service.list_religions()
+
+
+@router.get(
     "/pessoas",
     response_model=Page[PessoaListItem],
     summary="Lista pessoas com paginacao e filtros",
@@ -216,6 +246,21 @@ async def get_person(
 ) -> PessoaDetalheResponse:
     await service.ensure_person_territorial_access(actor, person_id, territorial_access)
     return await service.get_person(actor, person_id)
+
+
+@router.post(
+    "/pessoas/{person_id}/calcular-completude",
+    response_model=PessoaDetalheResponse,
+    summary="Calcula e atualiza a completude cadastral da pessoa",
+)
+async def calculate_person_completeness(
+    actor: Annotated[RequestActor, Depends(require_permission("cadastro", "editar"))],
+    territorial_access: Annotated[TerritorialAccess, Depends(get_territorial_access)],
+    service: Annotated[CadastroService, Depends(get_cadastro_service)],
+    person_id: int = Path(ge=1),
+) -> PessoaDetalheResponse:
+    await service.ensure_person_territorial_access(actor, person_id, territorial_access)
+    return await service.calculate_registration_completeness(actor, person_id)
 
 
 @router.patch(
@@ -329,6 +374,20 @@ async def add_social(
     return await service.add_social(actor, person_id, payload)
 
 
+@router.patch(
+    "/pessoas/{person_id}/redes-sociais/{social_id}",
+    response_model=PessoaRedeSocialResponse,
+)
+async def update_social(
+    payload: PessoaRedeSocialInput,
+    actor: Annotated[RequestActor, Depends(require_permission("cadastro", "editar"))],
+    service: Annotated[CadastroService, Depends(get_cadastro_service)],
+    person_id: int = Path(ge=1),
+    social_id: int = Path(ge=1),
+) -> PessoaRedeSocialResponse:
+    return await service.update_social(actor, person_id, social_id, payload)
+
+
 @router.post(
     "/pessoas/{person_id}/enderecos",
     response_model=PessoaEnderecoResponse,
@@ -400,16 +459,43 @@ async def set_leadership(
 async def list_leaderships(
     actor: Annotated[RequestActor, Depends(require_permission("cadastro", "visualizar"))],
     service: Annotated[CadastroService, Depends(get_cadastro_service)],
+    query: Annotated[str | None, Query(min_length=3, max_length=120)] = None,
+    coordenador_id: Annotated[int | None, Query(ge=1)] = None,
+    territorio_id: Annotated[int | None, Query(ge=1)] = None,
+    tipo_lideranca: Annotated[
+        str | None,
+        Query(pattern="^(coordenador_geral|coordenador_territorial|lider|sublider)$"),
+    ] = None,
 ) -> list[LiderancaOperacionalResponse]:
-    return await service.list_leaderships(actor)
+    return await service.list_leaderships(
+        actor, query, coordenador_id, territorio_id, tipo_lideranca
+    )
+
+
+@router.delete("/liderancas/{leadership_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_leadership(
+    actor: Annotated[RequestActor, Depends(require_permission("cadastro", "excluir"))],
+    service: Annotated[CadastroService, Depends(get_cadastro_service)],
+    leadership_id: int = Path(ge=1),
+) -> Response:
+    await service.delete_leadership(actor, leadership_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/hierarquia", response_model=list[HierarquiaResponse])
 async def list_hierarchy(
     actor: Annotated[RequestActor, Depends(require_permission("cadastro", "visualizar"))],
     service: Annotated[CadastroService, Depends(get_cadastro_service)],
+    pessoa_query: Annotated[str | None, Query(min_length=3, max_length=120)] = None,
+    lideranca_superior_id: Annotated[int | None, Query(ge=1)] = None,
+    papel_subordinado: Annotated[
+        str | None,
+        Query(pattern="^(lider|liderado|apoiador|eleitor)$"),
+    ] = None,
 ) -> list[HierarquiaResponse]:
-    return await service.list_hierarchy(actor)
+    return await service.list_hierarchy(
+        actor, pessoa_query, lideranca_superior_id, papel_subordinado
+    )
 
 
 @router.post(
@@ -425,13 +511,33 @@ async def add_hierarchy(
     return await service.add_hierarchy(actor, payload)
 
 
+@router.patch("/hierarquia/{hierarchy_id}/status", response_model=HierarquiaResponse)
+async def set_hierarchy_status(
+    payload: HierarquiaStatusInput,
+    actor: Annotated[RequestActor, Depends(require_permission("cadastro", "editar"))],
+    service: Annotated[CadastroService, Depends(get_cadastro_service)],
+    hierarchy_id: int = Path(ge=1),
+) -> HierarquiaResponse:
+    return await service.set_hierarchy_status(actor, hierarchy_id, payload)
+
+
+@router.delete("/hierarquia/{hierarchy_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_hierarchy(
+    actor: Annotated[RequestActor, Depends(require_permission("cadastro", "excluir"))],
+    service: Annotated[CadastroService, Depends(get_cadastro_service)],
+    hierarchy_id: int = Path(ge=1),
+) -> Response:
+    await service.delete_hierarchy(actor, hierarchy_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post(
     "/pessoas/{person_id}/indicacoes",
     response_model=IndicacaoResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def add_indication(
-    payload: IndicacaoInput,
+    payload: IndicacaoPessoaInput,
     actor: Annotated[RequestActor, Depends(require_permission("cadastro", "editar"))],
     service: Annotated[CadastroService, Depends(get_cadastro_service)],
     person_id: int = Path(ge=1),
@@ -530,6 +636,7 @@ async def create_nucleus(
     actor: Annotated[RequestActor, Depends(require_permission("cadastro", "criar"))],
     service: Annotated[CadastroService, Depends(get_cadastro_service)],
 ) -> NucleoFamiliarResponse:
+    ensure_segmentation_manager(actor)
     return await service.create_nucleus(actor, payload)
 
 
@@ -545,6 +652,41 @@ async def add_nucleus_member(
     nucleus_id: int = Path(ge=1),
 ) -> VinculoNucleoResponse:
     return await service.add_nucleus_member(actor, nucleus_id, payload)
+
+
+@router.get("/nucleos-familiares-parentescos", response_model=list[ParentescoResponse])
+async def list_kinship_options(
+    _: Annotated[RequestActor, Depends(require_permission("cadastro", "visualizar"))],
+    service: Annotated[CadastroService, Depends(get_cadastro_service)],
+) -> list[ParentescoResponse]:
+    return service.kinship_options()
+
+
+@router.get(
+    "/nucleos-familiares/{nucleus_id}/pessoas",
+    response_model=list[NucleoPessoaResponse],
+)
+async def list_nucleus_people(
+    actor: Annotated[RequestActor, Depends(require_permission("cadastro", "visualizar"))],
+    service: Annotated[CadastroService, Depends(get_cadastro_service)],
+    nucleus_id: int = Path(ge=1),
+) -> list[NucleoPessoaResponse]:
+    ensure_segmentation_manager(actor)
+    return await service.list_nucleus_people(actor, nucleus_id)
+
+
+@router.delete(
+    "/nucleos-familiares/{nucleus_id}/pessoas/{person_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def remove_nucleus_member(
+    actor: Annotated[RequestActor, Depends(require_permission("cadastro", "editar"))],
+    service: Annotated[CadastroService, Depends(get_cadastro_service)],
+    nucleus_id: int = Path(ge=1),
+    person_id: int = Path(ge=1),
+) -> Response:
+    await service.remove_nucleus_member(actor, nucleus_id, person_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get(
@@ -568,7 +710,27 @@ async def create_community(
     actor: Annotated[RequestActor, Depends(require_permission("cadastro", "criar"))],
     service: Annotated[CadastroService, Depends(get_cadastro_service)],
 ) -> ComunidadeResponse:
+    ensure_segmentation_manager(actor)
     return await service.create_community(actor, payload)
+
+
+@router.patch("/comunidades/{community_id}", response_model=ComunidadeResponse)
+async def update_community(
+    payload: ComunidadeInput,
+    actor: Annotated[RequestActor, Depends(require_permission("cadastro", "editar"))],
+    service: Annotated[CadastroService, Depends(get_cadastro_service)],
+    community_id: int = Path(ge=1),
+) -> ComunidadeResponse:
+    ensure_segmentation_manager(actor)
+    return await service.update_community(actor, community_id, payload)
+
+
+@router.get("/comunidades-papeis", response_model=list[PapelComunidadeResponse])
+async def list_community_roles(
+    _: Annotated[RequestActor, Depends(require_permission("cadastro", "visualizar"))],
+    service: Annotated[CadastroService, Depends(get_cadastro_service)],
+) -> list[PapelComunidadeResponse]:
+    return service.community_roles()
 
 
 @router.post(
@@ -582,6 +744,33 @@ async def add_community_member(
     community_id: int = Path(ge=1),
 ) -> Response:
     await service.add_community_member(actor, community_id, payload)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/comunidades/{community_id}/pessoas",
+    response_model=list[ComunidadePessoaResponse],
+)
+async def list_community_people(
+    actor: Annotated[RequestActor, Depends(require_permission("cadastro", "visualizar"))],
+    service: Annotated[CadastroService, Depends(get_cadastro_service)],
+    community_id: int = Path(ge=1),
+) -> list[ComunidadePessoaResponse]:
+    ensure_segmentation_manager(actor)
+    return await service.list_community_people(actor, community_id)
+
+
+@router.delete(
+    "/comunidades/{community_id}/pessoas/{person_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def remove_community_member(
+    actor: Annotated[RequestActor, Depends(require_permission("cadastro", "editar"))],
+    service: Annotated[CadastroService, Depends(get_cadastro_service)],
+    community_id: int = Path(ge=1),
+    person_id: int = Path(ge=1),
+) -> Response:
+    await service.remove_community_member(actor, community_id, person_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -606,6 +795,7 @@ async def create_tag(
     actor: Annotated[RequestActor, Depends(require_permission("cadastro", "criar"))],
     service: Annotated[CadastroService, Depends(get_cadastro_service)],
 ) -> TagResponse:
+    ensure_segmentation_manager(actor)
     return await service.create_tag(actor, payload)
 
 
@@ -619,6 +809,7 @@ async def update_tag(
     service: Annotated[CadastroService, Depends(get_cadastro_service)],
     tag_id: int = Path(ge=1),
 ) -> TagResponse:
+    ensure_segmentation_manager(actor)
     return await service.update_tag(actor, tag_id, payload)
 
 
@@ -633,6 +824,27 @@ async def add_person_tag(
     tag_id: int = Path(ge=1),
 ) -> Response:
     await service.add_person_tag(actor, tag_id, payload.pessoa_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/tags/{tag_id}/pessoas", response_model=list[TagPessoaResponse])
+async def list_tag_people(
+    actor: Annotated[RequestActor, Depends(require_permission("cadastro", "visualizar"))],
+    service: Annotated[CadastroService, Depends(get_cadastro_service)],
+    tag_id: int = Path(ge=1),
+) -> list[TagPessoaResponse]:
+    ensure_segmentation_manager(actor)
+    return await service.list_tag_people(actor, tag_id)
+
+
+@router.delete("/tags/{tag_id}/pessoas/{person_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_person_tag(
+    actor: Annotated[RequestActor, Depends(require_permission("cadastro", "editar"))],
+    service: Annotated[CadastroService, Depends(get_cadastro_service)],
+    tag_id: int = Path(ge=1),
+    person_id: int = Path(ge=1),
+) -> Response:
+    await service.remove_person_tag(actor, tag_id, person_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

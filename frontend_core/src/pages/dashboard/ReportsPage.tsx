@@ -1,17 +1,6 @@
 import { DownloadOutlined } from '@ant-design/icons';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import {
-  Button,
-  Card,
-  DatePicker,
-  Form,
-  Input,
-  Modal,
-  Radio,
-  Segmented,
-  Space,
-  Table,
-} from 'antd';
+import { Button, Card, DatePicker, Form, Input, Modal, Radio, Segmented, Space, Table } from 'antd';
 import type { TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
 import { useMemo, useState } from 'react';
@@ -19,13 +8,10 @@ import { useMemo, useState } from 'react';
 import { AppToast } from '@/components/feedback/AppToast';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { exportReport, getReport } from '@/modules/dashboard/dashboard-service';
-import type {
-  DashboardFilters,
-  ReportRow,
-  ReportType,
-} from '@/modules/dashboard/types';
+import type { DashboardFilters, ReportRow, ReportType } from '@/modules/dashboard/types';
 import { normalizeApiError } from '@/services/api/api-error';
 import { useSessionStore } from '@/stores/session-store';
+import { formatNumber, formatPercent } from '@/utils/number-format';
 
 const labels: Record<ReportType, string> = {
   metas: 'Metas por líder',
@@ -89,11 +75,16 @@ export function ReportsPage() {
         key,
         render: (value: unknown) => {
           if (value === null || value === undefined || value === '') return '—';
-          if (key === 'percentual') return `${value}%`;
+          if (key.includes('percentual')) return formatPercent(value as number | string);
           if (key.startsWith('data') || key === 'prazo') {
             const parsed = dayjs(String(value));
-            return parsed.isValid() ? parsed.format(key === 'data_inicio' || key === 'data_fim' ? 'DD/MM/YYYY HH:mm' : 'DD/MM/YYYY') : String(value);
+            return parsed.isValid()
+              ? parsed.format(
+                  key === 'data_inicio' || key === 'data_fim' ? 'DD/MM/YYYY HH:mm' : 'DD/MM/YYYY',
+                )
+              : String(value);
           }
+          if (typeof value === 'number') return formatNumber(value);
           return String(value);
         },
       })),

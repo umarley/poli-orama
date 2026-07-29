@@ -30,20 +30,26 @@ from app.schemas.cadastro_operacional import (
     ComplementoPoliticoInput,
     ComplementoPoliticoResponse,
     ComunidadeInput,
+    ComunidadePessoaResponse,
     ComunidadeResponse,
     EstadoCivilResponse,
     HierarquiaInput,
     HierarquiaResponse,
     HierarquiaResumo,
+    HierarquiaStatusInput,
     IndicacaoGraphEdge,
     IndicacaoGraphNode,
     IndicacaoGraphResponse,
     IndicacaoInput,
+    IndicacaoPessoaInput,
     IndicacaoResponse,
     LiderancaOperacionalResponse,
     MergePessoaCampo,
     NucleoFamiliarInput,
     NucleoFamiliarResponse,
+    NucleoPessoaResponse,
+    PapelComunidadeResponse,
+    ParentescoResponse,
     PessoaCadastroCreate,
     PessoaDetalheResponse,
     PessoaFiltros,
@@ -57,9 +63,11 @@ from app.schemas.cadastro_operacional import (
     PessoaTipoResponse,
     RelacionamentoInput,
     RelacionamentoResponse,
+    ReligiaoResponse,
     SuspeitaDuplicidadeResolve,
     SuspeitaDuplicidadeResponse,
     TagInput,
+    TagPessoaResponse,
     TagResponse,
     TagUpdate,
     ValidacaoInput,
@@ -145,6 +153,10 @@ class CadastroService:
         if person is None:
             raise ResourceNotFoundError("Pessoa", person_id)
         extensions = await self.repository.get_person_extensions(actor.tenant_id, person_id)
+        hierarchy_names = await self.repository.hierarchy_names(
+            actor.tenant_id,
+            [item.id for item in extensions["hierarquia"]],
+        )
         data = PessoaResponse.model_validate(person).model_dump()
         data.update(
             {
@@ -173,7 +185,10 @@ class CadastroService:
                     for item in extensions["nucleos_familiares"]
                 ],
                 "hierarquia": [
-                    HierarquiaResumo.model_validate(item) for item in extensions["hierarquia"]
+                    HierarquiaResumo.model_validate(item).model_copy(
+                        update=hierarchy_names.get(item.id, {})
+                    )
+                    for item in extensions["hierarquia"]
                 ],
             }
         )
@@ -255,6 +270,26 @@ class CadastroService:
         )
         await self.repository.commit()
         return await self.get_person(actor, person.id)
+
+    async def calculate_registration_completeness(
+        self, actor: RequestActor, person_id: int
+    ) -> PessoaDetalheResponse:
+        person = await self._person(actor.tenant_id, person_id)
+        before = person_snapshot(person)
+        completeness = await self.repository.calculate_registration_completeness(
+            actor.tenant_id, person_id, actor.user_id
+        )
+        await self.repository.audit(
+            tenant_id=actor.tenant_id,
+            user_id=actor.user_id,
+            action="editar",
+            table_name="pessoa",
+            record_id=person_id,
+            before=before,
+            after={"completude_cadastral": str(completeness)},
+        )
+        await self.repository.commit()
+        return await self.get_person(actor, person_id)
 
     async def deactivate_person(
         self,
@@ -404,6 +439,20 @@ class CadastroService:
         await self._audit_created(actor, "pessoa_rede_social", item.id)
         return PessoaRedeSocialResponse.model_validate(item)
 
+    async def update_social(
+        self,
+        actor: RequestActor,
+        person_id: int,
+        social_id: int,
+        payload: PessoaRedeSocialInput,
+    ) -> PessoaRedeSocialResponse:
+        item = await self.repository.social(actor.tenant_id, person_id, social_id)
+        if item is None:
+            raise ResourceNotFoundError("Rede social", social_id)
+        item = await self.repository.update_social(item, payload)
+        await self._audit_updated(actor, "pessoa_rede_social", item.id)
+        return PessoaRedeSocialResponse.model_validate(item)
+
     async def set_voter(
         self, actor: RequestActor, person_id: int, payload: EleitorCreate
     ) -> EleitorResponse:
@@ -435,23 +484,61 @@ class CadastroService:
             for item in await self.repository.list_marital_statuses()
         ]
 
-    async def list_leaderships(self, actor: RequestActor) -> list[LiderancaOperacionalResponse]:
-        items = await self.repository.list_leaderships(actor.tenant_id)
+    async def list_religions(self) -> list[ReligiaoResponse]:
+        return [
+            ReligiaoResponse(**item)
+            for item in await self.repository.list_religions()
+        ]
+
+    async def list_leaderships(
+        self,
+        actor: RequestActor,
+        query: str | None = None,
+        coordinator_id: int | None = None,
+        territory_id: int | None = None,
+        leadership_type: str | None = None,
+    ) -> list[LiderancaOperacionalResponse]:
+        items = await self.repository.list_leaderships(
+            actor.tenant_id, query, coordinator_id, territory_id, leadership_type
+        )
         territories = await self.repository.leadership_territories(
+            actor.tenant_id, [item.id for item in items]
+        )
+        tags = await self.repository.leadership_person_tags(
             actor.tenant_id, [item.id for item in items]
         )
         return [
             LiderancaOperacionalResponse(
                 **LiderancaResponse.model_validate(item).model_dump(),
-                territorio_ids=territories.get(item.id, []),
+                pessoa_nome_completo=item.pessoa.nome_completo,
+                coordenador_nome_completo=(
+                    item.coordenador.pessoa.nome_completo if item.coordenador else None
+                ),
+                territorio_ids=[territory["id"] for territory in territories.get(item.id, [])],
+                territorios=territories.get(item.id, []),
+                tags=tags.get(item.id, []),
             )
             for item in items
         ]
 
-    async def list_hierarchy(self, actor: RequestActor) -> list[HierarquiaResponse]:
+    async def list_hierarchy(
+        self,
+        actor: RequestActor,
+        person_query: str | None = None,
+        superior_id: int | None = None,
+        role: str | None = None,
+    ) -> list[HierarquiaResponse]:
+        items = await self.repository.list_hierarchy(
+            actor.tenant_id, person_query, superior_id, role
+        )
+        names = await self.repository.hierarchy_names(
+            actor.tenant_id, [item.id for item in items]
+        )
         return [
-            HierarquiaResponse.model_validate(item)
-            for item in await self.repository.list_hierarchy(actor.tenant_id)
+            HierarquiaResponse.model_validate(item).model_copy(
+                update=names.get(item.id, {})
+            )
+            for item in items
         ]
 
     async def replace_types(
@@ -488,22 +575,130 @@ class CadastroService:
                 "A relacao criaria um ciclo na hierarquia.",
                 code="leadership_cycle",
             )
+        if payload.ativo and await self.repository.active_hierarchy_for_person(
+            actor.tenant_id, payload.pessoa_subordinada_id
+        ):
+            raise BusinessRuleError(
+                "Esta pessoa ja possui uma lideranca ativa.",
+                code="person_already_has_active_leadership",
+            )
         item = await self.repository.add_hierarchy(actor.tenant_id, payload)
         await self._audit_created(actor, "hierarquia_lideranca", item.id)
         return HierarquiaResponse.model_validate(item)
 
+    async def set_hierarchy_status(
+        self, actor: RequestActor, hierarchy_id: int, payload: HierarquiaStatusInput
+    ) -> HierarquiaResponse:
+        item = await self.repository.hierarchy(actor.tenant_id, hierarchy_id)
+        if item is None:
+            raise ResourceNotFoundError("Vinculo de lideranca", hierarchy_id)
+        if payload.ativo and await self.repository.active_hierarchy_for_person(
+            actor.tenant_id, item.pessoa_subordinada_id, exclude_id=item.id
+        ):
+            raise BusinessRuleError(
+                "Esta pessoa ja possui uma lideranca ativa.",
+                code="person_already_has_active_leadership",
+            )
+        before = {
+            "ativo": item.ativo,
+            "data_fim": item.data_fim.isoformat() if item.data_fim else None,
+        }
+        item = await self.repository.set_hierarchy_status(item, payload.ativo)
+        await self.repository.audit(
+            tenant_id=actor.tenant_id,
+            user_id=actor.user_id,
+            action="editar",
+            table_name="hierarquia_lideranca",
+            record_id=item.id,
+            before=before,
+            after={
+                "ativo": item.ativo,
+                "data_fim": item.data_fim.isoformat() if item.data_fim else None,
+            },
+        )
+        await self.repository.commit()
+        return HierarquiaResponse.model_validate(item)
+
+    async def delete_hierarchy(self, actor: RequestActor, hierarchy_id: int) -> None:
+        self._require_manager_profile(actor)
+        item = await self.repository.hierarchy(actor.tenant_id, hierarchy_id)
+        if item is None:
+            raise ResourceNotFoundError("Vinculo de lideranca", hierarchy_id)
+        before = {
+            "id": item.id,
+            "lideranca_superior_id": item.lideranca_superior_id,
+            "pessoa_subordinada_id": item.pessoa_subordinada_id,
+            "papel_subordinado": item.papel_subordinado,
+            "ativo": item.ativo,
+        }
+        await self.repository.audit(
+            tenant_id=actor.tenant_id,
+            user_id=actor.user_id,
+            action="excluir",
+            table_name="hierarquia_lideranca",
+            record_id=item.id,
+            before=before,
+            after=None,
+        )
+        await self.repository.delete_hierarchy(item)
+        await self.repository.commit()
+
+    async def delete_leadership(self, actor: RequestActor, leadership_id: int) -> None:
+        self._require_manager_profile(actor)
+        item = await self.repository.leadership(actor.tenant_id, leadership_id)
+        if item is None:
+            raise ResourceNotFoundError("Lideranca", leadership_id)
+        before = {
+            "id": item.id,
+            "pessoa_id": item.pessoa_id,
+            "tipo_lideranca": item.tipo_lideranca,
+            "coordenador_id": item.coordenador_id,
+            "apelido_campanha": item.apelido_campanha,
+            "ativo": item.ativo,
+        }
+        await self.repository.audit(
+            tenant_id=actor.tenant_id,
+            user_id=actor.user_id,
+            action="excluir",
+            table_name="lideranca",
+            record_id=item.id,
+            before=before,
+            after=None,
+        )
+        await self.repository.delete_leadership(item)
+        await self.repository.commit()
+
+    @staticmethod
+    def _require_manager_profile(actor: RequestActor) -> None:
+        if not {"gestor", "gestor_saas"} & set(actor.profiles):
+            raise AuthorizationError("Perfil Gestor ou Gestor SaaS obrigatorio.")
+
     async def add_indication(
-        self, actor: RequestActor, person_id: int, payload: IndicacaoInput
+        self, actor: RequestActor, person_id: int, payload: IndicacaoPessoaInput
     ) -> IndicacaoResponse:
         await self._person(actor.tenant_id, person_id)
-        if payload.pessoa_indicante_id is not None:
-            await self._person(actor.tenant_id, payload.pessoa_indicante_id)
-            if payload.pessoa_indicante_id == person_id:
-                raise BusinessRuleError(
-                    "Uma pessoa nao pode indicar a si mesma.",
-                    code="self_indication",
-                )
-        item = await self.repository.add_indication(actor.tenant_id, person_id, payload)
+        await self._person(actor.tenant_id, payload.pessoa_indicada_id)
+        if payload.pessoa_indicada_id == person_id:
+            raise BusinessRuleError(
+                "Uma pessoa nao pode indicar a si mesma.",
+                code="self_indication",
+            )
+        if await self.repository.person_has_indication(
+            actor.tenant_id, payload.pessoa_indicada_id
+        ):
+            raise BusinessRuleError(
+                "Esta pessoa ja foi indicada.",
+                code="person_already_indicated",
+            )
+        indication = IndicacaoInput(
+            pessoa_indicante_id=person_id,
+            origem=payload.origem,
+            contexto=payload.contexto,
+            data_indicacao=payload.data_indicacao,
+        )
+        item = await self.repository.add_indication(
+            actor.tenant_id, payload.pessoa_indicada_id, indication
+        )
         await self._audit_created(actor, "indicacao", item.id)
         return IndicacaoResponse.model_validate(item)
 
@@ -551,6 +746,55 @@ class CadastroService:
         await self._audit_created(actor, "pessoa_nucleo_familiar", item.id)
         return VinculoNucleoResponse.model_validate(item)
 
+    async def list_nucleus_people(
+        self, actor: RequestActor, nucleus_id: int
+    ) -> list[NucleoPessoaResponse]:
+        if await self.repository.nucleus(actor.tenant_id, nucleus_id) is None:
+            raise ResourceNotFoundError("Nucleo familiar", nucleus_id)
+        return [
+            NucleoPessoaResponse.model_validate(item)
+            for item in await self.repository.nucleus_people(actor.tenant_id, nucleus_id)
+        ]
+
+    async def remove_nucleus_member(
+        self, actor: RequestActor, nucleus_id: int, person_id: int
+    ) -> None:
+        nucleus = await self.repository.nucleus(actor.tenant_id, nucleus_id)
+        if nucleus is None:
+            raise ResourceNotFoundError("Nucleo familiar", nucleus_id)
+        if not await self.repository.remove_nucleus_member(
+            actor.tenant_id, nucleus, person_id
+        ):
+            raise ResourceNotFoundError("Vinculo entre pessoa e nucleo familiar", person_id)
+        await self.repository.audit(
+            tenant_id=actor.tenant_id,
+            user_id=actor.user_id,
+            action="excluir",
+            table_name="pessoa_nucleo_familiar",
+            record_id=person_id,
+            before={"nucleo_familiar_id": nucleus_id, "pessoa_id": person_id},
+            after=None,
+        )
+        await self.repository.commit()
+
+    @staticmethod
+    def kinship_options() -> list[ParentescoResponse]:
+        return [
+            ParentescoResponse(codigo="responsavel", nome="Responsável"),
+            ParentescoResponse(codigo="conjuge", nome="Cônjuge"),
+            ParentescoResponse(codigo="pai", nome="Pai"),
+            ParentescoResponse(codigo="mae", nome="Mãe"),
+            ParentescoResponse(codigo="filho", nome="Filho(a)"),
+            ParentescoResponse(codigo="irmao", nome="Irmão(ã)"),
+            ParentescoResponse(codigo="avo", nome="Avô/ó"),
+            ParentescoResponse(codigo="neto", nome="Neto(a)"),
+            ParentescoResponse(codigo="tio", nome="Tio(a)"),
+            ParentescoResponse(codigo="sobrinho", nome="Sobrinho(a)"),
+            ParentescoResponse(codigo="primo", nome="Primo(a)"),
+            ParentescoResponse(codigo="familiar", nome="Familiar"),
+            ParentescoResponse(codigo="outro", nome="Outro"),
+        ]
+
     async def create_community(
         self, actor: RequestActor, payload: ComunidadeInput
     ) -> ComunidadeResponse:
@@ -572,6 +816,24 @@ class CadastroService:
             for item in await self.repository.list_communities(actor.tenant_id)
         ]
 
+    async def update_community(
+        self, actor: RequestActor, community_id: int, payload: ComunidadeInput
+    ) -> ComunidadeResponse:
+        item = await self.repository.community(actor.tenant_id, community_id)
+        if item is None:
+            raise ResourceNotFoundError("Comunidade", community_id)
+        if payload.lider_responsavel_id and (
+            await self.repository.leadership(actor.tenant_id, payload.lider_responsavel_id) is None
+        ):
+            raise ResourceNotFoundError("Lideranca", payload.lider_responsavel_id)
+        if payload.territorio_id and not await self.repository.territory_exists(
+            actor.tenant_id, payload.territorio_id
+        ):
+            raise ResourceNotFoundError("Territorio", payload.territorio_id)
+        item = await self.repository.update_community(item, payload)
+        await self._audit_updated(actor, "comunidade", item.id)
+        return ComunidadeResponse.model_validate(item)
+
     async def add_community_member(
         self, actor: RequestActor, community_id: int, payload: VinculoComunidadeInput
     ) -> None:
@@ -580,6 +842,46 @@ class CadastroService:
         await self._person(actor.tenant_id, payload.pessoa_id)
         await self.repository.add_community_member(actor.tenant_id, community_id, payload)
         await self.repository.commit()
+
+    async def list_community_people(
+        self, actor: RequestActor, community_id: int
+    ) -> list[ComunidadePessoaResponse]:
+        if await self.repository.community(actor.tenant_id, community_id) is None:
+            raise ResourceNotFoundError("Comunidade", community_id)
+        return [
+            ComunidadePessoaResponse.model_validate(item)
+            for item in await self.repository.community_people(actor.tenant_id, community_id)
+        ]
+
+    async def remove_community_member(
+        self, actor: RequestActor, community_id: int, person_id: int
+    ) -> None:
+        if await self.repository.community(actor.tenant_id, community_id) is None:
+            raise ResourceNotFoundError("Comunidade", community_id)
+        if not await self.repository.remove_community_member(
+            actor.tenant_id, community_id, person_id
+        ):
+            raise ResourceNotFoundError("Vinculo entre pessoa e comunidade", person_id)
+        await self.repository.audit(
+            tenant_id=actor.tenant_id,
+            user_id=actor.user_id,
+            action="excluir",
+            table_name="pessoa_comunidade",
+            record_id=person_id,
+            before={"comunidade_id": community_id, "pessoa_id": person_id},
+            after=None,
+        )
+        await self.repository.commit()
+
+    @staticmethod
+    def community_roles() -> list[PapelComunidadeResponse]:
+        return [
+            PapelComunidadeResponse(codigo="membro", nome="Membro"),
+            PapelComunidadeResponse(codigo="lider", nome="Líder"),
+            PapelComunidadeResponse(codigo="coordenador", nome="Coordenador"),
+            PapelComunidadeResponse(codigo="mobilizador", nome="Mobilizador"),
+            PapelComunidadeResponse(codigo="voluntario", nome="Voluntário"),
+        ]
 
     async def create_tag(self, actor: RequestActor, payload: TagInput) -> TagResponse:
         item = await self.repository.create_tag(actor.tenant_id, payload)
@@ -605,6 +907,38 @@ class CadastroService:
             raise ResourceNotFoundError("Tag", tag_id)
         await self._person(actor.tenant_id, person_id)
         await self.repository.add_person_tag(actor.tenant_id, tag_id, person_id)
+        await self.repository.commit()
+
+    async def list_tag_people(
+        self, actor: RequestActor, tag_id: int
+    ) -> list[TagPessoaResponse]:
+        if await self.repository.tag(actor.tenant_id, tag_id) is None:
+            raise ResourceNotFoundError("Tag", tag_id)
+        return [
+            TagPessoaResponse(
+                id=person.id,
+                nome_completo=person.nome_completo,
+                data_nascimento=person.data_nascimento,
+            )
+            for person in await self.repository.tag_people(actor.tenant_id, tag_id)
+        ]
+
+    async def remove_person_tag(
+        self, actor: RequestActor, tag_id: int, person_id: int
+    ) -> None:
+        if await self.repository.tag(actor.tenant_id, tag_id) is None:
+            raise ResourceNotFoundError("Tag", tag_id)
+        if not await self.repository.remove_person_tag(actor.tenant_id, tag_id, person_id):
+            raise ResourceNotFoundError("Vinculo entre pessoa e tag", person_id)
+        await self.repository.audit(
+            tenant_id=actor.tenant_id,
+            user_id=actor.user_id,
+            action="excluir",
+            table_name="pessoa_tag",
+            record_id=person_id,
+            before={"tag_id": tag_id, "pessoa_id": person_id},
+            after=None,
+        )
         await self.repository.commit()
 
     async def set_political(

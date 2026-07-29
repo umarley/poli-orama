@@ -117,7 +117,9 @@ export function PersonInteractionsPanel({ pessoaId, canCreate }: Props) {
                 avatar={iconFor(item.canal_comunicacao_nome)}
                 title={
                   <Space wrap>
-                    <Typography.Text strong>{item.assunto || 'Interação sem assunto'}</Typography.Text>
+                    <Typography.Text strong>
+                      {item.assunto || 'Interação sem assunto'}
+                    </Typography.Text>
                     <Tag color={item.direcao === 'entrada' ? 'green' : 'blue'}>
                       {item.direcao === 'entrada' ? 'Entrada' : 'Saída'}
                     </Tag>
@@ -130,9 +132,13 @@ export function PersonInteractionsPanel({ pessoaId, canCreate }: Props) {
                       {dayjs(item.data_interacao).format('DD/MM/YYYY HH:mm')} ·{' '}
                       {item.canal_comunicacao_nome || 'Canal não informado'}
                     </Typography.Text>
-                    {item.conteudo ? <Typography.Paragraph>{item.conteudo}</Typography.Paragraph> : null}
+                    {item.conteudo ? (
+                      <Typography.Paragraph>{item.conteudo}</Typography.Paragraph>
+                    ) : null}
                     {item.resultado ? (
-                      <Typography.Text type="secondary">Resultado: {item.resultado}</Typography.Text>
+                      <Typography.Text type="secondary">
+                        Resultado: {item.resultado}
+                      </Typography.Text>
                     ) : null}
                   </Space>
                 }
@@ -205,7 +211,8 @@ export function PersonInteractionsPanel({ pessoaId, canCreate }: Props) {
 function iconFor(channel: string | null) {
   const normalized = channel?.toLowerCase() ?? '';
   if (normalized.includes('telefone')) return <PhoneOutlined />;
-  if (normalized.includes('whatsapp') || normalized.includes('mensagem')) return <MessageOutlined />;
+  if (normalized.includes('whatsapp') || normalized.includes('mensagem'))
+    return <MessageOutlined />;
   if (normalized.includes('e-mail') || normalized.includes('email')) return <SendOutlined />;
   return <UserSwitchOutlined />;
 }

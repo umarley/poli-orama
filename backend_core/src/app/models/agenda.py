@@ -57,6 +57,10 @@ class Evento(Base):
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     uuid_publico: Mapped[Any] = mapped_column(UUID(as_uuid=True))
     tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("public.tenant.id"))
+    contexto: Mapped[str] = mapped_column(String(20))
+    campanha_eleicao_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("eleicao.campanha_eleicao.id")
+    )
     tipo_evento_id: Mapped[int | None] = mapped_column(
         SmallInteger, ForeignKey("agenda.tipo_evento.id")
     )
@@ -71,7 +75,7 @@ class Evento(Base):
     endereco_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("cadastro.endereco.id")
     )
-    municipio_id: Mapped[int | None] = mapped_column(Integer)
+    codigo_municipio_ibge: Mapped[int | None] = mapped_column(Integer)
     bairro_id: Mapped[int | None] = mapped_column(Integer)
     zona_eleitoral_id: Mapped[int | None] = mapped_column(Integer)
     territorio_id: Mapped[int | None] = mapped_column(

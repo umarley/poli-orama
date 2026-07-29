@@ -1,5 +1,6 @@
 .page {
   display: grid;
+  min-width: 0;
   gap: 20px;
 }
 
@@ -13,13 +14,25 @@
   min-width: 260px;
 }
 
+.graphCard {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
 .graphCard :global(.ant-card-body) {
+  min-width: 0;
   padding: 0;
 }
 
 .graphViewport {
+  width: 100%;
+  max-width: 100%;
+  height: clamp(480px, 65vh, 720px);
   min-height: 480px;
-  overflow: auto;
+  overflow: scroll;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   background:
     linear-gradient(#f0f0f0 1px, transparent 1px),
     linear-gradient(90deg, #f0f0f0 1px, transparent 1px);
@@ -29,7 +42,7 @@
 
 .canvas {
   position: relative;
-  min-width: 100%;
+  margin-inline: auto;
   min-height: 480px;
 }
 

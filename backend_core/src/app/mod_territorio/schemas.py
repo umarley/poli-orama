@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class TerritorySchema(BaseModel):
@@ -34,6 +34,19 @@ class BairroResponse(TerritorySchema):
     codigo_municipio_ibge: int
     nome: str
     origem: str
+
+
+class BairroCreate(TerritorySchema):
+    codigo_municipio_ibge: int = Field(ge=1)
+    nome: str = Field(min_length=1, max_length=150)
+
+    @field_validator("nome")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        name = value.strip()
+        if not name:
+            raise ValueError("Nome do bairro nao pode ser vazio.")
+        return name
 
 
 class ZonaEleitoralResponse(TerritorySchema):
@@ -149,6 +162,12 @@ class PessoaTerritorioResponse(PessoaTerritorioInput):
     territorio_id: int
 
 
+class PessoaTerritorioDetalhe(PessoaTerritorioResponse):
+    territorio_nome: str
+    tipo_nome: str
+    territorio_ativo: bool
+
+
 class LiderancaTerritorioInput(TerritorySchema):
     lideranca_id: int = Field(ge=1)
     responsabilidade: ResponsabilidadeLideranca = "principal"
@@ -191,3 +210,11 @@ class MapMarker(TerritorySchema):
     longitude: Decimal
     quantidade: int = Field(ge=1)
     tipo: Literal["pessoa"] = "pessoa"
+
+
+class MapPerson(TerritorySchema):
+    id: int
+    nome_completo: str
+    apelido: str | None = None
+    telefone: str | None = None
+    territorio: str | None = None

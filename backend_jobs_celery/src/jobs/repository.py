@@ -369,6 +369,18 @@ class JobRepository:
                     "SELECT set_config('app.current_tenant_id', %s, true)",
                     (str(tenant_id),),
                 )
+                campaign = connection.execute(
+                    """
+                    SELECT id FROM eleicao.campanha_eleicao
+                    WHERE tenant_id = %s AND ativa
+                    ORDER BY data_ativacao DESC NULLS LAST, id DESC
+                    LIMIT 1
+                    """,
+                    (tenant_id,),
+                ).fetchone()
+                if campaign is None:
+                    raise RuntimeError("Tenant nao possui campanha eleitoral ativa.")
+                campaign_id = int(campaign["id"])
                 threshold_row = connection.execute(
                     """
                     SELECT COALESCE(percentual_alerta_meta, 70) AS threshold
@@ -387,10 +399,12 @@ class JobRepository:
                     SELECT m.id, m.quantidade_meta, tm.codigo AS tipo_codigo
                     FROM meta.meta_voto m
                     JOIN meta.tipo_meta_voto tm ON tm.id = m.tipo_meta_voto_id
-                    WHERE m.tenant_id = %s AND m.status IN ('ativa', 'em_risco')
+                    WHERE m.tenant_id = %s
+                      AND m.campanha_eleicao_id = %s
+                      AND m.status IN ('ativa', 'em_risco')
                     ORDER BY m.id
                     """,
-                    (tenant_id,),
+                    (tenant_id, campaign_id),
                 ).fetchall()
                 inactive_alerts = connection.execute(
                     """
@@ -660,34 +674,40 @@ class JobRepository:
                 connection.execute(
                     """
                     DELETE FROM meta.ranking_lideranca
-                    WHERE tenant_id = %s AND data_referencia = %s
+                    WHERE tenant_id = %s AND campanha_eleicao_id = %s
+                      AND data_referencia = %s
                     """,
-                    (tenant_id, reference_date),
+                    (tenant_id, campaign_id, reference_date),
                 )
                 connection.execute(
                     """
                     WITH leader_metrics AS (
                         SELECT
                             l.id AS lideranca_id,
-                            (SELECT count(DISTINCT hl.pessoa_subordinada_id)
-                             FROM cadastro.hierarquia_lideranca hl
+                            (SELECT count(DISTINCT hl.pessoa_id)
+                             FROM eleicao.campanha_liderado hl
                              WHERE hl.tenant_id = l.tenant_id
-                               AND hl.lideranca_superior_id = l.id
+                               AND hl.campanha_eleicao_id = %s
+                               AND hl.lideranca_id = l.id
                                AND hl.ativo) AS cadastros,
                             (SELECT count(*) FROM agenda.evento_lideranca el
+                             JOIN agenda.evento ev ON ev.id = el.evento_id
                              WHERE el.tenant_id = l.tenant_id
-                               AND el.lideranca_id = l.id) AS eventos,
+                               AND el.lideranca_id = l.id
+                               AND ev.campanha_eleicao_id = %s) AS eventos,
                             (SELECT count(*) FROM demanda.demanda d
                              WHERE d.tenant_id = l.tenant_id
-                               AND d.lideranca_indicacao_id = l.id) AS demandas,
+                               AND d.lideranca_indicacao_id = l.id
+                               AND d.campanha_eleicao_id = %s) AS demandas,
                             COALESCE((
                                 SELECT avg(p.nivel_engajamento)
-                                FROM cadastro.hierarquia_lideranca hl
+                                FROM eleicao.campanha_liderado hl
                                 JOIN cadastro.pessoa p
-                                  ON p.id = hl.pessoa_subordinada_id
+                                  ON p.id = hl.pessoa_id
                                  AND p.tenant_id = hl.tenant_id
                                 WHERE hl.tenant_id = l.tenant_id
-                                  AND hl.lideranca_superior_id = l.id
+                                  AND hl.campanha_eleicao_id = %s
+                                  AND hl.lideranca_id = l.id
                                   AND hl.ativo
                             ), 0) AS engajamento,
                             COALESCE((
@@ -697,6 +717,7 @@ class JobRepository:
                                 WHERE m.tenant_id = l.tenant_id
                                   AND a.tipo_alvo = 'lideranca'
                                   AND a.alvo_id = l.id
+                                  AND m.campanha_eleicao_id = %s
                                   AND m.status IN ('ativa', 'em_risco')
                             ), 0) AS quantidade_meta,
                             COALESCE((
@@ -715,6 +736,7 @@ class JobRepository:
                                 WHERE m.tenant_id = l.tenant_id
                                   AND a.tipo_alvo = 'lideranca'
                                   AND a.alvo_id = l.id
+                                  AND m.campanha_eleicao_id = %s
                                   AND m.status IN ('ativa', 'em_risco')
                             ), 0) AS quantidade_atual
                             ,COALESCE((
@@ -731,9 +753,14 @@ class JobRepository:
                                 WHERE m.tenant_id = l.tenant_id
                                   AND a.tipo_alvo = 'lideranca'
                                   AND a.alvo_id = l.id
+                                  AND m.campanha_eleicao_id = %s
                                   AND m.status IN ('ativa', 'em_risco')
                             ), 0) AS confirmacoes
                         FROM cadastro.lideranca l
+                        JOIN eleicao.campanha_lideranca cl
+                          ON cl.lideranca_id = l.id
+                         AND cl.campanha_eleicao_id = %s
+                         AND cl.ativo
                         WHERE l.tenant_id = %s AND l.ativo
                     ),
                     scored AS (
@@ -757,19 +784,29 @@ class JobRepository:
                         FROM scored
                     )
                     INSERT INTO meta.ranking_lideranca
-                        (tenant_id, lideranca_id, data_referencia, posicao,
+                        (tenant_id, campanha_eleicao_id, lideranca_id,
+                         data_referencia, posicao,
                          total_cadastros, total_confirmacoes, total_eventos,
                          total_demandas, percentual_meta, pontuacao)
-                    SELECT %s, lideranca_id, %s, position, cadastros,
+                    SELECT %s, %s, lideranca_id, %s, position, cadastros,
                            confirmacoes, eventos, demandas, percentual, points
                     FROM positioned
                     """,
                     (
+                        campaign_id,
+                        campaign_id,
+                        campaign_id,
+                        campaign_id,
+                        campaign_id,
+                        campaign_id,
+                        campaign_id,
+                        campaign_id,
                         tenant_id,
                         RANKING_ATTAINMENT_WEIGHT,
                         RANKING_REGISTRATIONS_WEIGHT,
                         RANKING_ENGAGEMENT_WEIGHT,
                         tenant_id,
+                        campaign_id,
                         reference_date,
                     ),
                 )
@@ -777,9 +814,10 @@ class JobRepository:
                     """
                     SELECT count(*) AS total
                     FROM meta.ranking_lideranca
-                    WHERE tenant_id = %s AND data_referencia = %s
+                    WHERE tenant_id = %s AND campanha_eleicao_id = %s
+                      AND data_referencia = %s
                     """,
-                    (tenant_id, reference_date),
+                    (tenant_id, campaign_id, reference_date),
                 ).fetchone()
                 ranking_count = int(ranking_row["total"]) if ranking_row else 0
         return {

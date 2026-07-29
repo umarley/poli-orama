@@ -1,4 +1,4 @@
-# Vurix Eleitoral
+# Poliorama
 
 Monolito modular composto por API FastAPI, frontend React e banco PostgreSQL.
 Os comandos abaixo devem ser executados a partir desta pasta.

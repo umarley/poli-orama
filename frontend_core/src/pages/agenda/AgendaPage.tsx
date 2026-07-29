@@ -70,22 +70,19 @@ export function AgendaPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [personQuery, setPersonQuery] = useState('');
   const [form] = Form.useForm<EventForm>();
-  const monthFilters = useMemo(
-    () => {
-      const periodStart =
-        view === 'Semana' ? referenceDate.startOf('week') : referenceDate.startOf('month');
-      const periodEnd =
-        view === 'Semana'
-          ? referenceDate.add(1, 'week').startOf('week')
-          : referenceDate.add(1, 'month').startOf('month');
-      return {
-        data_inicio: periodStart.toISOString(),
-        data_fim: periodEnd.toISOString(),
-        ...filters,
-      };
-    },
-    [filters, referenceDate, view],
-  );
+  const monthFilters = useMemo(() => {
+    const periodStart =
+      view === 'Semana' ? referenceDate.startOf('week') : referenceDate.startOf('month');
+    const periodEnd =
+      view === 'Semana'
+        ? referenceDate.add(1, 'week').startOf('week')
+        : referenceDate.add(1, 'month').startOf('month');
+    return {
+      data_inicio: periodStart.toISOString(),
+      data_fim: periodEnd.toISOString(),
+      ...filters,
+    };
+  }, [filters, referenceDate, view]);
   const events = useQuery({
     queryKey: ['agenda', 'eventos', monthFilters],
     queryFn: () => listEvents(monthFilters),
@@ -101,7 +98,7 @@ export function AgendaPage() {
   });
   const leaderships = useQuery({
     queryKey: ['cadastro', 'liderancas', 'agenda'],
-    queryFn: listarLiderancas,
+    queryFn: () => listarLiderancas(),
   });
   const people = useQuery({
     queryKey: ['cadastro', 'pessoas', 'agenda-search', personQuery],
@@ -334,7 +331,11 @@ export function AgendaPage() {
             </Col>
           </Row>
           <Form.Item name="periodo" label="Data e horário" rules={[{ required: true }]}>
-            <DatePicker.RangePicker showTime style={{ width: '100%' }} />
+            <DatePicker.RangePicker
+              format="DD/MM/YYYY HH:mm:ss"
+              showTime={{ format: 'HH:mm:ss' }}
+              style={{ width: '100%' }}
+            />
           </Form.Item>
           <Row gutter={12}>
             <Col span={12}>
@@ -354,11 +355,7 @@ export function AgendaPage() {
               </Form.Item>
             </Col>
           </Row>
-          <Form.Item
-            name="responsavel_pessoa_id"
-            label="Responsável"
-            rules={[{ required: true }]}
-          >
+          <Form.Item name="responsavel_pessoa_id" label="Responsável" rules={[{ required: true }]}>
             <Select
               showSearch
               filterOption={false}

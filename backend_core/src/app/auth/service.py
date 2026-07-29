@@ -13,6 +13,7 @@ from app.auth.schemas import (
     ProfileResponse,
     ResetPasswordResponse,
     SessionResponse,
+    TenantSwitchRequest,
     TerritorialAccessInput,
     TerritorialAccessResponse,
     TokenResponse,
@@ -188,8 +189,6 @@ class AuthService:
         tenant = await self.repository.resolve_tenant_for_login_by_id(tenant_id)
         if tenant is None:
             raise AuthenticationError("Sessao invalida ou revogada.")
-        if tenant.status not in {"ativo", "trial"}:
-            raise TenantInactiveError(tenant.status)
         user = await self.repository.get_user(tenant_id, user_id)
         user_session = await self.repository.get_session(session_id)
         if (
@@ -211,6 +210,10 @@ class AuthService:
             raise AuthenticationError("Sessao expirada por inatividade.")
 
         profiles = await self.repository.profiles_for_user(user_id)
+        if tenant.status not in {"ativo", "trial"} and not any(
+            profile.codigo == "gestor_saas" for profile in profiles
+        ):
+            raise TenantInactiveError(tenant.status)
         permissions = await self.repository.permissions_for_user(user_id)
         access_expires_at = access_token_expiration(self.settings)
         access_token = create_access_token(
@@ -438,6 +441,7 @@ class AuthService:
         ip_address: str | None,
         user_agent: str | None,
     ) -> UserResponse:
+        await self._validate_profile_assignment(actor, payload.perfil_ids)
         validate_password_policy(payload.senha, self.settings)
         user = await self.repository.create_user(
             actor.tenant_id, payload, hash_password(payload.senha)
@@ -466,6 +470,8 @@ class AuthService:
         ip_address: str | None,
         user_agent: str | None,
     ) -> UserResponse:
+        if payload.perfil_ids is not None:
+            await self._validate_profile_assignment(actor, payload.perfil_ids)
         user = await self._get_user(actor.tenant_id, user_id)
         before_profiles = await self.repository.profiles_for_user(user.id)
         before = _user_snapshot(user, before_profiles)
@@ -576,6 +582,8 @@ class AuthService:
     async def list_profiles(self, actor: RequestActor) -> list[ProfileResponse]:
         responses: list[ProfileResponse] = []
         for profile in await self.repository.available_profiles(actor.tenant_id):
+            if profile.codigo == "gestor_saas" and "gestor_saas" not in actor.profiles:
+                continue
             response = ProfileResponse.model_validate(profile)
             response.permissoes = [
                 PermissionResponse.model_validate(permission)
@@ -583,6 +591,72 @@ class AuthService:
             ]
             responses.append(response)
         return responses
+
+    async def switch_tenant(
+        self,
+        actor: RequestActor,
+        payload: TenantSwitchRequest,
+        *,
+        ip_address: str | None,
+        user_agent: str | None,
+    ) -> TokenResponse:
+        if "gestor_saas" not in actor.profiles:
+            raise AuthorizationError("Apenas gestores SaaS podem trocar de tenant.")
+        source = await self._get_user(actor.tenant_id, actor.user_id)
+        tenant = await self._get_tenant(payload.tenant_id)
+        current_session = await self.repository.get_session(actor.session_id)
+        if current_session is not None:
+            await self.repository.revoke_session(current_session)
+        await self.repository.set_tenant_context(tenant.id)
+        user = await self.repository.support_user_for_tenant(source, tenant.id)
+        profiles = await self.repository.profiles_for_user(user.id)
+        permissions = await self.repository.permissions_for_user(user.id)
+        access_expires_at = access_token_expiration(self.settings)
+        session_expires_at = refresh_token_expiration(self.settings)
+        user_session = await self.repository.create_session(
+            tenant_id=tenant.id,
+            user_id=user.id,
+            expires_at=session_expires_at,
+            device=payload.dispositivo,
+            user_agent=user_agent,
+            ip_address=ip_address,
+        )
+        token = create_access_token(
+            settings=self.settings,
+            user_id=user.id,
+            tenant_id=tenant.id,
+            session_id=user_session.id,
+            profiles=[profile.codigo for profile in profiles],
+            permissions=[permission.codigo for permission in permissions],
+            expires_at=access_expires_at,
+        )
+        refresh_token = create_refresh_token(
+            settings=self.settings,
+            user_id=user.id,
+            tenant_id=tenant.id,
+            session_id=user_session.id,
+            expires_at=session_expires_at,
+        )
+        user_session.token_hash = token_digest(token)
+        user_session.refresh_token_hash = token_digest(refresh_token)
+        await self.repository.commit()
+        return TokenResponse(
+            access_token=token,
+            refresh_token=refresh_token,
+            expires_in=self.settings.access_token_minutes * 60,
+            usuario=_user_response(user, profiles, permissions, tenant),
+        )
+
+    async def _validate_profile_assignment(
+        self, actor: RequestActor, profile_ids: list[int]
+    ) -> None:
+        profiles = await self.repository.available_profiles(actor.tenant_id, profile_ids)
+        if any(profile.codigo == "gestor_saas" for profile in profiles) and (
+            "gestor_saas" not in actor.profiles
+        ):
+            raise AuthorizationError(
+                "O perfil gestor_saas e exclusivo da equipe fornecedora da plataforma."
+            )
 
     async def get_territorial_access(
         self, actor: RequestActor, user_id: int

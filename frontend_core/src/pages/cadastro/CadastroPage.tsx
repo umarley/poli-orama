@@ -13,7 +13,7 @@ import {
   Typography,
 } from 'antd';
 import type { TableProps } from 'antd';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { BaseTable } from '@/components/data/BaseTable';
@@ -30,9 +30,32 @@ import {
 } from '@/modules/cadastro/pessoas-service';
 import type { PessoaFilters, PessoaListItem } from '@/modules/cadastro/types';
 import { normalizeApiError } from '@/services/api/api-error';
+import { formatInteger } from '@/utils/number-format';
 
 import styles from './CadastroPage.module.css';
 import { PessoaWizard } from './PessoaWizard';
+
+function formatDocument(value: string | null): string {
+  if (!value) return '—';
+  const digits = value.replace(/\D/g, '');
+  if (digits.length === 11) {
+    return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+  }
+  return value;
+}
+
+function formatPhone(value: string | null): string {
+  if (!value) return 'Sem telefone';
+  const digits = value.replace(/\D/g, '');
+  const localDigits = digits.startsWith('55') && digits.length > 11 ? digits.slice(2) : digits;
+  if (localDigits.length === 10) {
+    return `(${localDigits.slice(0, 2)}) ${localDigits.slice(2, 6)}-${localDigits.slice(6)}`;
+  }
+  if (localDigits.length === 11) {
+    return `(${localDigits.slice(0, 2)}) ${localDigits.slice(2, 7)}-${localDigits.slice(7)}`;
+  }
+  return value;
+}
 
 export function CadastroPage() {
   const navigate = useNavigate();
@@ -53,8 +76,22 @@ export function CadastroPage() {
   const tagsQuery = useQuery({ queryKey: ['cadastro', 'tags'], queryFn: listarTags });
   const liderancasQuery = useQuery({
     queryKey: ['cadastro', 'liderancas'],
-    queryFn: listarLiderancas,
+    queryFn: () => listarLiderancas(),
   });
+  const lideresResponsaveisQuery = useQuery({
+    queryKey: ['cadastro', 'liderancas', { tipo_lideranca: 'lider' }],
+    queryFn: () => listarLiderancas({ tipo_lideranca: 'lider' }),
+  });
+  const nomesLiderancas = useMemo(
+    () =>
+      new Map(
+        liderancasQuery.data?.map((lideranca) => [
+          lideranca.id,
+          lideranca.pessoa_nome_completo || 'Nome não informado',
+        ]) ?? [],
+      ),
+    [liderancasQuery.data],
+  );
   const deactivateMutation = useMutation({
     mutationFn: inativarPessoa,
     onSuccess: async () => {
@@ -84,7 +121,7 @@ export function CadastroPage() {
           </span>
           <span>
             <strong>{name}</strong>
-            <Typography.Text type="secondary">{person.telefone || 'Sem telefone'}</Typography.Text>
+            <Typography.Text type="secondary">{formatPhone(person.telefone)}</Typography.Text>
           </span>
         </button>
       ),
@@ -93,7 +130,7 @@ export function CadastroPage() {
       title: 'Documento',
       dataIndex: 'cpf',
       key: 'cpf',
-      render: (value: string | null) => value || '—',
+      render: (value: string | null) => formatDocument(value),
     },
     {
       title: 'Classificação',
@@ -106,7 +143,12 @@ export function CadastroPage() {
       title: 'Liderança',
       dataIndex: 'lideranca_id',
       key: 'lideranca_id',
-      render: (value: number | null) => (value ? `#${value}` : <Tag color="warning">Pendente</Tag>),
+      render: (value: number | null) =>
+        value ? (
+          nomesLiderancas.get(value) || 'Liderança não encontrada'
+        ) : (
+          <Tag color="warning">Sem liderança</Tag>
+        ),
     },
     {
       title: 'Status',
@@ -244,7 +286,7 @@ export function CadastroPage() {
           <div>
             <strong>Base de pessoas</strong>
             <Typography.Text type="secondary">
-              {pessoasQuery.data?.total ?? 0} registros encontrados
+              {formatInteger(pessoasQuery.data?.total)} registros encontrados
             </Typography.Text>
           </div>
           <Space>
@@ -275,7 +317,7 @@ export function CadastroPage() {
       <PessoaWizard
         open={wizardOpen}
         tipos={tiposQuery.data ?? []}
-        liderancas={liderancasQuery.data ?? []}
+        liderancas={lideresResponsaveisQuery.data ?? []}
         estadosCivis={estadosCivisQuery.data ?? []}
         onClose={() => setWizardOpen(false)}
         onCreated={(id) => {

@@ -70,9 +70,6 @@ async def get_current_user(
     tenant = await repository.resolve_tenant_for_login_by_id(tenant_id)
     if tenant is None:
         raise AuthenticationError("Tenant da sessao nao foi encontrado.")
-    if tenant.status not in {"ativo", "trial"}:
-        raise TenantInactiveError(tenant.status)
-
     user = await repository.get_user(tenant_id, user_id)
     user_session = await repository.get_session(session_id)
     now = datetime.now(UTC)
@@ -100,6 +97,8 @@ async def get_current_user(
         await repository.set_tenant_context(tenant_id)
 
     profiles = tuple(profile.codigo for profile in await repository.profiles_for_user(user_id))
+    if tenant.status not in {"ativo", "trial"} and "gestor_saas" not in profiles:
+        raise TenantInactiveError(tenant.status)
     permissions = frozenset(
         permission.codigo for permission in await repository.permissions_for_user(user_id)
     )
@@ -131,8 +130,8 @@ async def get_territorial_access(
         actor.tenant_id, actor.user_id
     )
     scope_fields = {
-        "estado": "estado_id",
-        "municipio": "municipio_id",
+        "estado": "codigo_uf_ibge",
+        "municipio": "codigo_municipio_ibge",
         "bairro": "bairro_id",
         "zona_eleitoral": "zona_eleitoral_id",
         "secao_eleitoral": "secao_eleitoral_id",
@@ -163,6 +162,21 @@ def require_permission(module: str, action: str) -> Callable[..., Awaitable[Requ
     ) -> RequestActor:
         if permission_code not in actor.permissions:
             raise AuthorizationError(f"Permissao obrigatoria: {permission_code}.")
+        return actor
+
+    return dependency
+
+
+def require_any_profile(*profiles: str) -> Callable[..., Awaitable[RequestActor]]:
+    allowed = frozenset(profiles)
+
+    async def dependency(
+        actor: Annotated[RequestActor, Depends(get_current_user)],
+    ) -> RequestActor:
+        if not allowed.intersection(actor.profiles):
+            raise AuthorizationError(
+                f"Perfil obrigatorio: {', '.join(sorted(allowed))}."
+            )
         return actor
 
     return dependency

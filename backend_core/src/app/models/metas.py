@@ -48,7 +48,6 @@ class PeriodoMeta(Base):
     data_inicio: Mapped[date] = mapped_column(Date)
     data_fim: Mapped[date] = mapped_column(Date)
     ciclo: Mapped[str | None] = mapped_column(String(30))
-    eleicao_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("eleicao.eleicao.id"))
     ativo: Mapped[bool] = mapped_column(Boolean)
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     atualizado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -60,6 +59,9 @@ class MetaVoto(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("public.tenant.id"))
+    campanha_eleicao_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("eleicao.campanha_eleicao.id")
+    )
     tipo_meta_voto_id: Mapped[int] = mapped_column(
         SmallInteger, ForeignKey("meta.tipo_meta_voto.id")
     )
@@ -77,7 +79,10 @@ class MetaVoto(Base):
     territorio_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("territorio.territorio.id")
     )
-    municipio_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("global.municipio.id"))
+    codigo_municipio_ibge: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("global.municipio.codigo_ibge"),
+    )
     bairro_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("global.bairro.id"))
     zona_eleitoral_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("global.zona_eleitoral.id")
@@ -156,6 +161,9 @@ class RankingLideranca(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("public.tenant.id"))
+    campanha_eleicao_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("eleicao.campanha_eleicao.id")
+    )
     lideranca_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("cadastro.lideranca.id"))
     data_referencia: Mapped[date] = mapped_column(Date)
     posicao: Mapped[int | None] = mapped_column(Integer)

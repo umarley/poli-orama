@@ -1,9 +1,4 @@
-import {
-  CloseOutlined,
-  EditOutlined,
-  PlusOutlined,
-  SaveOutlined,
-} from '@ant-design/icons';
+import { CloseOutlined, EditOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
@@ -71,7 +66,7 @@ export function EventDetailPage() {
   });
   const leaderships = useQuery({
     queryKey: ['cadastro', 'liderancas', 'event-detail'],
-    queryFn: listarLiderancas,
+    queryFn: () => listarLiderancas(),
   });
   const territories = useQuery({
     queryKey: ['territorios', 'event-detail'],
@@ -208,15 +203,11 @@ export function EventDetailPage() {
                     Modal.confirm({
                       title: 'Cancelar evento',
                       content: (
-                        <Input.TextArea
-                          id="cancel-event-reason"
-                          placeholder="Informe o motivo"
-                        />
+                        <Input.TextArea id="cancel-event-reason" placeholder="Informe o motivo" />
                       ),
                       onOk: () => {
-                        const input = document.querySelector<HTMLTextAreaElement>(
-                          '#cancel-event-reason',
-                        );
+                        const input =
+                          document.querySelector<HTMLTextAreaElement>('#cancel-event-reason');
                         if (!input?.value.trim()) {
                           AppToast.error('Informe o motivo.');
                           return Promise.reject();
@@ -558,18 +549,22 @@ export function EventDetailPage() {
                 required={false}
                 label="Quem indicou"
               />
-              <Form.Item name="categoria_demanda_id" label="Categoria"
-                rules={[{ required: true }]}>
-                <Select options={(demandCategories.data ?? []).map((category) => ({
-                  value: category.id,
-                  label: category.nome,
-                }))} />
+              <Form.Item name="categoria_demanda_id" label="Categoria" rules={[{ required: true }]}>
+                <Select
+                  options={(demandCategories.data ?? []).map((category) => ({
+                    value: category.id,
+                    label: category.nome,
+                  }))}
+                />
               </Form.Item>
               <Form.Item name="prioridade_demanda_id" label="Prioridade">
-                <Select allowClear options={(demandPriorities.data ?? []).map((priority) => ({
-                  value: priority.id,
-                  label: priority.nome,
-                }))} />
+                <Select
+                  allowClear
+                  options={(demandPriorities.data ?? []).map((priority) => ({
+                    value: priority.id,
+                    label: priority.nome,
+                  }))}
+                />
               </Form.Item>
               <Form.Item name="status" label="Status" initialValue="pendente">
                 <Select

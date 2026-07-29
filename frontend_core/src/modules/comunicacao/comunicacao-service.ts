@@ -14,9 +14,10 @@ export async function listarCanaisComunicacao() {
   return data;
 }
 
-export async function listarInteracoesPessoa(pessoaId: number) {
+export async function listarInteracoesPessoa(pessoaId: number, limite?: number) {
   const { data } = await httpClient.get<InteracaoPessoa[]>(
     `${base}/pessoas/${pessoaId}/interacoes`,
+    { params: limite ? { limite } : undefined },
   );
   return data;
 }

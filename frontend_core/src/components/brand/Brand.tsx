@@ -13,11 +13,7 @@ export function Brand({ compact = false, inverted = false }: BrandProps) {
       <span className={styles.mark} aria-hidden="true">
         V
       </span>
-      {!compact && (
-        <span className={styles.name}>
-          Vurix <strong>Eleitoral</strong>
-        </span>
-      )}
+      {!compact && <span className={styles.name}>Poliorama</span>}
     </div>
   );
 }

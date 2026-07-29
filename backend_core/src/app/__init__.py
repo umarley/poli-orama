@@ -1,3 +1,3 @@
-"""Backend core da plataforma Vurix Eleitoral."""
+"""Backend core da plataforma Poliorama."""
 
 __version__ = "0.1.0"

@@ -1,57 +1,176 @@
-import { EditOutlined, LinkOutlined, PlusOutlined, StopOutlined } from '@ant-design/icons';
+import {
+  CheckCircleOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  EyeOutlined,
+  PlusOutlined,
+  StopOutlined,
+} from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
   Card,
+  ColorPicker,
+  Descriptions,
   Form,
   Input,
-  InputNumber,
   Modal,
+  Popconfirm,
   Select,
   Space,
   Table,
   Tabs,
   Tag,
+  Typography,
 } from 'antd';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import { AppToast } from '@/components/feedback/AppToast';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   atualizarTag,
+  atualizarComunidade,
   criarComunidade,
   criarNucleo,
   criarTag,
   listarComunidades,
   listarNucleos,
+  listarPapeisComunidade,
+  listarParentescos,
+  listarPessoas,
+  listarPessoasComunidade,
+  listarPessoasNucleo,
+  listarPessoasTag,
   listarTags,
+  removerPessoaTag,
+  removerPessoaComunidade,
+  removerPessoaNucleo,
   vincularComunidade,
   vincularNucleo,
   vincularTag,
 } from '@/modules/cadastro/pessoas-service';
-import type { Comunidade, NucleoFamiliar, TagCadastro } from '@/modules/cadastro/types';
+import type {
+  Comunidade,
+  NucleoFamiliar,
+  PessoaListItem,
+  TagCadastro,
+} from '@/modules/cadastro/types';
+import { listarTerritorios } from '@/modules/territorios/territorios-service';
 import { normalizeApiError } from '@/services/api/api-error';
+import { useSessionStore } from '@/stores/session-store';
+import { formatInteger } from '@/utils/number-format';
 
 type Entity = 'tag' | 'community' | 'nucleus';
 type Dialog =
   | { mode: 'create'; entity: Entity }
   | { mode: 'edit'; entity: 'tag'; item: TagCadastro }
+  | { mode: 'edit'; entity: 'community'; item: Comunidade }
   | { mode: 'link'; entity: Entity; id: number }
   | null;
 
 type DialogValues = Record<string, string | number | boolean | null | undefined>;
 
+function formatDate(value: string | null): string {
+  if (!value) return '—';
+  const [year, month, day] = value.split('T')[0].split('-');
+  return year && month && day ? `${day}/${month}/${year}` : value;
+}
+
 export function SegmentacaoPage() {
   const queryClient = useQueryClient();
+  const profiles = useSessionStore((state) => state.user?.profiles ?? []);
+  const canManageSegmentation = profiles.some((profile) =>
+    ['gestor_saas', 'gestor', 'coordenador_territorial'].includes(profile),
+  );
   const [dialog, setDialog] = useState<Dialog>(null);
+  const [viewedTag, setViewedTag] = useState<TagCadastro | null>(null);
+  const [viewedCommunity, setViewedCommunity] = useState<Comunidade | null>(null);
+  const [viewedNucleus, setViewedNucleus] = useState<NucleoFamiliar | null>(null);
+  const [personSearch, setPersonSearch] = useState('');
   const [form] = Form.useForm<DialogValues>();
   const tagsQuery = useQuery({ queryKey: ['cadastro', 'tags'], queryFn: listarTags });
+  const tagStatusMutation = useMutation({
+    mutationFn: ({ id, ativo }: { id: number; ativo: boolean }) => atualizarTag(id, { ativo }),
+    onSuccess: async (_, variables) => {
+      AppToast.success(variables.ativo ? 'Tag ativada.' : 'Tag inativada.');
+      await queryClient.invalidateQueries({ queryKey: ['cadastro', 'tags'] });
+    },
+    onError: (error) => AppToast.error(normalizeApiError(error).message),
+  });
+  const tagPeopleQuery = useQuery({
+    queryKey: ['cadastro', 'tags', viewedTag?.id, 'pessoas'],
+    queryFn: () => listarPessoasTag(viewedTag!.id),
+    enabled: Boolean(viewedTag),
+  });
+  const removeTagPersonMutation = useMutation({
+    mutationFn: ({ tagId, personId }: { tagId: number; personId: number }) =>
+      removerPessoaTag(tagId, personId),
+    onSuccess: async () => {
+      AppToast.success('Vínculo removido.');
+      await queryClient.invalidateQueries({
+        queryKey: ['cadastro', 'tags', viewedTag?.id, 'pessoas'],
+      });
+    },
+    onError: (error) => AppToast.error(normalizeApiError(error).message),
+  });
   const communitiesQuery = useQuery({
     queryKey: ['cadastro', 'comunidades'],
     queryFn: listarComunidades,
   });
+  const communityRolesQuery = useQuery({
+    queryKey: ['cadastro', 'comunidades', 'papeis'],
+    queryFn: listarPapeisComunidade,
+  });
+  const communityPeopleQuery = useQuery({
+    queryKey: ['cadastro', 'comunidades', viewedCommunity?.id, 'pessoas'],
+    queryFn: () => listarPessoasComunidade(viewedCommunity!.id),
+    enabled: Boolean(viewedCommunity),
+  });
+  const removeCommunityPersonMutation = useMutation({
+    mutationFn: ({ communityId, personId }: { communityId: number; personId: number }) =>
+      removerPessoaComunidade(communityId, personId),
+    onSuccess: async () => {
+      AppToast.success('Vínculo removido.');
+      await queryClient.invalidateQueries({
+        queryKey: ['cadastro', 'comunidades', viewedCommunity?.id, 'pessoas'],
+      });
+    },
+    onError: (error) => AppToast.error(normalizeApiError(error).message),
+  });
+  const territoriesQuery = useQuery({
+    queryKey: ['territorios', 'segmentacao-options'],
+    queryFn: () => listarTerritorios(false),
+  });
   const nucleiQuery = useQuery({ queryKey: ['cadastro', 'nucleos'], queryFn: listarNucleos });
-
+  const kinshipQuery = useQuery({
+    queryKey: ['cadastro', 'nucleos', 'parentescos'],
+    queryFn: listarParentescos,
+  });
+  const nucleusPeopleQuery = useQuery({
+    queryKey: ['cadastro', 'nucleos', viewedNucleus?.id, 'pessoas'],
+    queryFn: () => listarPessoasNucleo(viewedNucleus!.id),
+    enabled: Boolean(viewedNucleus),
+  });
+  const removeNucleusPersonMutation = useMutation({
+    mutationFn: ({ nucleusId, personId }: { nucleusId: number; personId: number }) =>
+      removerPessoaNucleo(nucleusId, personId),
+    onSuccess: async () => {
+      AppToast.success('Vínculo removido.');
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['cadastro', 'nucleos', viewedNucleus?.id, 'pessoas'],
+        }),
+        queryClient.invalidateQueries({ queryKey: ['cadastro', 'nucleos'] }),
+      ]);
+    },
+    onError: (error) => AppToast.error(normalizeApiError(error).message),
+  });
+  const peopleQuery = useQuery({
+    queryKey: ['cadastro', 'pessoas', 'nucleo-referencia', personSearch],
+    queryFn: () =>
+      listarPessoas({ page: 1, page_size: 100, query: personSearch.trim() || undefined }),
+  });
   const mutation = useMutation({
     mutationFn: async (values: DialogValues) => {
       if (!dialog) return;
@@ -79,15 +198,17 @@ export function SegmentacaoPage() {
         if (dialog.mode === 'edit') await atualizarTag(dialog.item.id, payload);
         else await criarTag(payload);
       }
-      if (dialog.entity === 'community' && dialog.mode === 'create') {
-        await criarComunidade({
+      if (dialog.entity === 'community') {
+        const payload = {
           nome: String(values.nome),
           tipo: (values.tipo as string) || null,
           descricao: (values.descricao as string) || null,
           lider_responsavel_id: null,
-          municipio_id: null,
+          codigo_municipio_ibge: null,
           territorio_id: values.territorio_id ? Number(values.territorio_id) : null,
-        });
+        };
+        if (dialog.mode === 'edit') await atualizarComunidade(dialog.item.id, payload);
+        else await criarComunidade(payload);
       }
       if (dialog.entity === 'nucleus' && dialog.mode === 'create') {
         await criarNucleo({
@@ -110,22 +231,19 @@ export function SegmentacaoPage() {
 
   const open = (next: Dialog) => {
     setDialog(next);
+    setPersonSearch('');
     form.resetFields();
     if (next?.mode === 'edit') {
       form.setFieldsValue({
         nome: next.item.nome,
-        cor: next.item.cor,
-        categoria: next.item.categoria,
+        cor: next.entity === 'tag' ? next.item.cor : undefined,
+        categoria: next.entity === 'tag' ? next.item.categoria : undefined,
+        tipo: next.entity === 'community' ? next.item.tipo : undefined,
+        territorio_id: next.entity === 'community' ? next.item.territorio_id : undefined,
         descricao: next.item.descricao,
       });
     }
   };
-
-  const actionButtons = (entity: Entity, id: number) => (
-    <Button type="link" icon={<LinkOutlined />} onClick={() => open({ mode: 'link', entity, id })}>
-      Vincular pessoa
-    </Button>
-  );
 
   return (
     <div>
@@ -142,14 +260,16 @@ export function SegmentacaoPage() {
               label: `Tags (${tagsQuery.data?.length ?? 0})`,
               children: (
                 <>
-                  <Button
-                    type="primary"
-                    icon={<PlusOutlined />}
-                    onClick={() => open({ mode: 'create', entity: 'tag' })}
-                    style={{ marginBottom: 16 }}
-                  >
-                    Nova tag
-                  </Button>
+                  {canManageSegmentation && (
+                    <Button
+                      type="primary"
+                      icon={<PlusOutlined />}
+                      onClick={() => open({ mode: 'create', entity: 'tag' })}
+                      style={{ marginBottom: 16 }}
+                    >
+                      Nova tag
+                    </Button>
+                  )}
                   <Table<TagCadastro>
                     rowKey="id"
                     dataSource={tagsQuery.data ?? []}
@@ -179,34 +299,39 @@ export function SegmentacaoPage() {
                       },
                       {
                         title: 'Ações',
-                        render: (_, item) => (
-                          <Space>
-                            {actionButtons('tag', item.id)}
-                            <Button
-                              type="link"
-                              icon={<EditOutlined />}
-                              onClick={() => open({ mode: 'edit', entity: 'tag', item })}
-                            >
-                              Editar
-                            </Button>
-                            {item.ativo ? (
+                        render: (_, item) =>
+                          canManageSegmentation ? (
+                            <Space>
                               <Button
                                 type="link"
-                                danger
-                                icon={<StopOutlined />}
+                                icon={<EyeOutlined />}
+                                onClick={() => setViewedTag(item)}
+                              >
+                                Visualizar
+                              </Button>
+                              <Button
+                                type="link"
+                                icon={<EditOutlined />}
+                                onClick={() => open({ mode: 'edit', entity: 'tag', item })}
+                              >
+                                Editar
+                              </Button>
+                              <Button
+                                type="link"
+                                danger={item.ativo}
+                                icon={item.ativo ? <StopOutlined /> : <CheckCircleOutlined />}
+                                loading={
+                                  tagStatusMutation.isPending &&
+                                  tagStatusMutation.variables?.id === item.id
+                                }
                                 onClick={() =>
-                                  atualizarTag(item.id, { ativo: false }).then(() =>
-                                    queryClient.invalidateQueries({
-                                      queryKey: ['cadastro', 'tags'],
-                                    }),
-                                  )
+                                  tagStatusMutation.mutate({ id: item.id, ativo: !item.ativo })
                                 }
                               >
-                                Inativar
+                                {item.ativo ? 'Inativar' : 'Ativar'}
                               </Button>
-                            ) : null}
-                          </Space>
-                        ),
+                            </Space>
+                          ) : null,
                       },
                     ]}
                   />
@@ -218,14 +343,16 @@ export function SegmentacaoPage() {
               label: `Comunidades (${communitiesQuery.data?.length ?? 0})`,
               children: (
                 <>
-                  <Button
-                    type="primary"
-                    icon={<PlusOutlined />}
-                    onClick={() => open({ mode: 'create', entity: 'community' })}
-                    style={{ marginBottom: 16 }}
-                  >
-                    Nova comunidade
-                  </Button>
+                  {canManageSegmentation && (
+                    <Button
+                      type="primary"
+                      icon={<PlusOutlined />}
+                      onClick={() => open({ mode: 'create', entity: 'community' })}
+                      style={{ marginBottom: 16 }}
+                    >
+                      Nova comunidade
+                    </Button>
+                  )}
                   <Table<Comunidade>
                     rowKey="id"
                     dataSource={communitiesQuery.data ?? []}
@@ -237,9 +364,34 @@ export function SegmentacaoPage() {
                       {
                         title: 'Território',
                         dataIndex: 'territorio_id',
-                        render: (value) => (value ? `#${value}` : '—'),
+                        render: (value) =>
+                          value
+                            ? territoriesQuery.data?.find((territory) => territory.id === value)
+                                ?.nome || `#${value}`
+                            : '—',
                       },
-                      { title: 'Ações', render: (_, item) => actionButtons('community', item.id) },
+                      {
+                        title: 'Ações',
+                        render: (_, item) =>
+                          canManageSegmentation ? (
+                            <Space>
+                              <Button
+                                type="link"
+                                icon={<EyeOutlined />}
+                                onClick={() => setViewedCommunity(item)}
+                              >
+                                Visualizar
+                              </Button>
+                              <Button
+                                type="link"
+                                icon={<EditOutlined />}
+                                onClick={() => open({ mode: 'edit', entity: 'community', item })}
+                              >
+                                Editar
+                              </Button>
+                            </Space>
+                          ) : null,
+                      },
                     ]}
                   />
                 </>
@@ -250,14 +402,16 @@ export function SegmentacaoPage() {
               label: `Núcleos familiares (${nucleiQuery.data?.length ?? 0})`,
               children: (
                 <>
-                  <Button
-                    type="primary"
-                    icon={<PlusOutlined />}
-                    onClick={() => open({ mode: 'create', entity: 'nucleus' })}
-                    style={{ marginBottom: 16 }}
-                  >
-                    Novo núcleo
-                  </Button>
+                  {canManageSegmentation && (
+                    <Button
+                      type="primary"
+                      icon={<PlusOutlined />}
+                      onClick={() => open({ mode: 'create', entity: 'nucleus' })}
+                      style={{ marginBottom: 16 }}
+                    >
+                      Novo núcleo
+                    </Button>
+                  )}
                   <Table<NucleoFamiliar>
                     rowKey="id"
                     dataSource={nucleiQuery.data ?? []}
@@ -272,14 +426,33 @@ export function SegmentacaoPage() {
                       {
                         title: 'Membros',
                         dataIndex: 'quantidade_membros',
-                        render: (value) => value ?? 0,
+                        render: (value) => formatInteger(value),
                       },
                       {
                         title: 'Pessoa de referência',
                         dataIndex: 'pessoa_referencia_id',
-                        render: (value) => (value ? `Pessoa #${value}` : '—'),
+                        render: (value, item) => {
+                          if (!value) return '—';
+                          return (
+                            <Link to={`/cadastro/pessoas/${value}`}>
+                              {item.pessoa_referencia_nome || `Pessoa #${value}`}
+                            </Link>
+                          );
+                        },
                       },
-                      { title: 'Ações', render: (_, item) => actionButtons('nucleus', item.id) },
+                      {
+                        title: 'Ações',
+                        render: (_, item) =>
+                          canManageSegmentation ? (
+                            <Button
+                              type="link"
+                              icon={<EyeOutlined />}
+                              onClick={() => setViewedNucleus(item)}
+                            >
+                              Visualizar
+                            </Button>
+                          ) : null,
+                      },
                     ]}
                   />
                 </>
@@ -290,8 +463,310 @@ export function SegmentacaoPage() {
       </Card>
 
       <Modal
+        open={Boolean(viewedTag)}
+        title="Detalhes da tag"
+        width={720}
+        footer={null}
+        onCancel={() => setViewedTag(null)}
+      >
+        {viewedTag ? (
+          <>
+            <Descriptions
+              bordered
+              size="small"
+              column={1}
+              items={[
+                {
+                  key: 'nome',
+                  label: 'Tag',
+                  children: <Tag color={viewedTag.cor || 'blue'}>{viewedTag.nome}</Tag>,
+                },
+                { key: 'categoria', label: 'Categoria', children: viewedTag.categoria || '—' },
+                { key: 'descricao', label: 'Descrição', children: viewedTag.descricao || '—' },
+                {
+                  key: 'status',
+                  label: 'Status',
+                  children: viewedTag.ativo ? 'Ativa' : 'Inativa',
+                },
+              ]}
+              style={{ marginBottom: 20 }}
+            />
+            <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 12 }}>
+              <Typography.Title level={5} style={{ margin: 0 }}>
+                Pessoas vinculadas
+              </Typography.Title>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => open({ mode: 'link', entity: 'tag', id: viewedTag.id })}
+              >
+                Vincular pessoa
+              </Button>
+            </Space>
+            <Table
+              rowKey="id"
+              size="small"
+              loading={tagPeopleQuery.isPending}
+              dataSource={tagPeopleQuery.data ?? []}
+              pagination={{ defaultPageSize: 5, showSizeChanger: true }}
+              columns={[
+                { title: 'Nome', dataIndex: 'nome_completo' },
+                {
+                  title: 'Data de nascimento',
+                  dataIndex: 'data_nascimento',
+                  render: (value: string | null) => formatDate(value),
+                },
+                {
+                  title: 'Ação',
+                  width: 90,
+                  render: (_, person) => (
+                    <Popconfirm
+                      title="Remover vínculo"
+                      description="Confirma a remoção desta pessoa da tag?"
+                      okText="Sim"
+                      cancelText="Não"
+                      okButtonProps={{ danger: true }}
+                      onConfirm={() =>
+                        removeTagPersonMutation.mutate({
+                          tagId: viewedTag.id,
+                          personId: person.id,
+                        })
+                      }
+                    >
+                      <Button
+                        danger
+                        aria-label={`Remover ${person.nome_completo}`}
+                        icon={<DeleteOutlined />}
+                        loading={
+                          removeTagPersonMutation.isPending &&
+                          removeTagPersonMutation.variables?.personId === person.id
+                        }
+                      />
+                    </Popconfirm>
+                  ),
+                },
+              ]}
+            />
+          </>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={Boolean(viewedNucleus)}
+        title="Detalhes do núcleo familiar"
+        width={800}
+        footer={null}
+        onCancel={() => setViewedNucleus(null)}
+      >
+        {viewedNucleus ? (
+          <>
+            <Descriptions
+              bordered
+              size="small"
+              column={1}
+              items={[
+                {
+                  key: 'nome',
+                  label: 'Nome',
+                  children: viewedNucleus.nome || `Núcleo #${viewedNucleus.id}`,
+                },
+                {
+                  key: 'referencia',
+                  label: 'Pessoa de referência',
+                  children: viewedNucleus.pessoa_referencia_id
+                    ? viewedNucleus.pessoa_referencia_nome ||
+                      `Pessoa #${viewedNucleus.pessoa_referencia_id}`
+                    : '—',
+                },
+                {
+                  key: 'quantidade',
+                  label: 'Quantidade de membros',
+                  children: formatInteger(viewedNucleus.quantidade_membros),
+                },
+              ]}
+              style={{ marginBottom: 20 }}
+            />
+            <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 12 }}>
+              <Typography.Title level={5} style={{ margin: 0 }}>
+                Pessoas vinculadas
+              </Typography.Title>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => open({ mode: 'link', entity: 'nucleus', id: viewedNucleus.id })}
+              >
+                Vincular pessoa
+              </Button>
+            </Space>
+            <Table
+              rowKey="id"
+              size="small"
+              loading={nucleusPeopleQuery.isPending}
+              dataSource={nucleusPeopleQuery.data ?? []}
+              pagination={{ defaultPageSize: 5, showSizeChanger: true }}
+              columns={[
+                { title: 'Nome', dataIndex: 'nome_completo' },
+                {
+                  title: 'Data de nascimento',
+                  dataIndex: 'data_nascimento',
+                  render: (value: string | null) => formatDate(value),
+                },
+                {
+                  title: 'Grau de parentesco',
+                  dataIndex: 'parentesco',
+                  render: (value: string | null) =>
+                    kinshipQuery.data?.find((kinship) => kinship.codigo === value)?.nome ||
+                    value ||
+                    '—',
+                },
+                {
+                  title: 'Ação',
+                  width: 90,
+                  render: (_, person) => (
+                    <Popconfirm
+                      title="Remover vínculo"
+                      description="Confirma a remoção desta pessoa do núcleo familiar?"
+                      okText="Sim"
+                      cancelText="Não"
+                      okButtonProps={{ danger: true }}
+                      onConfirm={() =>
+                        removeNucleusPersonMutation.mutate({
+                          nucleusId: viewedNucleus.id,
+                          personId: person.id,
+                        })
+                      }
+                    >
+                      <Button
+                        danger
+                        aria-label={`Remover ${person.nome_completo}`}
+                        icon={<DeleteOutlined />}
+                        loading={
+                          removeNucleusPersonMutation.isPending &&
+                          removeNucleusPersonMutation.variables?.personId === person.id
+                        }
+                      />
+                    </Popconfirm>
+                  ),
+                },
+              ]}
+            />
+          </>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={Boolean(viewedCommunity)}
+        title="Detalhes da comunidade"
+        width={780}
+        footer={null}
+        onCancel={() => setViewedCommunity(null)}
+      >
+        {viewedCommunity ? (
+          <>
+            <Descriptions
+              bordered
+              size="small"
+              column={1}
+              items={[
+                { key: 'nome', label: 'Nome', children: viewedCommunity.nome },
+                { key: 'tipo', label: 'Tipo', children: viewedCommunity.tipo || '—' },
+                {
+                  key: 'territorio',
+                  label: 'Território',
+                  children: viewedCommunity.territorio_id
+                    ? territoriesQuery.data?.find(
+                        (territory) => territory.id === viewedCommunity.territorio_id,
+                      )?.nome || `#${viewedCommunity.territorio_id}`
+                    : '—',
+                },
+                {
+                  key: 'descricao',
+                  label: 'Descrição',
+                  children: viewedCommunity.descricao || '—',
+                },
+              ]}
+              style={{ marginBottom: 20 }}
+            />
+            <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 12 }}>
+              <Typography.Title level={5} style={{ margin: 0 }}>
+                Pessoas vinculadas
+              </Typography.Title>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => open({ mode: 'link', entity: 'community', id: viewedCommunity.id })}
+              >
+                Vincular pessoa
+              </Button>
+            </Space>
+            <Table
+              rowKey="id"
+              size="small"
+              loading={communityPeopleQuery.isPending}
+              dataSource={communityPeopleQuery.data ?? []}
+              pagination={{ defaultPageSize: 5, showSizeChanger: true }}
+              columns={[
+                { title: 'Nome', dataIndex: 'nome_completo' },
+                {
+                  title: 'Data de nascimento',
+                  dataIndex: 'data_nascimento',
+                  render: (value: string | null) => formatDate(value),
+                },
+                {
+                  title: 'Papel',
+                  dataIndex: 'papel',
+                  render: (value: string | null) =>
+                    communityRolesQuery.data?.find((role) => role.codigo === value)?.nome ||
+                    value ||
+                    '—',
+                },
+                {
+                  title: 'Ação',
+                  width: 90,
+                  render: (_, person) => (
+                    <Popconfirm
+                      title="Remover vínculo"
+                      description="Confirma a remoção desta pessoa da comunidade?"
+                      okText="Sim"
+                      cancelText="Não"
+                      okButtonProps={{ danger: true }}
+                      onConfirm={() =>
+                        removeCommunityPersonMutation.mutate({
+                          communityId: viewedCommunity.id,
+                          personId: person.id,
+                        })
+                      }
+                    >
+                      <Button
+                        danger
+                        aria-label={`Remover ${person.nome_completo}`}
+                        icon={<DeleteOutlined />}
+                        loading={
+                          removeCommunityPersonMutation.isPending &&
+                          removeCommunityPersonMutation.variables?.personId === person.id
+                        }
+                      />
+                    </Popconfirm>
+                  ),
+                },
+              ]}
+            />
+          </>
+        ) : null}
+      </Modal>
+
+      <Modal
         open={Boolean(dialog)}
-        title={dialog?.mode === 'link' ? 'Vincular pessoa' : 'Cadastrar item'}
+        zIndex={1100}
+        title={
+          dialog?.mode === 'link'
+            ? 'Vincular pessoa'
+            : dialog?.mode === 'edit' && dialog.entity === 'community'
+              ? 'Editar comunidade'
+              : dialog?.mode === 'edit'
+                ? 'Editar item'
+                : 'Cadastrar item'
+        }
         okText="Salvar"
         confirmLoading={mutation.isPending}
         onCancel={() => setDialog(null)}
@@ -300,18 +775,59 @@ export function SegmentacaoPage() {
         <Form form={form} layout="vertical">
           {dialog?.mode === 'link' ? (
             <>
-              <Form.Item name="pessoa_id" label="ID da pessoa" rules={[{ required: true }]}>
-                <InputNumber min={1} style={{ width: '100%' }} />
+              <Form.Item name="pessoa_id" label="Pessoa" rules={[{ required: true }]}>
+                <Select
+                  showSearch
+                  filterOption={false}
+                  loading={peopleQuery.isPending}
+                  onSearch={setPersonSearch}
+                  optionFilterProp="label"
+                  placeholder="Selecione uma pessoa"
+                  options={(peopleQuery.data?.items ?? [])
+                    .filter(
+                      (item) =>
+                        (dialog.entity !== 'tag' ||
+                          !(tagPeopleQuery.data ?? []).some((person) => person.id === item.id)) &&
+                        (dialog.entity !== 'community' ||
+                          !(communityPeopleQuery.data ?? []).some(
+                            (person) => person.id === item.id,
+                          )) &&
+                        (dialog.entity !== 'nucleus' ||
+                          !(nucleusPeopleQuery.data ?? []).some((person) => person.id === item.id)),
+                    )
+                    .map((item: PessoaListItem) => ({
+                      value: item.id,
+                      label: item.nome_completo,
+                    }))}
+                />
               </Form.Item>
               {dialog.entity === 'community' ? (
                 <Form.Item name="papel" label="Papel na comunidade">
-                  <Input />
+                  <Select
+                    allowClear
+                    loading={communityRolesQuery.isPending}
+                    placeholder="Selecione o papel"
+                    options={(communityRolesQuery.data ?? []).map((role) => ({
+                      value: role.codigo,
+                      label: role.nome,
+                    }))}
+                  />
                 </Form.Item>
               ) : null}
               {dialog.entity === 'nucleus' ? (
                 <>
                   <Form.Item name="parentesco" label="Parentesco">
-                    <Input />
+                    <Select
+                      allowClear
+                      showSearch
+                      optionFilterProp="label"
+                      loading={kinshipQuery.isPending}
+                      placeholder="Selecione o parentesco"
+                      options={(kinshipQuery.data ?? []).map((kinship) => ({
+                        value: kinship.codigo,
+                        label: kinship.nome,
+                      }))}
+                    />
                   </Form.Item>
                   <Form.Item name="observacao" label="Observação/justificativa">
                     <Input />
@@ -326,8 +842,12 @@ export function SegmentacaoPage() {
               </Form.Item>
               {dialog?.entity === 'tag' ? (
                 <>
-                  <Form.Item name="cor" label="Cor hexadecimal">
-                    <Input placeholder="#1677ff" />
+                  <Form.Item
+                    name="cor"
+                    label="Cor hexadecimal"
+                    getValueFromEvent={(color) => color?.toHexString()}
+                  >
+                    <ColorPicker allowClear disabledAlpha disabledFormat format="hex" showText />
                   </Form.Item>
                   <Form.Item name="categoria" label="Categoria">
                     <Input />
@@ -351,14 +871,39 @@ export function SegmentacaoPage() {
                       ].map((value) => ({ value, label: value }))}
                     />
                   </Form.Item>
-                  <Form.Item name="territorio_id" label="ID do território">
-                    <InputNumber min={1} style={{ width: '100%' }} />
+                  <Form.Item name="territorio_id" label="Território">
+                    <Select
+                      allowClear
+                      showSearch
+                      optionFilterProp="label"
+                      loading={territoriesQuery.isPending}
+                      placeholder="Selecione um território"
+                      options={(territoriesQuery.data ?? []).map((territory) => ({
+                        value: territory.id,
+                        label: territory.nome,
+                      }))}
+                    />
                   </Form.Item>
                 </>
               ) : null}
               {dialog?.entity === 'nucleus' ? (
-                <Form.Item name="pessoa_referencia_id" label="ID da pessoa de referência">
-                  <InputNumber min={1} style={{ width: '100%' }} />
+                <Form.Item
+                  name="pessoa_referencia_id"
+                  label="Pessoa referência"
+                  rules={[{ required: true }]}
+                >
+                  <Select
+                    showSearch
+                    filterOption={false}
+                    loading={peopleQuery.isPending}
+                    onSearch={setPersonSearch}
+                    optionFilterProp="label"
+                    placeholder="Selecione uma pessoa"
+                    options={(peopleQuery.data?.items ?? []).map((item: PessoaListItem) => ({
+                      value: item.id,
+                      label: item.nome_completo,
+                    }))}
+                  />
                 </Form.Item>
               ) : null}
               <Form.Item name="descricao" label="Descrição">

@@ -32,6 +32,8 @@ class CatalogResponse(CatalogCreate):
 
 
 class EventInput(AgendaSchema):
+    contexto: Literal["campanha", "gabinete", "institucional"] = "institucional"
+    campanha_eleicao_id: int | None = Field(default=None, ge=1)
     tipo_evento_id: int | None = Field(default=None, ge=1)
     status_evento_id: int | None = Field(default=None, ge=1)
     titulo: str = Field(min_length=2, max_length=180)
@@ -40,7 +42,7 @@ class EventInput(AgendaSchema):
     data_fim: datetime | None = None
     local_nome: str | None = Field(default=None, max_length=180)
     endereco_id: int | None = Field(default=None, ge=1)
-    municipio_id: int | None = Field(default=None, ge=1)
+    codigo_municipio_ibge: int | None = Field(default=None, ge=1)
     bairro_id: int | None = Field(default=None, ge=1)
     zona_eleitoral_id: int | None = Field(default=None, ge=1)
     territorio_id: int | None = Field(default=None, ge=1)
@@ -56,6 +58,8 @@ class EventInput(AgendaSchema):
 
 
 class EventUpdate(AgendaSchema):
+    contexto: Literal["campanha", "gabinete", "institucional"] | None = None
+    campanha_eleicao_id: int | None = Field(default=None, ge=1)
     tipo_evento_id: int | None = Field(default=None, ge=1)
     status_evento_id: int | None = Field(default=None, ge=1)
     titulo: str | None = Field(default=None, min_length=2, max_length=180)
@@ -64,7 +68,7 @@ class EventUpdate(AgendaSchema):
     data_fim: datetime | None = None
     local_nome: str | None = Field(default=None, max_length=180)
     endereco_id: int | None = Field(default=None, ge=1)
-    municipio_id: int | None = Field(default=None, ge=1)
+    codigo_municipio_ibge: int | None = Field(default=None, ge=1)
     bairro_id: int | None = Field(default=None, ge=1)
     zona_eleitoral_id: int | None = Field(default=None, ge=1)
     territorio_id: int | None = Field(default=None, ge=1)
@@ -80,6 +84,8 @@ class EventCancel(AgendaSchema):
 class EventResponse(AgendaSchema):
     id: int
     tenant_id: int
+    contexto: Literal["campanha", "gabinete", "institucional"]
+    campanha_eleicao_id: int | None
     tipo_evento_id: int | None
     tipo_evento_nome: str | None
     status_evento_id: int | None
@@ -91,7 +97,7 @@ class EventResponse(AgendaSchema):
     data_fim: datetime | None
     local_nome: str | None
     endereco_id: int | None
-    municipio_id: int | None
+    codigo_municipio_ibge: int | None
     bairro_id: int | None
     zona_eleitoral_id: int | None
     territorio_id: int | None

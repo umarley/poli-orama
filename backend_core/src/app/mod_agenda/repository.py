@@ -164,10 +164,11 @@ class AgendaRepository:
     @staticmethod
     def _event_select() -> str:
         return (
-            "SELECT e.id, e.tenant_id, e.tipo_evento_id, te.nome AS tipo_evento_nome, "
+            "SELECT e.id, e.tenant_id, e.contexto, e.campanha_eleicao_id, "
+            "e.tipo_evento_id, te.nome AS tipo_evento_nome, "
             "e.status_evento_id, se.codigo AS status_evento_codigo, "
             "se.nome AS status_evento_nome, e.titulo, e.descricao, e.data_inicio, "
-            "e.data_fim, e.local_nome, e.endereco_id, e.municipio_id, e.bairro_id, "
+            "e.data_fim, e.local_nome, e.endereco_id, e.codigo_municipio_ibge, e.bairro_id, "
             "e.zona_eleitoral_id, e.territorio_id, t.nome AS territorio_nome, "
             "e.latitude, e.longitude, e.responsavel_pessoa_id, "
             "p.nome_completo AS responsavel_nome, e.motivo_cancelamento, "
@@ -185,15 +186,17 @@ class AgendaRepository:
         result = await self.session.execute(
             text(
                 "INSERT INTO agenda.evento "
-                "(tenant_id, tipo_evento_id, status_evento_id, titulo, descricao, "
-                "data_inicio, data_fim, local_nome, endereco_id, municipio_id, "
+                "(tenant_id, contexto, campanha_eleicao_id, tipo_evento_id, "
+                "status_evento_id, titulo, descricao, "
+                "data_inicio, data_fim, local_nome, endereco_id, codigo_municipio_ibge, "
                 "bairro_id, zona_eleitoral_id, territorio_id, latitude, longitude, "
                 "responsavel_pessoa_id, criado_por) VALUES "
-                "(:tenant_id, :tipo_evento_id, COALESCE(:status_evento_id, "
+                "(:tenant_id, :contexto, :campanha_eleicao_id, :tipo_evento_id, "
+                "COALESCE(:status_evento_id, "
                 "(SELECT id FROM agenda.status_evento WHERE codigo = 'planejado' "
                 "AND (tenant_id IS NULL OR tenant_id = :tenant_id) "
                 "ORDER BY tenant_id DESC NULLS LAST LIMIT 1)), :titulo, :descricao, "
-                ":data_inicio, :data_fim, :local_nome, :endereco_id, :municipio_id, "
+                ":data_inicio, :data_fim, :local_nome, :endereco_id, :codigo_municipio_ibge, "
                 ":bairro_id, :zona_eleitoral_id, :territorio_id, :latitude, :longitude, "
                 ":responsavel_pessoa_id, :user_id) RETURNING id"
             ),

@@ -221,7 +221,9 @@ class Endereco(Base):
         ForeignKey("public.tenant.id", ondelete="CASCADE"),
         nullable=False,
     )
-    codigo_municipio_ibge: Mapped[int | None] = mapped_column(Integer, ForeignKey("global.municipio.codigo_ibge"))
+    codigo_municipio_ibge: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("global.municipio.codigo_ibge")
+    )
     bairro_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("global.bairro.id"))
     bairro_texto: Mapped[str | None] = mapped_column(String(150))
     logradouro: Mapped[str | None] = mapped_column(String(180))
@@ -313,7 +315,7 @@ class Eleitor(Base):
         Integer, ForeignKey("global.local_votacao.id")
     )
     codigo_municipio_ibge: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("global.municipio.id")
+        Integer, ForeignKey("global.municipio.codigo_ibge")
     )
     situacao_titulo: Mapped[str | None] = mapped_column(String(30), server_default="regular")
     criado_em: Mapped[datetime] = mapped_column(
@@ -332,10 +334,6 @@ class Lideranca(Base):
         CheckConstraint(
             "tipo_lideranca IN ('coordenador_geral','coordenador_territorial','lider','sublider')",
             name="ck_lideranca_tipo",
-        ),
-        CheckConstraint(
-            "meta_votos IS NULL OR meta_votos >= 0",
-            name="ck_lideranca_meta_votos",
         ),
         UniqueConstraint("pessoa_id", name="uq_lideranca_pessoa"),
         Index("ix_lideranca_coordenador", "coordenador_id"),
@@ -357,7 +355,6 @@ class Lideranca(Base):
     coordenador_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("cadastro.lideranca.id")
     )
-    meta_votos: Mapped[int | None] = mapped_column(Integer)
     apelido_campanha: Mapped[str | None] = mapped_column(String(120))
     ativo: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     criado_em: Mapped[datetime] = mapped_column(

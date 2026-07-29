@@ -108,7 +108,7 @@ export const navigationItems: NavigationItem[] = [
     key: '/configuracoes',
     label: 'Configurações',
     icon: <SettingOutlined />,
-    permission: 'configuracoes.visualizar',
+    profiles: ['gestor', 'gestor_saas', 'coordenador_territorial'],
   },
   {
     key: '/assinatura',
@@ -120,6 +120,12 @@ export const navigationItems: NavigationItem[] = [
     key: '/admin/tenants',
     label: 'Tenants',
     icon: <BankOutlined />,
+    profiles: ['gestor_saas'],
+  },
+  {
+    key: '/admin/eleicoes',
+    label: 'Eleições oficiais',
+    icon: <FlagOutlined />,
     profiles: ['gestor_saas'],
   },
 ];

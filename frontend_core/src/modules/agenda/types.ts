@@ -10,6 +10,8 @@ export interface AgendaCatalog {
 export interface AgendaEvent {
   id: number;
   tenant_id: number;
+  contexto: 'campanha' | 'gabinete' | 'institucional';
+  campanha_eleicao_id: number | null;
   tipo_evento_id: number | null;
   tipo_evento_nome: string | null;
   status_evento_id: number | null;
@@ -21,7 +23,7 @@ export interface AgendaEvent {
   data_fim: string | null;
   local_nome: string | null;
   endereco_id: number | null;
-  municipio_id: number | null;
+  codigo_municipio_ibge: number | null;
   bairro_id: number | null;
   zona_eleitoral_id: number | null;
   territorio_id: number | null;
@@ -130,6 +132,8 @@ export interface AgendaEventDetail extends AgendaEvent {
 }
 
 export interface EventInput {
+  contexto?: 'campanha' | 'gabinete' | 'institucional';
+  campanha_eleicao_id?: number;
   tipo_evento_id?: number;
   status_evento_id?: number;
   titulo: string;

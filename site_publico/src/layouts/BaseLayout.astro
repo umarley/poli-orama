@@ -32,7 +32,7 @@ const analyticsId = import.meta.env.PUBLIC_ANALYTICS_ID || "";
 const organizationSchema = {
   "@context": "https://schema.org",
   "@type": "Organization",
-  name: "Vurix Eleitoral",
+  name: "Poliorama",
   url: site.toString(),
   logo: new URL("/logo.svg", site).toString(),
 };
@@ -47,7 +47,7 @@ const organizationSchema = {
     <meta name="robots" content={shouldNoindex ? "noindex,nofollow" : "index,follow"} />
     <link rel="canonical" href={canonical} />
     <meta property="og:locale" content="pt_BR" />
-    <meta property="og:site_name" content="Vurix Eleitoral" />
+    <meta property="og:site_name" content="Poliorama" />
     <meta property="og:type" content={type} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />

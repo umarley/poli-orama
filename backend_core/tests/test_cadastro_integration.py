@@ -242,7 +242,6 @@ async def test_cad_047_creates_complete_person_registration() -> None:
                     },
                     "lideranca": {
                         "tipo_lideranca": "coordenador_geral",
-                        "meta_votos": 100,
                         "ativo": True,
                     },
                 },
@@ -258,7 +257,7 @@ async def test_cad_047_creates_complete_person_registration() -> None:
             assert person["enderecos"][0]["endereco"]["bairro_texto"] == "Se"
             assert person["tipos"][0]["codigo"] == "eleitor"
             assert person["eleitor"]["titulo_eleitor"] == "123456789012"
-            assert person["lideranca"]["meta_votos"] == 100
+            assert person["lideranca"]["tipo_lideranca"] == "coordenador_geral"
 
             detail = client.get(f"/api/v1/cadastro/pessoas/{person['id']}", headers=headers)
             assert detail.status_code == 200, detail.text

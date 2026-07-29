@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Path, Query, Response, status
@@ -13,6 +14,7 @@ from app.auth.access import (
 from app.core.errors import ResourceNotFoundError
 from app.mod_territorio.repository import TerritorioRepository
 from app.mod_territorio.schemas import (
+    BairroCreate,
     BairroResponse,
     EstadoResponse,
     GeocodificacaoInput,
@@ -21,7 +23,9 @@ from app.mod_territorio.schemas import (
     LiderancaTerritorioResponse,
     LocalVotacaoResponse,
     MapMarker,
+    MapPerson,
     MunicipioResponse,
+    PessoaTerritorioDetalhe,
     PessoaTerritorioInput,
     PessoaTerritorioResponse,
     SecaoEleitoralResponse,
@@ -63,7 +67,7 @@ async def list_cities(
     clauses: list[str] = []
     values: dict[str, object] = {}
     if estado_id:
-        clauses.append("estado_id = :estado_id")
+        clauses.append("codigo_uf_ibge = :estado_id")
         values["estado_id"] = estado_id
     if nome:
         clauses.append("nome ILIKE :nome")
@@ -75,15 +79,28 @@ async def list_cities(
 async def list_neighborhoods(
     _: Annotated[RequestActor, Depends(require_permission("territorio", "visualizar"))],
     service: Annotated[TerritorioService, Depends(get_service)],
-    municipio_id: int = Query(ge=1),
+    codigo_municipio_ibge: int = Query(ge=1),
     nome: str | None = Query(default=None, min_length=1, max_length=150),
 ) -> list[dict[str, Any]]:
-    where = "municipio_id = :municipio_id"
-    values: dict[str, object] = {"municipio_id": municipio_id}
+    where = "codigo_municipio_ibge = :codigo_municipio_ibge"
+    values: dict[str, object] = {"codigo_municipio_ibge": codigo_municipio_ibge}
     if nome:
         where += " AND nome ILIKE :nome"
         values["nome"] = f"%{nome}%"
     return await service.repository.global_list("bairro", where, values)
+
+
+@router.post(
+    "/global/bairros",
+    response_model=BairroResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_neighborhood(
+    payload: BairroCreate,
+    _: Annotated[RequestActor, Depends(require_permission("territorio", "criar"))],
+    service: Annotated[TerritorioService, Depends(get_service)],
+) -> dict[str, Any]:
+    return await service.create_neighborhood(payload)
 
 
 @router.get("/global/zonas-eleitorais", response_model=list[ZonaEleitoralResponse])
@@ -91,16 +108,16 @@ async def list_electoral_zones(
     _: Annotated[RequestActor, Depends(require_permission("territorio", "visualizar"))],
     service: Annotated[TerritorioService, Depends(get_service)],
     estado_id: int | None = Query(default=None, ge=1),
-    municipio_id: int | None = Query(default=None, ge=1),
+    codigo_municipio_ibge: int | None = Query(default=None, ge=1),
 ) -> list[dict[str, Any]]:
     clauses: list[str] = []
     values: dict[str, object] = {}
     if estado_id:
-        clauses.append("estado_id = :estado_id")
+        clauses.append("codigo_uf_ibge = :estado_id")
         values["estado_id"] = estado_id
-    if municipio_id:
-        clauses.append("municipio_id = :municipio_id")
-        values["municipio_id"] = municipio_id
+    if codigo_municipio_ibge:
+        clauses.append("codigo_municipio_ibge = :codigo_municipio_ibge")
+        values["codigo_municipio_ibge"] = codigo_municipio_ibge
     return await service.repository.global_list(
         "zona_eleitoral", " AND ".join(clauses), values
     )
@@ -110,7 +127,7 @@ async def list_electoral_zones(
 async def list_polling_places(
     _: Annotated[RequestActor, Depends(require_permission("territorio", "visualizar"))],
     service: Annotated[TerritorioService, Depends(get_service)],
-    municipio_id: int | None = Query(default=None, ge=1),
+    codigo_municipio_ibge: int | None = Query(default=None, ge=1),
     bairro_id: int | None = Query(default=None, ge=1),
     zona_eleitoral_id: int | None = Query(default=None, ge=1),
     nome: str | None = Query(default=None, min_length=1, max_length=180),
@@ -118,7 +135,7 @@ async def list_polling_places(
     clauses = ["situacao = 'ativo'"]
     values: dict[str, object] = {}
     for column, value in {
-        "municipio_id": municipio_id,
+        "codigo_municipio_ibge": codigo_municipio_ibge,
         "bairro_id": bairro_id,
         "zona_eleitoral_id": zona_eleitoral_id,
     }.items():
@@ -203,6 +220,22 @@ async def map_markers(
     return await service.repository.map_markers(actor.tenant_id, ids)
 
 
+@router.get("/territorios/mapa/pessoas", response_model=list[MapPerson])
+async def map_people(
+    actor: Annotated[RequestActor, Depends(require_permission("territorio", "visualizar"))],
+    access: Annotated[TerritorialAccess, Depends(get_territorial_access)],
+    service: Annotated[TerritorioService, Depends(get_service)],
+    latitude: Annotated[Decimal, Query(ge=-90, le=90, decimal_places=3)],
+    longitude: Annotated[Decimal, Query(ge=-180, le=180, decimal_places=3)],
+    territorio_id: int | None = Query(default=None, ge=1),
+) -> list[dict[str, Any]]:
+    ids = await service.accessible_ids(actor, access)
+    if territorio_id:
+        await service.ensure_access(actor, access, territorio_id, administer=False)
+        ids = {territorio_id}
+    return await service.repository.map_people(actor.tenant_id, latitude, longitude, ids)
+
+
 @router.get("/territorios", response_model=list[TerritorioResponse])
 async def list_territories(
     actor: Annotated[RequestActor, Depends(require_permission("territorio", "visualizar"))],
@@ -284,17 +317,29 @@ async def link_person(
     return await service.link_person(actor, access, territory_id, payload)
 
 
+@router.get(
+    "/territorios/pessoas/{person_id}",
+    response_model=list[PessoaTerritorioDetalhe],
+)
+async def list_person_links(
+    actor: Annotated[RequestActor, Depends(require_permission("territorio", "visualizar"))],
+    access: Annotated[TerritorialAccess, Depends(get_territorial_access)],
+    service: Annotated[TerritorioService, Depends(get_service)],
+    person_id: int = Path(ge=1),
+) -> list[dict[str, Any]]:
+    return await service.list_person_links(actor, access, person_id)
+
+
 @router.delete(
     "/territorios/pessoas-vinculos/{link_id}", status_code=status.HTTP_204_NO_CONTENT
 )
 async def unlink_person(
     actor: Annotated[RequestActor, Depends(require_permission("territorio", "editar"))],
+    access: Annotated[TerritorialAccess, Depends(get_territorial_access)],
     service: Annotated[TerritorioService, Depends(get_service)],
     link_id: int = Path(ge=1),
 ) -> Response:
-    if not await service.repository.unlink_person(actor.tenant_id, link_id):
-        raise ResourceNotFoundError("Vinculo territorial da pessoa", link_id)
-    await service.repository.commit()
+    await service.unlink_person(actor, access, link_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

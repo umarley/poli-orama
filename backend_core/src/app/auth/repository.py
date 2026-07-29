@@ -176,8 +176,8 @@ class AuthRepository(BaseRepository[User]):
         self, tenant_id: int, access: TerritorialAccessInput
     ) -> None:
         references = {
-            "estado": ("global.estado", "estado_id"),
-            "municipio": ("global.municipio", "municipio_id"),
+            "estado": ("global.estado", "codigo_uf_ibge", "codigo_ibge"),
+            "municipio": ("global.municipio", "codigo_municipio_ibge", "codigo_ibge"),
             "bairro": ("global.bairro", "bairro_id"),
             "zona_eleitoral": ("global.zona_eleitoral", "zona_eleitoral_id"),
             "secao_eleitoral": ("global.secao_eleitoral", "secao_eleitoral_id"),
@@ -186,11 +186,12 @@ class AuthRepository(BaseRepository[User]):
         reference = references.get(access.tipo_escopo)
         if reference is None:
             return
-        table_name, field_name = reference
+        table_name, field_name, *column_name = reference
         identifier = getattr(access, field_name)
+        id_column = column_name[0] if column_name else "id"
         tenant_filter = " AND tenant_id = :tenant_id" if access.tipo_escopo == "territorio" else ""
         found = await self.session.scalar(
-            text(f"SELECT id FROM {table_name} WHERE id = :id{tenant_filter}"),
+            text(f"SELECT {id_column} FROM {table_name} WHERE {id_column} = :id{tenant_filter}"),
             {"id": identifier, "tenant_id": tenant_id},
         )
         if found is None:
@@ -210,6 +211,75 @@ class AuthRepository(BaseRepository[User]):
             statement = statement.where(AccessProfile.id.in_(profile_ids))
         profiles = await self.session.scalars(statement.order_by(AccessProfile.nivel))
         return list(profiles.all())
+
+    async def support_user_for_tenant(
+        self, source: User, tenant_id: int
+    ) -> User:
+        root_id = source.usuario_plataforma_id or source.id
+        existing: User | None = await self.session.scalar(
+            select(User).where(
+                User.tenant_id == tenant_id,
+                or_(User.id == root_id, User.usuario_plataforma_id == root_id),
+                User.excluido_em.is_(None),
+            )
+        )
+        if existing is not None:
+            return existing
+        support_profile: AccessProfile | None = await self.session.scalar(
+            select(AccessProfile).where(
+                AccessProfile.codigo == "gestor_saas",
+                AccessProfile.tenant_id.is_(None),
+            )
+        )
+        if support_profile is None:
+            raise BusinessRuleError("Perfil gestor_saas nao configurado.")
+        email = source.email
+        email_in_use = await self.session.scalar(
+            select(User.id).where(
+                User.tenant_id == tenant_id,
+                func.lower(User.email) == email.lower(),
+                User.excluido_em.is_(None),
+            )
+        )
+        if email_in_use is not None:
+            local, separator, domain = email.partition("@")
+            if separator:
+                suffix = f"+saas-{root_id}"
+                local = local[: 253 - len(domain) - len(suffix)]
+                email = f"{local}{suffix}@{domain}"
+            else:
+                email = f"saas-{root_id}@suporte.plataforma.local"
+        now = datetime.now(UTC)
+        user = User(
+            uuid_publico=uuid4(),
+            tenant_id=tenant_id,
+            usuario_plataforma_id=root_id,
+            pessoa_id=None,
+            nome=source.nome,
+            email=email,
+            hash_senha=source.hash_senha,
+            telefone=source.telefone,
+            mfa_habilitado=source.mfa_habilitado,
+            mfa_segredo=source.mfa_segredo,
+            status="ativo",
+            tentativas_login=0,
+            senha_alterada_em=source.senha_alterada_em,
+            deve_alterar_senha=False,
+            criado_em=now,
+            atualizado_em=now,
+        )
+        self.session.add(user)
+        await self.session.flush()
+        self.session.add(
+            UserProfile(
+                usuario_id=user.id,
+                perfil_acesso_id=support_profile.id,
+                tenant_id=tenant_id,
+                atribuido_em=now,
+            )
+        )
+        await self.session.flush()
+        return user
 
     async def create_user(self, tenant_id: int, payload: UserCreate, password_hash: str) -> User:
         now = datetime.now(UTC)

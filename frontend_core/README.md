@@ -1,4 +1,4 @@
-# Frontend — Vurix Eleitoral
+# Frontend — Poliorama
 
 Fundação React + Vite do SaaS de campanha eleitoral, implementada a partir da
 `SPEC-01-fundacao-tecnica-arquitetura.md`.
@@ -80,5 +80,5 @@ src/
 | Variável               | Descrição                                   | Padrão                         |
 | ---------------------- | ------------------------------------------- | ------------------------------ |
 | `VITE_API_URL`         | URL base da API                             | `http://localhost:8000/api/v1` |
-| `VITE_APP_NAME`        | Nome exibido pela aplicação                 | `Vurix Eleitoral`              |
+| `VITE_APP_NAME`        | Nome exibido pela aplicação                 | `Poliorama`              |
 | `VITE_ENABLE_DEVTOOLS` | Reserva para ferramentas de desenvolvimento | `false`                        |

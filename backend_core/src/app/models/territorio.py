@@ -38,8 +38,7 @@ class Estado(Base):
     __tablename__ = "estado"
     __table_args__ = {"schema": "global"}
 
-    id: Mapped[int] = mapped_column(SmallInteger, Identity(always=True), primary_key=True)
-    codigo_ibge: Mapped[int] = mapped_column(SmallInteger)
+    codigo_ibge: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
     uf: Mapped[str] = mapped_column(String(2))
     nome: Mapped[str] = mapped_column(String(60))
     regiao: Mapped[str | None] = mapped_column(String(20))
@@ -49,9 +48,8 @@ class Municipio(Base):
     __tablename__ = "municipio"
     __table_args__ = {"schema": "global"}
 
-    id: Mapped[int] = mapped_column(Integer, Identity(always=True), primary_key=True)
-    estado_id: Mapped[int] = mapped_column(SmallInteger, ForeignKey("global.estado.id"))
-    codigo_ibge: Mapped[int] = mapped_column(Integer)
+    codigo_ibge: Mapped[int] = mapped_column(Integer, primary_key=True)
+    codigo_uf_ibge: Mapped[int] = mapped_column(SmallInteger, ForeignKey("global.estado.codigo_ibge"))
     codigo_tse: Mapped[int | None] = mapped_column(Integer)
     nome: Mapped[str] = mapped_column(String(120))
     latitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
@@ -64,7 +62,10 @@ class Bairro(Base):
     __table_args__ = {"schema": "global"}
 
     id: Mapped[int] = mapped_column(Integer, Identity(always=True), primary_key=True)
-    municipio_id: Mapped[int] = mapped_column(Integer, ForeignKey("global.municipio.id"))
+    codigo_municipio_ibge: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("global.municipio.codigo_ibge"),
+    )
     nome: Mapped[str] = mapped_column(String(150))
     origem: Mapped[str] = mapped_column(String(20))
 
@@ -74,8 +75,14 @@ class ZonaEleitoral(Base):
     __table_args__ = {"schema": "global"}
 
     id: Mapped[int] = mapped_column(Integer, Identity(always=True), primary_key=True)
-    estado_id: Mapped[int] = mapped_column(SmallInteger, ForeignKey("global.estado.id"))
-    municipio_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("global.municipio.id"))
+    codigo_uf_ibge: Mapped[int] = mapped_column(
+        SmallInteger,
+        ForeignKey("global.estado.codigo_ibge"),
+    )
+    codigo_municipio_ibge: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("global.municipio.codigo_ibge"),
+    )
     numero_zona: Mapped[int] = mapped_column(SmallInteger)
     descricao: Mapped[str | None] = mapped_column(String(150))
 
@@ -85,7 +92,10 @@ class LocalVotacao(Base):
     __table_args__ = {"schema": "global"}
 
     id: Mapped[int] = mapped_column(Integer, Identity(always=True), primary_key=True)
-    municipio_id: Mapped[int] = mapped_column(Integer, ForeignKey("global.municipio.id"))
+    codigo_municipio_ibge: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("global.municipio.codigo_ibge"),
+    )
     zona_eleitoral_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("global.zona_eleitoral.id")
     )
@@ -145,8 +155,14 @@ class Territorio(Base):
         SmallInteger, ForeignKey("territorio.tipo_territorio.id")
     )
     nome: Mapped[str] = mapped_column(String(150))
-    estado_id: Mapped[int | None] = mapped_column(SmallInteger, ForeignKey("global.estado.id"))
-    municipio_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("global.municipio.id"))
+    codigo_uf_ibge: Mapped[int | None] = mapped_column(
+        SmallInteger,
+        ForeignKey("global.estado.codigo_ibge"),
+    )
+    codigo_municipio_ibge: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("global.municipio.codigo_ibge"),
+    )
     bairro_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("global.bairro.id"))
     zona_eleitoral_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("global.zona_eleitoral.id")

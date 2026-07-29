@@ -95,7 +95,7 @@ class MetaRepository(BaseRepository[object]):
         active = "" if include_inactive else "AND ativo"
         result = await self.session.execute(
             text(
-                "SELECT id, tenant_id, nome, data_inicio, data_fim, ciclo, eleicao_id,"
+                "SELECT id, tenant_id, nome, data_inicio, data_fim, ciclo,"
                 " ativo, criado_em, atualizado_em FROM meta.periodo_meta "
                 f"WHERE tenant_id = :tenant_id {active} "
                 "ORDER BY data_inicio DESC, nome"
@@ -107,7 +107,7 @@ class MetaRepository(BaseRepository[object]):
     async def get_period(self, tenant_id: int, period_id: int) -> dict[str, Any] | None:
         result = await self.session.execute(
             text(
-                "SELECT id, tenant_id, nome, data_inicio, data_fim, ciclo, eleicao_id,"
+                "SELECT id, tenant_id, nome, data_inicio, data_fim, ciclo,"
                 " ativo, criado_em, atualizado_em FROM meta.periodo_meta "
                 "WHERE tenant_id = :tenant_id AND id = :id"
             ),
@@ -116,16 +116,16 @@ class MetaRepository(BaseRepository[object]):
         row = result.mappings().first()
         return dict(row) if row else None
 
-    async def election_exists(self, tenant_id: int, election_id: int) -> bool:
-        return bool(
-            await self.session.scalar(
-                text(
-                    "SELECT EXISTS(SELECT 1 FROM eleicao.eleicao "
-                    "WHERE id = :id AND (tenant_id IS NULL OR tenant_id = :tenant_id))"
-                ),
-                {"id": election_id, "tenant_id": tenant_id},
-            )
+    async def active_campaign_id(self, tenant_id: int) -> int | None:
+        value = await self.session.scalar(
+            text(
+                "SELECT id FROM eleicao.campanha_eleicao "
+                "WHERE tenant_id = :tenant_id AND ativa "
+                "ORDER BY data_ativacao DESC NULLS LAST, id DESC LIMIT 1"
+            ),
+            {"tenant_id": tenant_id},
         )
+        return int(value) if value is not None else None
 
     async def coordinator_exists(self, tenant_id: int, leader_id: int) -> bool:
         return bool(
@@ -146,9 +146,9 @@ class MetaRepository(BaseRepository[object]):
         result = await self.session.execute(
             text(
                 "INSERT INTO meta.periodo_meta "
-                "(tenant_id, nome, data_inicio, data_fim, ciclo, eleicao_id) "
-                "VALUES (:tenant_id, :nome, :data_inicio, :data_fim, :ciclo, :eleicao_id) "
-                "RETURNING id, tenant_id, nome, data_inicio, data_fim, ciclo, eleicao_id,"
+                "(tenant_id, nome, data_inicio, data_fim, ciclo) "
+                "VALUES (:tenant_id, :nome, :data_inicio, :data_fim, :ciclo) "
+                "RETURNING id, tenant_id, nome, data_inicio, data_fim, ciclo,"
                 " ativo, criado_em, atualizado_em"
             ),
             {"tenant_id": tenant_id, **payload.model_dump()},
@@ -218,15 +218,20 @@ class MetaRepository(BaseRepository[object]):
         leader_id: int | None,
         period_id: int | None,
         status: str | None,
+        campaign_id: int,
         accessible_ids: set[int] | None,
     ) -> list[dict[str, Any]]:
         if accessible_ids is not None and not accessible_ids:
             accessible_ids = {-1}
-        clauses = ["m.tenant_id = :tenant_id"]
+        clauses = [
+            "m.tenant_id = :tenant_id",
+            "m.campanha_eleicao_id = :campaign_id",
+        ]
         values: dict[str, Any] = {
             "tenant_id": tenant_id,
             "user_id": user_id,
             "accessible_ids": sorted(accessible_ids or {-1}),
+            "campaign_id": campaign_id,
         }
         if territory_id:
             clauses.append(
@@ -250,12 +255,14 @@ class MetaRepository(BaseRepository[object]):
             values["status"] = status
         result = await self.session.execute(
             text(
-                "SELECT m.id, m.tenant_id, m.tipo_meta_voto_id, tm.codigo AS tipo_codigo,"
+                "SELECT m.id, m.tenant_id, m.campanha_eleicao_id,"
+                " ce.nome AS campanha_nome, m.tipo_meta_voto_id, tm.codigo AS tipo_codigo,"
                 " tm.nome AS tipo_nome, m.periodo_meta_id, pm.nome AS periodo_nome,"
                 " m.titulo, m.quantidade_meta, m.coordenador_id, m.territorio_id,"
                 " m.lideranca_id, m.status, m.criado_por, m.score_risco,"
                 " m.fatores_risco, m.criado_em, m.atualizado_em"
                 " FROM meta.meta_voto m"
+                " JOIN eleicao.campanha_eleicao ce ON ce.id = m.campanha_eleicao_id"
                 " JOIN meta.tipo_meta_voto tm ON tm.id = m.tipo_meta_voto_id"
                 " JOIN meta.periodo_meta pm ON pm.id = m.periodo_meta_id"
                 f" WHERE {' AND '.join(clauses)}"
@@ -267,39 +274,44 @@ class MetaRepository(BaseRepository[object]):
         return [dict(row) for row in result.mappings()]
 
     async def get_goal(
-        self, tenant_id: int, goal_id: int
+        self, tenant_id: int, goal_id: int, campaign_id: int
     ) -> dict[str, Any] | None:
         result = await self.session.execute(
             text(
-                "SELECT m.id, m.tenant_id, m.tipo_meta_voto_id, tm.codigo AS tipo_codigo,"
+                "SELECT m.id, m.tenant_id, m.campanha_eleicao_id,"
+                " ce.nome AS campanha_nome, m.tipo_meta_voto_id, tm.codigo AS tipo_codigo,"
                 " tm.nome AS tipo_nome, m.periodo_meta_id, pm.nome AS periodo_nome,"
                 " m.titulo, m.quantidade_meta, m.coordenador_id, m.territorio_id,"
                 " m.lideranca_id, m.status, m.criado_por, m.score_risco,"
                 " m.fatores_risco, m.criado_em, m.atualizado_em"
                 " FROM meta.meta_voto m"
+                " JOIN eleicao.campanha_eleicao ce ON ce.id = m.campanha_eleicao_id"
                 " JOIN meta.tipo_meta_voto tm ON tm.id = m.tipo_meta_voto_id"
                 " JOIN meta.periodo_meta pm ON pm.id = m.periodo_meta_id"
                 " WHERE m.tenant_id = :tenant_id AND m.id = :id"
+                " AND m.campanha_eleicao_id = :campaign_id"
             ),
-            {"tenant_id": tenant_id, "id": goal_id},
+            {"tenant_id": tenant_id, "id": goal_id, "campaign_id": campaign_id},
         )
         row = result.mappings().first()
         return dict(row) if row else None
 
     async def create_goal(
-        self, tenant_id: int, user_id: int, payload: GoalCreate
+        self, tenant_id: int, campaign_id: int, user_id: int, payload: GoalCreate
     ) -> int:
         goal_id = int(
             await self.session.scalar(
                 text(
                     "INSERT INTO meta.meta_voto "
-                    "(tenant_id, tipo_meta_voto_id, periodo_meta_id, titulo,"
+                    "(tenant_id, campanha_eleicao_id, tipo_meta_voto_id, periodo_meta_id, titulo,"
                     " quantidade_meta, coordenador_id, criado_por) "
-                    "VALUES (:tenant_id, :tipo_meta_voto_id, :periodo_meta_id, :titulo,"
+                    "VALUES (:tenant_id, :campaign_id, :tipo_meta_voto_id,"
+                    " :periodo_meta_id, :titulo,"
                     " :quantidade_meta, :coordenador_id, :user_id) RETURNING id"
                 ),
                 {
                     "tenant_id": tenant_id,
+                    "campaign_id": campaign_id,
                     "user_id": user_id,
                     **payload.model_dump(exclude={"alvos"}),
                 },
@@ -511,12 +523,13 @@ class MetaRepository(BaseRepository[object]):
         return {int(value) for value in result}
 
     async def target_person_ids(
-        self, tenant_id: int, target_type: str, target_id: int
+        self, tenant_id: int, campaign_id: int, target_type: str, target_id: int
     ) -> set[int]:
         queries = {
             "lideranca": (
-                "SELECT pessoa_subordinada_id FROM cadastro.hierarquia_lideranca "
-                "WHERE tenant_id = :tenant_id AND lideranca_superior_id = :id AND ativo"
+                "SELECT pessoa_id FROM eleicao.campanha_liderado "
+                "WHERE tenant_id = :tenant_id AND campanha_eleicao_id = :campaign_id "
+                "AND lideranca_id = :id AND ativo"
             ),
             "territorio": (
                 "WITH RECURSIVE tree AS (SELECT CAST(:id AS bigint) AS id UNION ALL "
@@ -539,22 +552,66 @@ class MetaRepository(BaseRepository[object]):
                 "WHERE tenant_id = :tenant_id AND nucleo_familiar_id = :id"
             ),
             "pessoa": (
-                "SELECT id FROM cadastro.pessoa "
+                "SELECT id AS pessoa_id FROM cadastro.pessoa "
                 "WHERE tenant_id = :tenant_id AND id = :id AND ativo"
             ),
         }
         result = await self.session.scalars(
-            text(queries[target_type]), {"tenant_id": tenant_id, "id": target_id}
+            text(
+                "SELECT candidate.pessoa_id FROM ("
+                + queries[target_type]
+                + ") candidate WHERE EXISTS ("
+                "SELECT 1 FROM eleicao.campanha_liderado cl "
+                "WHERE cl.tenant_id = :tenant_id "
+                "AND cl.campanha_eleicao_id = :campaign_id "
+                "AND cl.pessoa_id = candidate.pessoa_id AND cl.ativo)"
+            ),
+            {
+                "tenant_id": tenant_id,
+                "campaign_id": campaign_id,
+                "id": target_id,
+            },
         )
         return {int(identifier) for identifier in result}
 
-    async def global_person_ids(self, tenant_id: int) -> set[int]:
+    async def global_person_ids(
+        self, tenant_id: int, campaign_id: int
+    ) -> set[int]:
         result = await self.session.scalars(
             text(
-                "SELECT id FROM cadastro.pessoa WHERE tenant_id = :tenant_id "
-                "AND ativo AND excluido_em IS NULL"
+                "SELECT DISTINCT pessoa_id FROM eleicao.campanha_liderado "
+                "WHERE tenant_id = :tenant_id "
+                "AND campanha_eleicao_id = :campaign_id AND ativo"
             ),
-            {"tenant_id": tenant_id},
+            {"tenant_id": tenant_id, "campaign_id": campaign_id},
+        )
+        return {int(identifier) for identifier in result}
+
+    async def confirmed_person_ids(
+        self, tenant_id: int, goal_id: int, person_ids: set[int]
+    ) -> set[int]:
+        if not person_ids:
+            return set()
+        result = await self.session.scalars(
+            text(
+                """
+                SELECT DISTINCT c.pessoa_id
+                  FROM eleicao.confirmacao_operacional_voto c
+                  JOIN meta.meta_voto m
+                    ON m.campanha_eleicao_id = c.campanha_eleicao_id
+                 WHERE m.id = :goal_id
+                   AND m.tenant_id = :tenant_id
+                   AND c.tenant_id = m.tenant_id
+                   AND c.confirmado
+                   AND c.revogado_em IS NULL
+                   AND c.pessoa_id = ANY(:person_ids)
+                """
+            ),
+            {
+                "tenant_id": tenant_id,
+                "goal_id": goal_id,
+                "person_ids": list(person_ids),
+            },
         )
         return {int(identifier) for identifier in result}
 
@@ -600,6 +657,8 @@ class MetaRepository(BaseRepository[object]):
         payload: GoalTrackingCreate,
         *,
         base_count: int,
+        projected_count: int,
+        confirmed_count: int,
         percentage: Decimal,
         risk_status: str,
     ) -> dict[str, Any]:
@@ -625,13 +684,15 @@ class MetaRepository(BaseRepository[object]):
                 " situacao_risco, observacao, criado_por, criado_em"
             ),
             {
+                **payload.model_dump(),
                 "tenant_id": tenant_id,
                 "user_id": user_id,
                 "goal_id": goal_id,
                 "base_count": base_count,
+                "quantidade_projetada": projected_count,
+                "quantidade_confirmada": confirmed_count,
                 "percentage": percentage,
                 "risk_status": risk_status,
-                **payload.model_dump(),
             },
         )
         return dict(result.mappings().one())
@@ -849,62 +910,75 @@ class MetaRepository(BaseRepository[object]):
         ]
 
     async def replace_ranking(
-        self, tenant_id: int, ranking_date: date, rows: list[dict[str, Any]]
+        self, tenant_id: int, campaign_id: int, ranking_date: date,
+        rows: list[dict[str, Any]]
     ) -> None:
         await self.session.execute(
             text(
                 "DELETE FROM meta.ranking_lideranca "
-                "WHERE tenant_id = :tenant_id AND data_referencia = :ranking_date"
+                "WHERE tenant_id = :tenant_id AND campanha_eleicao_id = :campaign_id "
+                "AND data_referencia = :ranking_date"
             ),
-            {"tenant_id": tenant_id, "ranking_date": ranking_date},
+            {"tenant_id": tenant_id, "campaign_id": campaign_id,
+             "ranking_date": ranking_date},
         )
         for row in rows:
             await self.session.execute(
                 text(
                     "INSERT INTO meta.ranking_lideranca "
-                    "(tenant_id, lideranca_id, data_referencia, posicao,"
+                    "(tenant_id, campanha_eleicao_id, lideranca_id, data_referencia, posicao,"
                     " total_cadastros, total_confirmacoes, total_eventos,"
                     " total_demandas, percentual_meta, pontuacao) "
-                    "VALUES (:tenant_id, :lideranca_id, :ranking_date, :posicao,"
+                    "VALUES (:tenant_id, :campaign_id, :lideranca_id, :ranking_date, :posicao,"
                     " :total_cadastros, :total_confirmacoes, :total_eventos,"
                     " :total_demandas, :percentual_meta, :pontuacao)"
                 ),
-                {"tenant_id": tenant_id, "ranking_date": ranking_date, **row},
+                {"tenant_id": tenant_id, "campaign_id": campaign_id,
+                 "ranking_date": ranking_date, **row},
             )
 
-    async def ranking_metrics(self, tenant_id: int) -> list[dict[str, Any]]:
+    async def ranking_metrics(
+        self, tenant_id: int, campaign_id: int
+    ) -> list[dict[str, Any]]:
         result = await self.session.execute(
             text(
                 "SELECT l.id AS lideranca_id,"
-                " COALESCE(l.apelido_campanha, p.nome_completo) AS nome_lideranca,"
+                " p.nome_completo AS nome_lideranca,"
                 " count(DISTINCT hl.pessoa_subordinada_id)::int AS total_cadastros,"
                 " COALESCE(avg(subordinate.nivel_engajamento), 0)::numeric AS engajamento,"
                 " count(DISTINCT el.evento_id)::int AS total_eventos,"
                 " count(DISTINCT d.id)::int AS total_demandas"
                 " FROM cadastro.lideranca l"
                 " JOIN cadastro.pessoa p ON p.id = l.pessoa_id"
-                " LEFT JOIN cadastro.hierarquia_lideranca hl"
-                " ON hl.lideranca_superior_id = l.id AND hl.tenant_id = l.tenant_id AND hl.ativo"
+                " JOIN eleicao.campanha_lideranca cl"
+                " ON cl.lideranca_id = l.id AND cl.tenant_id = l.tenant_id"
+                " AND cl.campanha_eleicao_id = :campaign_id AND cl.ativo"
+                " LEFT JOIN eleicao.campanha_liderado hl"
+                " ON hl.lideranca_id = l.id AND hl.tenant_id = l.tenant_id"
+                " AND hl.campanha_eleicao_id = :campaign_id AND hl.ativo"
                 " LEFT JOIN cadastro.pessoa subordinate"
                 " ON subordinate.id = hl.pessoa_subordinada_id"
                 " LEFT JOIN agenda.evento_lideranca el"
                 " ON el.lideranca_id = l.id AND el.tenant_id = l.tenant_id"
+                " LEFT JOIN agenda.evento ev ON ev.id = el.evento_id"
+                " AND ev.campanha_eleicao_id = :campaign_id"
                 " LEFT JOIN demanda.demanda d"
                 " ON d.lideranca_indicacao_id = l.id AND d.tenant_id = l.tenant_id"
+                " AND d.campanha_eleicao_id = :campaign_id"
                 " WHERE l.tenant_id = :tenant_id AND l.ativo"
                 " GROUP BY l.id, p.nome_completo ORDER BY l.id"
             ),
-            {"tenant_id": tenant_id},
+            {"tenant_id": tenant_id, "campaign_id": campaign_id},
         )
         return [dict(row) for row in result.mappings()]
 
     async def list_ranking(
-        self, tenant_id: int, ranking_date: date | None = None
+        self, tenant_id: int, campaign_id: int, ranking_date: date | None = None
     ) -> list[dict[str, Any]]:
         result = await self.session.execute(
             text(
-                "SELECT r.id, r.lideranca_id,"
-                " COALESCE(l.apelido_campanha, p.nome_completo) AS nome_lideranca,"
+                "SELECT r.id, r.campanha_eleicao_id, r.lideranca_id,"
+                " p.nome_completo AS nome_lideranca,"
                 " r.data_referencia, r.posicao, r.total_cadastros,"
                 " r.total_confirmacoes, r.total_eventos, r.total_demandas,"
                 " COALESCE(r.percentual_meta, 0) AS percentual_meta,"
@@ -912,12 +986,16 @@ class MetaRepository(BaseRepository[object]):
                 " FROM meta.ranking_lideranca r"
                 " JOIN cadastro.lideranca l ON l.id = r.lideranca_id"
                 " JOIN cadastro.pessoa p ON p.id = l.pessoa_id"
-                " WHERE r.tenant_id = :tenant_id AND r.data_referencia = COALESCE("
+                " WHERE r.tenant_id = :tenant_id"
+                " AND r.campanha_eleicao_id = :campaign_id"
+                " AND r.data_referencia = COALESCE("
                 " :ranking_date, (SELECT max(data_referencia)"
-                " FROM meta.ranking_lideranca WHERE tenant_id = :tenant_id))"
+                " FROM meta.ranking_lideranca WHERE tenant_id = :tenant_id"
+                " AND campanha_eleicao_id = :campaign_id))"
                 " ORDER BY r.posicao"
             ),
-            {"tenant_id": tenant_id, "ranking_date": ranking_date},
+            {"tenant_id": tenant_id, "campaign_id": campaign_id,
+             "ranking_date": ranking_date},
         )
         return [dict(row) for row in result.mappings()]
 

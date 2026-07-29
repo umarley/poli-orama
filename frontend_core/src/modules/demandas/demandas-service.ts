@@ -1,7 +1,14 @@
 import { httpClient } from '@/services/api/http-client';
 import type {
-  Demand, DemandCatalog, DemandCatalogKey, DemandDetail, DemandFilters,
-  DemandClassification, DemandInput, DemandResponsible, DemandSummary,
+  Demand,
+  DemandCatalog,
+  DemandCatalogKey,
+  DemandDetail,
+  DemandFilters,
+  DemandClassification,
+  DemandInput,
+  DemandResponsible,
+  DemandSummary,
 } from './types';
 
 const base = '/api/v1/demandas';

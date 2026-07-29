@@ -1,6 +1,3 @@
-ALTER TABLE "global".municipio DROP CONSTRAINT municipio_estado_id_fkey;
-
-
 -- DML ajustado para inserção de estados brasileiros
 -- Segue o modelo DDL da tabela global.estado
 

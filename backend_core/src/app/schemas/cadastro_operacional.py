@@ -21,6 +21,7 @@ from app.schemas.cadastro import (
 
 RedeSocial = Literal["instagram", "facebook", "tiktok", "x", "youtube", "linkedin", "outro"]
 PapelSubordinado = Literal["lider", "liderado", "apoiador", "eleitor"]
+PapelComunidade = Literal["membro", "lider", "coordenador", "mobilizador", "voluntario"]
 TipoRelacao = Literal[
     "familiar",
     "lideranca",
@@ -78,8 +79,28 @@ class EstadoCivilResponse(CadastroSchema):
     ordem: int
 
 
+class ReligiaoResponse(CadastroSchema):
+    id: int
+    nome: str
+
+
+class TerritorioLiderancaResumo(CadastroSchema):
+    id: int
+    nome: str
+
+
+class LiderancaTagResumo(CadastroSchema):
+    id: int
+    nome: str
+    cor: str | None = None
+
+
 class LiderancaOperacionalResponse(LiderancaResponse):
+    pessoa_nome_completo: str | None = None
+    coordenador_nome_completo: str | None = None
     territorio_ids: list[int] = Field(default_factory=list)
+    territorios: list[TerritorioLiderancaResumo] = Field(default_factory=list)
+    tags: list[LiderancaTagResumo] = Field(default_factory=list)
 
 
 class IndicacaoInput(CadastroSchema):
@@ -89,10 +110,18 @@ class IndicacaoInput(CadastroSchema):
     data_indicacao: date = Field(default_factory=date.today)
 
 
+class IndicacaoPessoaInput(CadastroSchema):
+    pessoa_indicada_id: int = Field(ge=1)
+    origem: str | None = Field(default=None, max_length=60)
+    contexto: str | None = Field(default=None, max_length=255)
+    data_indicacao: date = Field(default_factory=date.today)
+
+
 class IndicacaoResponse(IndicacaoInput):
     id: int
     tenant_id: int
     pessoa_indicada_id: int
+    pessoa_indicada_nome: str | None = None
     criado_em: datetime
 
 
@@ -154,6 +183,7 @@ class VinculoResumo(CadastroSchema):
 class HierarquiaResumo(CadastroSchema):
     id: int
     lideranca_superior_id: int
+    lideranca_superior_nome: str | None = None
     papel_subordinado: PapelSubordinado
     ativo: bool
 
@@ -202,9 +232,16 @@ class HierarquiaInput(CadastroSchema):
         return self
 
 
+class HierarquiaStatusInput(CadastroSchema):
+    ativo: bool
+
+
 class HierarquiaResponse(HierarquiaInput):
     id: int
     tenant_id: int
+    campanha_eleicao_id: int | None = None
+    lideranca_superior_nome: str | None = None
+    pessoa_subordinada_nome: str | None = None
     criado_em: datetime
 
 
@@ -230,6 +267,7 @@ class NucleoFamiliarInput(CadastroSchema):
 class NucleoFamiliarResponse(NucleoFamiliarInput):
     id: int
     tenant_id: int
+    pessoa_referencia_nome: str | None = None
     quantidade_membros: int | None
     criado_em: datetime
     atualizado_em: datetime
@@ -248,12 +286,25 @@ class VinculoNucleoResponse(VinculoNucleoInput):
     nucleo_familiar_id: int
 
 
+class NucleoPessoaResponse(CadastroSchema):
+    id: int
+    nome_completo: str
+    data_nascimento: date | None = None
+    parentesco: str | None = None
+    observacao: str | None = None
+
+
+class ParentescoResponse(CadastroSchema):
+    codigo: str
+    nome: str
+
+
 class ComunidadeInput(CadastroSchema):
     nome: str = Field(min_length=2, max_length=150)
     tipo: TipoComunidade | None = None
     descricao: str | None = None
     lider_responsavel_id: int | None = Field(default=None, ge=1)
-    municipio_id: int | None = Field(default=None, ge=1)
+    codigo_municipio_ibge: int | None = Field(default=None, ge=1)
     territorio_id: int | None = Field(default=None, ge=1)
 
 
@@ -266,8 +317,20 @@ class ComunidadeResponse(ComunidadeInput):
 
 class VinculoComunidadeInput(CadastroSchema):
     pessoa_id: int = Field(ge=1)
-    papel: str | None = Field(default=None, max_length=40)
+    papel: PapelComunidade | None = None
     desde: date = Field(default_factory=date.today)
+
+
+class ComunidadePessoaResponse(CadastroSchema):
+    id: int
+    nome_completo: str
+    data_nascimento: date | None = None
+    papel: str | None = None
+
+
+class PapelComunidadeResponse(CadastroSchema):
+    codigo: str
+    nome: str
 
 
 class TagInput(CadastroSchema):
@@ -294,6 +357,12 @@ class TagUpdate(CadastroSchema):
 
 class VinculoTagInput(CadastroSchema):
     pessoa_id: int = Field(ge=1)
+
+
+class TagPessoaResponse(CadastroSchema):
+    id: int
+    nome_completo: str
+    data_nascimento: date | None = None
 
 
 class ValidacaoInput(CadastroSchema):

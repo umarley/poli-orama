@@ -8,23 +8,16 @@ import {
 } from '@/modules/territorios/territorios-service';
 
 interface ElectoralLocationFieldsProps {
-  municipioId?: number;
+  codigoMunicipioIbge?: number;
+  hideSection?: boolean;
+  fullWidthPollingPlace?: boolean;
+  requireMunicipality?: boolean;
 }
 
-export function ElectoralLocationFields({ municipioId }: ElectoralLocationFieldsProps) {
+export function ElectoralSectionField() {
   const form = Form.useFormInstance();
   const zoneId = Form.useWatch('zona_eleitoral_id', form) as number | undefined;
   const pollingPlaceId = Form.useWatch('local_votacao_id', form) as number | undefined;
-  const zones = useQuery({
-    queryKey: ['global', 'zonas', municipioId],
-    queryFn: () => listarZonas(undefined, municipioId),
-  });
-  const pollingPlaces = useQuery({
-    queryKey: ['global', 'locais-votacao', municipioId, zoneId],
-    queryFn: () =>
-      listarLocaisVotacao({ municipio_id: municipioId, zona_eleitoral_id: zoneId }),
-    enabled: Boolean(municipioId || zoneId),
-  });
   const sections = useQuery({
     queryKey: ['global', 'secoes', zoneId, pollingPlaceId],
     queryFn: () => listarSecoes(zoneId!, pollingPlaceId),
@@ -32,13 +25,54 @@ export function ElectoralLocationFields({ municipioId }: ElectoralLocationFields
   });
 
   return (
+    <Form.Item name="secao_eleitoral_id" label="Seção">
+      <Select
+        allowClear
+        showSearch
+        optionFilterProp="label"
+        disabled={!zoneId}
+        loading={sections.isPending}
+        options={(sections.data ?? []).map((item) => ({
+          value: item.id,
+          label: `Seção ${item.numero_secao}`,
+        }))}
+      />
+    </Form.Item>
+  );
+}
+
+export function ElectoralLocationFields({
+  codigoMunicipioIbge,
+  hideSection = false,
+  fullWidthPollingPlace = false,
+  requireMunicipality = false,
+}: ElectoralLocationFieldsProps) {
+  const form = Form.useFormInstance();
+  const zoneId = Form.useWatch('zona_eleitoral_id', form) as number | undefined;
+  const zones = useQuery({
+    queryKey: ['global', 'zonas', codigoMunicipioIbge],
+    queryFn: () => listarZonas(undefined, codigoMunicipioIbge),
+    enabled: !requireMunicipality || Boolean(codigoMunicipioIbge),
+  });
+  const pollingPlaces = useQuery({
+    queryKey: ['global', 'locais-votacao', codigoMunicipioIbge, zoneId],
+    queryFn: () =>
+      listarLocaisVotacao({
+        codigo_municipio_ibge: codigoMunicipioIbge,
+        zona_eleitoral_id: zoneId,
+      }),
+    enabled: Boolean(codigoMunicipioIbge || zoneId),
+  });
+
+  return (
     <Row gutter={12}>
-      <Col xs={24} md={8}>
+      <Col xs={24} md={fullWidthPollingPlace ? 24 : 8}>
         <Form.Item name="zona_eleitoral_id" label="Zona eleitoral">
           <Select
             allowClear
             showSearch
             optionFilterProp="label"
+            disabled={requireMunicipality && !codigoMunicipioIbge}
             loading={zones.isPending}
             options={(zones.data ?? []).map((item) => ({
               value: item.id,
@@ -50,13 +84,13 @@ export function ElectoralLocationFields({ municipioId }: ElectoralLocationFields
           />
         </Form.Item>
       </Col>
-      <Col xs={24} md={10}>
+      <Col xs={24} md={fullWidthPollingPlace ? 24 : hideSection ? 16 : 10}>
         <Form.Item name="local_votacao_id" label="Local de votação">
           <Select
             allowClear
             showSearch
             optionFilterProp="label"
-            disabled={!zoneId && !municipioId}
+            disabled={!zoneId && !codigoMunicipioIbge}
             loading={pollingPlaces.isPending}
             options={(pollingPlaces.data ?? []).map((item) => ({
               value: item.id,
@@ -66,21 +100,11 @@ export function ElectoralLocationFields({ municipioId }: ElectoralLocationFields
           />
         </Form.Item>
       </Col>
-      <Col xs={24} md={6}>
-        <Form.Item name="secao_eleitoral_id" label="Seção">
-          <Select
-            allowClear
-            showSearch
-            optionFilterProp="label"
-            disabled={!zoneId}
-            loading={sections.isPending}
-            options={(sections.data ?? []).map((item) => ({
-              value: item.id,
-              label: `Seção ${item.numero_secao}`,
-            }))}
-          />
-        </Form.Item>
-      </Col>
+      {hideSection ? null : (
+        <Col xs={24} md={6}>
+          <ElectoralSectionField />
+        </Col>
+      )}
     </Row>
   );
 }

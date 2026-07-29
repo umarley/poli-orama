@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
-from sqlalchemy import CheckConstraint, UniqueConstraint
+from sqlalchemy import UniqueConstraint
 from sqlalchemy.orm import configure_mappers
 
 from app.models import (
@@ -75,10 +75,7 @@ def test_database_constraints_cover_identity_and_domain_rules() -> None:
         "tipo_documento",
         "numero",
     ]
-    assert any(
-        isinstance(constraint, CheckConstraint) and constraint.name == "ck_lideranca_meta_votos"
-        for constraint in Lideranca.__table__.constraints
-    )
+    assert "meta_votos" not in Lideranca.__table__.columns
 
 
 def test_pessoa_create_accepts_complete_central_registration() -> None:
@@ -100,6 +97,7 @@ def test_pessoa_create_accepts_complete_central_registration() -> None:
                     "tipo": "residencial",
                     "principal": True,
                     "endereco": {
+                        "codigo_municipio_ibge": 5208707,
                         "logradouro": "Rua Um",
                         "numero": "10",
                         "cep": "01001-000",
@@ -109,15 +107,64 @@ def test_pessoa_create_accepts_complete_central_registration() -> None:
                 }
             ],
             "eleitor": {"titulo_eleitor": "123456789012", "situacao_titulo": "regular"},
-            "lideranca": {"tipo_lideranca": "lider", "meta_votos": 100},
+            "lideranca": {"tipo_lideranca": "lider"},
         }
     )
 
     assert payload.nome_completo == "Maria da Silva"
     assert payload.data_nascimento == date(1985, 4, 12)
+    assert payload.enderecos[0].endereco.codigo_municipio_ibge == 5208707
     assert payload.enderecos[0].endereco.latitude == Decimal("-23.5505200")
     assert payload.lideranca is not None
-    assert payload.lideranca.meta_votos == 100
+    assert payload.lideranca.tipo_lideranca == "lider"
+
+
+def test_pessoa_create_accepts_multiple_document_and_contact_types() -> None:
+    payload = PessoaCreate.model_validate(
+        {
+            "nome_completo": "Maria da Silva",
+            "documentos": [
+                {"tipo_documento": "cpf", "numero": "52998224725"},
+                {"tipo_documento": "titulo_eleitor", "numero": "123456789012"},
+            ],
+            "contatos": [
+                {"tipo_contato": "whatsapp", "valor": "11999999999", "principal": True},
+                {"tipo_contato": "email", "valor": "maria@example.com", "principal": True},
+            ],
+        }
+    )
+
+    assert [document.tipo_documento for document in payload.documentos] == [
+        "cpf",
+        "titulo_eleitor",
+    ]
+    assert [contact.tipo_contato for contact in payload.contatos] == ["whatsapp", "email"]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "nome_completo": "Maria da Silva",
+            "documentos": [
+                {"tipo_documento": "cpf", "numero": "52998224725"},
+                {"tipo_documento": "cpf", "numero": "39053344705"},
+            ],
+        },
+        {
+            "nome_completo": "Maria da Silva",
+            "contatos": [
+                {"tipo_contato": "email", "valor": "maria@example.com"},
+                {"tipo_contato": "email", "valor": "outra@example.com"},
+            ],
+        },
+    ],
+)
+def test_pessoa_create_rejects_repeated_document_or_contact_types(
+    payload: dict[str, object],
+) -> None:
+    with pytest.raises(ValidationError):
+        PessoaCreate.model_validate(payload)
 
 
 @pytest.mark.parametrize(
@@ -128,7 +175,6 @@ def test_pessoa_create_accepts_complete_central_registration() -> None:
             "nome_completo": "Pessoa",
             "documentos": [{"tipo_documento": "certidao", "numero": "1"}],
         },
-        {"nome_completo": "Pessoa", "lideranca": {"meta_votos": -1}},
         {
             "nome_completo": "Pessoa",
             "enderecos": [{"endereco": {"latitude": -91}}],

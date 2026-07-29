@@ -97,7 +97,7 @@ class DemandRepository:
         return bool(result.rowcount)
 
     def select(self) -> str:
-        return """SELECT d.id,d.protocolo,d.titulo,d.descricao,d.pessoa_solicitante_id,p.nome_completo solicitante_nome,
+        return """SELECT d.id,d.origem_contexto,d.campanha_eleicao_id,d.protocolo,d.titulo,d.descricao,d.pessoa_solicitante_id,p.nome_completo solicitante_nome,
   d.lideranca_indicacao_id,d.evento_id,d.territorio_id,t.nome territorio_nome,d.categoria_demanda_id,c.nome categoria_nome,
   d.prioridade_demanda_id,pr.nome prioridade_nome,d.status_demanda_id,s.codigo status_codigo,s.nome status_nome,
   d.origem_demanda_id,o.nome origem_nome,d.responsavel_atendimento_id,r.nome responsavel_nome,
@@ -168,8 +168,8 @@ class DemandRepository:
         return int(
             await self.session.scalar(
                 text(
-                    """INSERT INTO demanda.demanda(tenant_id,protocolo,categoria_demanda_id,prioridade_demanda_id,status_demanda_id,origem_demanda_id,titulo,descricao,pessoa_solicitante_id,lideranca_indicacao_id,evento_id,territorio_id,prazo,criado_por,classificacao_automatica,classificacao_detalhes)
-  VALUES(:tid,'DEM-'||to_char(now(),'YYYYMMDD')||'-'||nextval('demanda.demanda_id_seq'),:categoria_demanda_id,:prioridade_demanda_id,(SELECT id FROM demanda.status_demanda WHERE codigo='pendente' AND tenant_id IS NULL),COALESCE(CAST(:origem_demanda_id AS smallint),(SELECT id FROM demanda.origem_demanda WHERE codigo='evento' AND :evento_id IS NOT NULL)),:titulo,:descricao,:pessoa_solicitante_id,:lideranca_indicacao_id,:evento_id,:territorio_id,:prazo,:uid,:automatic,CAST(:details AS jsonb)) RETURNING id"""
+                    """INSERT INTO demanda.demanda(tenant_id,origem_contexto,campanha_eleicao_id,protocolo,categoria_demanda_id,prioridade_demanda_id,status_demanda_id,origem_demanda_id,titulo,descricao,pessoa_solicitante_id,lideranca_indicacao_id,evento_id,territorio_id,prazo,criado_por,classificacao_automatica,classificacao_detalhes)
+  VALUES(:tid,:origem_contexto,:campanha_eleicao_id,'DEM-'||to_char(now(),'YYYYMMDD')||'-'||nextval('demanda.demanda_id_seq'),:categoria_demanda_id,:prioridade_demanda_id,(SELECT id FROM demanda.status_demanda WHERE codigo='pendente' AND tenant_id IS NULL),COALESCE(CAST(:origem_demanda_id AS smallint),(SELECT id FROM demanda.origem_demanda WHERE codigo='evento' AND :evento_id IS NOT NULL)),:titulo,:descricao,:pessoa_solicitante_id,:lideranca_indicacao_id,:evento_id,:territorio_id,:prazo,:uid,:automatic,CAST(:details AS jsonb)) RETURNING id"""
                 ),
                 {
                     "tid": tid,

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "vurix-backend-jobs"
 version = "0.1.0"
-description = "Worker Celery do SaaS Vurix Eleitoral"
+description = "Worker Celery do SaaS Poliorama"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

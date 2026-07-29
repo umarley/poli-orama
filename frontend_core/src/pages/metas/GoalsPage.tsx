@@ -1,9 +1,4 @@
-import {
-  AlertOutlined,
-  PlusOutlined,
-  ReloadOutlined,
-  TrophyOutlined,
-} from '@ant-design/icons';
+import { AlertOutlined, PlusOutlined, ReloadOutlined, TrophyOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
@@ -17,7 +12,6 @@ import {
   Row,
   Select,
   Space,
-  Statistic,
   Table,
   Tabs,
   Tag,
@@ -27,6 +21,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { GoalProgress } from '@/components/metas/GoalProgress';
+import { LocalizedStatistic as Statistic } from '@/components/data/LocalizedStatistic';
 import { AppToast } from '@/components/feedback/AppToast';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { TerritorySelect } from '@/components/territorios/TerritorySelect';
@@ -43,14 +38,10 @@ import {
   obterResumoMetas,
   recalcularRanking,
 } from '@/modules/metas/metas-service';
-import type {
-  GoalInput,
-  GoalStatus,
-  LeadershipRanking,
-  TargetType,
-} from '@/modules/metas/types';
+import type { GoalInput, GoalStatus, LeadershipRanking, TargetType } from '@/modules/metas/types';
 import { normalizeApiError } from '@/services/api/api-error';
 import { useSessionStore } from '@/stores/session-store';
+import { formatInteger, formatNumber, formatPercent } from '@/utils/number-format';
 
 interface GoalForm {
   titulo: string;
@@ -89,9 +80,10 @@ export function GoalsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const permissions = useSessionStore((state) => state.user?.permissions ?? []);
+  const profiles = useSessionStore((state) => state.user?.profiles ?? []);
   const canCreate = permissions.includes('metas.criar');
   const canApprove = permissions.includes('metas.aprovar');
-  const canAdminTypes = permissions.includes('configuracoes.administrar');
+  const canAdminTypes = profiles.includes('gestor_saas');
   const [filters, setFilters] = useState<GoalFilters>({});
   const [goalModal, setGoalModal] = useState(false);
   const [periodModal, setPeriodModal] = useState(false);
@@ -116,7 +108,7 @@ export function GoalsPage() {
   });
   const leaders = useQuery({
     queryKey: ['cadastro', 'liderancas'],
-    queryFn: listarLiderancas,
+    queryFn: () => listarLiderancas(),
   });
   const ranking = useQuery({ queryKey: ['metas', 'ranking'], queryFn: listarRanking });
   const targetOptions = useQuery({
@@ -266,7 +258,7 @@ export function GoalsPage() {
                       style={{ width: 180 }}
                       options={(leaders.data ?? []).map((item) => ({
                         value: item.id,
-                        label: item.apelido_campanha || `Liderança #${item.id}`,
+                        label: item.pessoa_nome_completo || `Liderança #${item.id}`,
                       }))}
                     />
                   </Form.Item>
@@ -311,7 +303,9 @@ export function GoalsPage() {
                       render: (title: string, item) => (
                         <Space direction="vertical" size={0}>
                           <strong>{title}</strong>
-                          <span>{item.tipo_nome} · {item.periodo_nome}</span>
+                          <span>
+                            {item.tipo_nome} · {item.periodo_nome}
+                          </span>
                         </Space>
                       ),
                     },
@@ -331,6 +325,7 @@ export function GoalsPage() {
                     {
                       title: 'Base vinculada',
                       dataIndex: 'quantidade_eleitores_vinculados',
+                      render: (value: number) => formatInteger(value),
                     },
                     {
                       title: 'Situação',
@@ -350,7 +345,11 @@ export function GoalsPage() {
             label: 'Ranking',
             children: (
               <Card
-                title={<Space><TrophyOutlined /> Ranking de lideranças</Space>}
+                title={
+                  <Space>
+                    <TrophyOutlined /> Ranking de lideranças
+                  </Space>
+                }
                 extra={
                   canApprove && (
                     <Button
@@ -370,17 +369,25 @@ export function GoalsPage() {
                   columns={[
                     { title: '#', dataIndex: 'posicao', width: 60 },
                     { title: 'Liderança', dataIndex: 'nome_lideranca' },
-                    { title: 'Cadastros', dataIndex: 'total_cadastros' },
+                    {
+                      title: 'Cadastros',
+                      dataIndex: 'total_cadastros',
+                      render: (value: number) => formatInteger(value),
+                    },
                     {
                       title: 'Meta',
                       render: (_, item) =>
-                        `${item.quantidade_atual.toLocaleString('pt-BR')} / ${item.quantidade_meta.toLocaleString('pt-BR')}`,
+                        `${formatInteger(item.quantidade_atual)} / ${formatInteger(item.quantidade_meta)}`,
                     },
                     {
                       title: 'Atingimento',
-                      render: (_, item) => `${Number(item.percentual_meta).toFixed(1)}%`,
+                      render: (_, item) => formatPercent(item.percentual_meta),
                     },
-                    { title: 'Pontuação', dataIndex: 'pontuacao' },
+                    {
+                      title: 'Pontuação',
+                      dataIndex: 'pontuacao',
+                      render: (value: number | string) => formatNumber(value),
+                    },
                     {
                       title: 'Risco',
                       render: (_, item) =>
@@ -497,9 +504,9 @@ export function GoalsPage() {
               options={(leaders.data ?? [])
                 .filter((item) => item.tipo_lideranca.startsWith('coordenador_'))
                 .map((item) => ({
-                value: item.id,
-                label: item.apelido_campanha || `Liderança #${item.id}`,
-              }))}
+                  value: item.id,
+                  label: item.pessoa_nome_completo || `Liderança #${item.id}`,
+                }))}
             />
           </Form.Item>
           <Row gutter={12}>

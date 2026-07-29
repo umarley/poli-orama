@@ -8,6 +8,7 @@ from app.auth.access import RequestActor, TerritorialAccess
 from app.core.errors import AuthorizationError, BusinessRuleError, ResourceNotFoundError
 from app.mod_territorio.repository import TerritorioRepository
 from app.mod_territorio.schemas import (
+    BairroCreate,
     GeocodificacaoInput,
     LiderancaTerritorioInput,
     PessoaTerritorioInput,
@@ -27,6 +28,15 @@ class TerritorioService:
         self, actor: RequestActor, access: TerritorialAccess
     ) -> set[int] | None:
         return await self.repository.accessible_ids(actor.tenant_id, access)
+
+    async def create_neighborhood(self, payload: BairroCreate) -> dict[str, Any]:
+        if not await self.repository.reference_exists(
+            "municipio", payload.codigo_municipio_ibge
+        ):
+            raise ResourceNotFoundError("Municipio", payload.codigo_municipio_ibge)
+        item = await self.repository.create_neighborhood(payload)
+        await self.repository.commit()
+        return item
 
     async def list_territories(
         self,
@@ -193,6 +203,30 @@ class TerritorioService:
         item = await self.repository.link_person(actor.tenant_id, territory_id, payload)
         await self.repository.commit()
         return item
+
+    async def list_person_links(
+        self,
+        actor: RequestActor,
+        access: TerritorialAccess,
+        person_id: int,
+    ) -> list[dict[str, Any]]:
+        if not await self.repository.entity_exists("pessoa", actor.tenant_id, person_id):
+            raise ResourceNotFoundError("Pessoa", person_id)
+        ids = await self.accessible_ids(actor, access)
+        return await self.repository.list_person_links(actor.tenant_id, person_id, ids)
+
+    async def unlink_person(
+        self,
+        actor: RequestActor,
+        access: TerritorialAccess,
+        link_id: int,
+    ) -> None:
+        item = await self.repository.person_link(actor.tenant_id, link_id)
+        if item is None:
+            raise ResourceNotFoundError("Vinculo territorial da pessoa", link_id)
+        await self.ensure_access(actor, access, item["territorio_id"], administer=True)
+        await self.repository.unlink_person(actor.tenant_id, link_id)
+        await self.repository.commit()
 
     async def link_leadership(
         self,

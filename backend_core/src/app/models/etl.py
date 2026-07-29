@@ -44,6 +44,9 @@ class Importacao(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     tenant_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("public.tenant.id"))
+    campanha_eleicao_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("eleicao.campanha_eleicao.id")
+    )
     fonte_dado_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("etl.fonte_dado.id")
     )

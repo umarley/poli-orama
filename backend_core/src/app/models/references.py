@@ -27,3 +27,4 @@ religiao = _reference_table("religiao", "cadastro", SmallInteger)
 partido = _reference_table("partido", "cadastro", SmallInteger)
 
 eleicao = _reference_table("eleicao", "eleicao", BigInteger)
+campanha_eleicao = _reference_table("campanha_eleicao", "eleicao", BigInteger)

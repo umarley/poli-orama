@@ -1,3 +1,3 @@
-"""Jobs assincronos da plataforma Vurix Eleitoral."""
+"""Jobs assincronos da plataforma Poliorama."""
 
 __version__ = "0.1.0"

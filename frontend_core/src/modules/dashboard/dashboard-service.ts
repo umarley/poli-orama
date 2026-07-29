@@ -27,10 +27,9 @@ export async function getBirthdays(filters: DashboardFilters) {
 }
 
 export async function getCommemorativeDates(filters: DashboardFilters) {
-  const { data } = await httpClient.get<CommemorativeDate[]>(
-    `${base}/datas-comemorativas`,
-    { params: filters },
-  );
+  const { data } = await httpClient.get<CommemorativeDate[]>(`${base}/datas-comemorativas`, {
+    params: filters,
+  });
   return data;
 }
 

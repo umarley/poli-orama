@@ -32,6 +32,7 @@ ENTITY_MODULE = {
     "comunidade": "cadastro",
     "lideranca": "cadastro",
     "convite": "agenda",
+    "tenant": "configuracoes",
 }
 IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
 PREVIEW_EXTENSIONS = IMAGE_EXTENSIONS | {"pdf"}
@@ -118,9 +119,12 @@ class FileService:
         try:
             if photo_only:
                 for previous in await self.repository.list_attachments(
-                    actor.tenant_id, "pessoa", entity_id
+                    actor.tenant_id, entity_type, entity_id
                 ):
-                    if previous["tipo"] and previous["tipo"]["codigo"] == "foto":
+                    if (
+                        previous["tipo"]
+                        and previous["tipo"]["codigo"] == attachment_type["codigo"]
+                    ):
                         await self.repository.deactivate_attachment(actor.tenant_id, previous["id"])
             attachment_id = await self.repository.create_attachment(
                 tenant_id=actor.tenant_id,
@@ -300,6 +304,10 @@ class FileService:
     @staticmethod
     def _require_entity(actor: RequestActor, entity_type: EntityType, *, write: bool) -> None:
         module = ENTITY_MODULE[entity_type]
+        if entity_type == "tenant":
+            action = "administrar" if write else "visualizar"
+            FileService._require(actor, f"{module}.{action}")
+            return
         actions = ("editar", "criar") if write else ("visualizar",)
         if not any(f"{module}.{action}" in actor.permissions for action in actions):
             raise AuthorizationError(f"Permissao obrigatoria para acessar anexos de {entity_type}.")

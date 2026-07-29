@@ -27,8 +27,8 @@ export interface TerritorialAccess {
     | 'secao_eleitoral'
     | 'territorio'
     | 'global';
-  estado_id?: number;
-  municipio_id?: number;
+  codigo_uf_ibge?: number;
+  codigo_municipio_ibge?: number;
   bairro_id?: number;
   zona_eleitoral_id?: number;
   secao_eleitoral_id?: number;
@@ -71,6 +71,11 @@ export interface LoginInput {
   senha: string;
   dispositivo?: string;
   codigo_mfa?: string;
+}
+
+export interface TenantSwitchInput {
+  tenant_id: number;
+  dispositivo?: string;
 }
 
 export interface UserSession {

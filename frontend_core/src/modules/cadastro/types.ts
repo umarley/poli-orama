@@ -43,7 +43,7 @@ export interface PessoaContato {
 export interface Endereco {
   id: number;
   tenant_id: number;
-  municipio_id: number | null;
+  codigo_municipio_ibge: number | null;
   bairro_id: number | null;
   bairro_texto: string | null;
   logradouro: string | null;
@@ -83,7 +83,7 @@ export interface Eleitor {
   zona_eleitoral_id: number | null;
   secao_eleitoral_id: number | null;
   local_votacao_id: number | null;
-  municipio_voto_id: number | null;
+  codigo_municipio_ibge: number | null;
   situacao_titulo: 'regular' | 'suspenso' | 'cancelado' | 'desconhecido' | null;
   criado_em: string;
   atualizado_em: string;
@@ -95,12 +95,22 @@ export interface Lideranca {
   pessoa_id: number;
   tipo_lideranca: TipoLideranca;
   coordenador_id: number | null;
-  meta_votos: number | null;
   apelido_campanha: string | null;
   ativo: boolean;
   criado_em: string;
   atualizado_em: string;
+  pessoa_nome_completo?: string | null;
+  coordenador_nome_completo?: string | null;
   territorio_ids?: number[];
+  territorios?: Array<{ id: number; nome: string }>;
+  tags?: Array<{ id: number; nome: string; cor: string | null }>;
+}
+
+export interface LiderancaInput {
+  tipo_lideranca: TipoLideranca;
+  coordenador_id: number | null;
+  apelido_campanha: string | null;
+  ativo: boolean;
 }
 
 export interface VinculoResumo {
@@ -113,6 +123,28 @@ export interface EstadoCivil {
   codigo: string;
   nome: string;
   ordem: number;
+}
+
+export interface Religiao {
+  id: number;
+  nome: string;
+}
+
+export type RedeSocial =
+  | 'instagram'
+  | 'facebook'
+  | 'tiktok'
+  | 'x'
+  | 'youtube'
+  | 'linkedin'
+  | 'outro';
+
+export interface PessoaRedeSocial {
+  id: number;
+  rede: RedeSocial;
+  usuario_perfil: string | null;
+  url: string | null;
+  seguidores: number | null;
 }
 
 export interface PessoaDetalhe {
@@ -143,20 +175,17 @@ export interface PessoaDetalhe {
   enderecos: PessoaEndereco[];
   eleitor: Eleitor | null;
   lideranca: Lideranca | null;
-  redes_sociais: Array<{
-    id: number;
-    rede: string;
-    usuario_perfil: string | null;
-    url: string | null;
-    seguidores: number | null;
-  }>;
+  redes_sociais: PessoaRedeSocial[];
   tipos: PessoaTipo[];
   indicacoes: Array<{
     id: number;
     pessoa_indicante_id: number | null;
+    pessoa_indicada_id: number;
+    pessoa_indicada_nome: string | null;
     origem: string | null;
     contexto: string | null;
     data_indicacao: string;
+    criado_em: string;
   }>;
   complemento_politico: {
     vinculo_politico: string | null;
@@ -172,6 +201,7 @@ export interface PessoaDetalhe {
   hierarquia: Array<{
     id: number;
     lideranca_superior_id: number;
+    lideranca_superior_nome: string | null;
     papel_subordinado: string;
     ativo: boolean;
   }>;
@@ -215,6 +245,7 @@ export interface PessoaCreateInput {
     principal: boolean;
     endereco: {
       cep?: string;
+      codigo_municipio_ibge?: number;
       logradouro?: string;
       numero?: string;
       complemento?: string;
@@ -233,13 +264,12 @@ export interface PessoaCreateInput {
     zona_eleitoral_id?: number;
     secao_eleitoral_id?: number;
     local_votacao_id?: number;
-    municipio_voto_id?: number;
+    codigo_municipio_ibge?: number;
     situacao_titulo: string;
   };
   lideranca?: {
     tipo_lideranca: TipoLideranca;
     coordenador_id?: number;
-    meta_votos?: number;
     apelido_campanha?: string;
     ativo: boolean;
   };
@@ -251,7 +281,9 @@ export interface Hierarquia {
   id: number;
   tenant_id: number;
   lideranca_superior_id: number;
+  lideranca_superior_nome?: string | null;
   pessoa_subordinada_id: number;
+  pessoa_subordinada_nome?: string | null;
   papel_subordinado: 'lider' | 'liderado' | 'apoiador' | 'eleitor';
   data_inicio: string;
   data_fim: string | null;
@@ -270,6 +302,12 @@ export interface TagCadastro {
   criado_em: string;
 }
 
+export interface TagPessoa {
+  id: number;
+  nome_completo: string;
+  data_nascimento: string | null;
+}
+
 export interface Comunidade {
   id: number;
   tenant_id: number;
@@ -277,10 +315,22 @@ export interface Comunidade {
   tipo: string | null;
   descricao: string | null;
   lider_responsavel_id: number | null;
-  municipio_id: number | null;
+  codigo_municipio_ibge: number | null;
   territorio_id: number | null;
   criado_em: string;
   atualizado_em: string;
+}
+
+export interface ComunidadePessoa {
+  id: number;
+  nome_completo: string;
+  data_nascimento: string | null;
+  papel: string | null;
+}
+
+export interface PapelComunidade {
+  codigo: string;
+  nome: string;
 }
 
 export interface NucleoFamiliar {
@@ -288,10 +338,24 @@ export interface NucleoFamiliar {
   tenant_id: number;
   nome: string | null;
   pessoa_referencia_id: number | null;
+  pessoa_referencia_nome: string | null;
   endereco_id: number | null;
   quantidade_membros: number | null;
   criado_em: string;
   atualizado_em: string;
+}
+
+export interface NucleoPessoa {
+  id: number;
+  nome_completo: string;
+  data_nascimento: string | null;
+  parentesco: string | null;
+  observacao: string | null;
+}
+
+export interface ParentescoOption {
+  codigo: string;
+  nome: string;
 }
 
 export interface ValidacaoCadastro {

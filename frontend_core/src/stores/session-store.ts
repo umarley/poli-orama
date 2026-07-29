@@ -64,7 +64,7 @@ interface SessionState {
   ) => void;
   updateUser: (apiUser: AuthUser) => void;
   setTenant: (tenant: Tenant) => void;
-  setCurrentCampaign: (campaign: CampaignElection) => void;
+  setCurrentCampaign: (campaign: CampaignElection | null) => void;
   clearSession: () => void;
 }
 

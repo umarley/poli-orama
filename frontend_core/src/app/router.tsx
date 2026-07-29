@@ -3,6 +3,7 @@ import { createBrowserRouter } from 'react-router-dom';
 import { HomeRedirect } from '@/app/HomeRedirect';
 import { PermissionRoute } from '@/app/PermissionRoute';
 import { ProtectedRoute } from '@/app/ProtectedRoute';
+import { ProfileRoute } from '@/app/ProfileRoute';
 import { SaasAdminRoute } from '@/app/SaasAdminRoute';
 import { AuthenticatedLayout } from '@/layouts/AuthenticatedLayout';
 import { AccessHistoryPage } from '@/pages/auth/AccessHistoryPage';
@@ -19,6 +20,9 @@ import { DashboardPage } from '@/pages/dashboard/DashboardPage';
 import { ReportsPage } from '@/pages/dashboard/ReportsPage';
 import { DemandasPage } from '@/pages/demandas/DemandasPage';
 import { DemandDetailPage } from '@/pages/demandas/DemandDetailPage';
+import { AdminElectionsPage } from '@/pages/eleicoes/AdminElectionsPage';
+import { CampaignClosurePage } from '@/pages/eleicoes/CampaignClosurePage';
+import { CampaignManagementPage } from '@/pages/eleicoes/CampaignManagementPage';
 import { ImportDetailPage } from '@/pages/etl/ImportDetailPage';
 import { ImportsPage } from '@/pages/etl/ImportsPage';
 import { GoalDetailPage } from '@/pages/metas/GoalDetailPage';
@@ -126,7 +130,38 @@ export const router = createBrowserRouter([
       },
       {
         path: 'configuracoes',
-        element: withPermission('configuracoes.visualizar', <TenantSettingsPage />),
+        element: (
+          <ProfileRoute
+            profiles={['gestor', 'gestor_saas', 'coordenador_territorial']}
+            permission="configuracoes.visualizar"
+          >
+            <TenantSettingsPage />
+          </ProfileRoute>
+        ),
+      },
+      {
+        path: 'configuracoes/campanhas',
+        element: (
+          <ProfileRoute profiles={['gestor', 'gestor_saas', 'coordenador_territorial']}>
+            <CampaignManagementPage />
+          </ProfileRoute>
+        ),
+      },
+      {
+        path: 'configuracoes/campanhas/encerramento',
+        element: (
+          <ProfileRoute profiles={['gestor', 'gestor_saas', 'coordenador_territorial']}>
+            <CampaignClosurePage />
+          </ProfileRoute>
+        ),
+      },
+      {
+        path: 'campanha/encerramento',
+        element: (
+          <ProfileRoute profiles={['gestor', 'gestor_saas', 'coordenador_territorial']}>
+            <CampaignClosurePage />
+          </ProfileRoute>
+        ),
       },
       {
         path: 'assinatura',
@@ -137,6 +172,14 @@ export const router = createBrowserRouter([
         element: (
           <SaasAdminRoute>
             <AdminTenantsPage />
+          </SaasAdminRoute>
+        ),
+      },
+      {
+        path: 'admin/eleicoes',
+        element: (
+          <SaasAdminRoute>
+            <AdminElectionsPage />
           </SaasAdminRoute>
         ),
       },

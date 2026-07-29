@@ -2,6 +2,7 @@ from datetime import date
 from typing import Any
 
 from jobs.agenda import AgendaProcessor
+from jobs.campaigns import CampaignClosureProcessor
 from jobs.celery_app import celery_app
 from jobs.config import get_settings
 from jobs.dashboard import DashboardProcessor
@@ -192,6 +193,55 @@ def load_import(_: Any, job_id: int, tenant_id: int, import_id: int) -> dict[str
             {
                 "tenant_id": tenant_id,
                 "importacao_id": import_id,
+                "error_type": type(exc).__name__,
+            },
+        )
+        raise
+
+
+@celery_app.task(
+    bind=True,
+    name="jobs.campanhas.close",
+    acks_late=True,
+    reject_on_worker_lost=True,
+)  # type: ignore[untyped-decorator]
+def close_campaign(
+    _: Any,
+    job_id: int,
+    tenant_id: int,
+    campaign_id: int,
+    closure_id: int,
+) -> dict[str, Any]:
+    settings = get_settings()
+    jobs = JobRepository(settings.jobs_database_url)
+    processor = CampaignClosureProcessor(settings.jobs_database_url)
+    jobs.mark_started(job_id)
+    try:
+        metrics = processor.consolidate(
+            tenant_id=tenant_id,
+            campaign_id=campaign_id,
+            closure_id=closure_id,
+        )
+        jobs.mark_succeeded(
+            job_id,
+            {
+                "campanha_eleicao_id": campaign_id,
+                "encerramento_campanha_id": closure_id,
+                **metrics,
+            },
+        )
+        return {"job_id": job_id, "status": "concluido", **metrics}
+    except Exception as exc:
+        processor.fail(
+            tenant_id=tenant_id,
+            closure_id=closure_id,
+            message=str(exc),
+        )
+        jobs.mark_failed(
+            job_id,
+            {
+                "campanha_eleicao_id": campaign_id,
+                "encerramento_campanha_id": closure_id,
                 "error_type": type(exc).__name__,
             },
         )

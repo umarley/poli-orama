@@ -106,7 +106,7 @@ class PessoaContatoResponse(PessoaContatoBase):
 
 
 class EnderecoBase(CadastroSchema):
-    municipio_id: int | None = Field(default=None, ge=1)
+    codigo_municipio_ibge: int | None = Field(default=None, ge=1)
     bairro_id: int | None = Field(default=None, ge=1)
     bairro_texto: str | None = Field(default=None, max_length=150)
     logradouro: str | None = Field(default=None, max_length=180)
@@ -123,7 +123,7 @@ class EnderecoCreate(EnderecoBase):
 
 
 class EnderecoUpdate(CadastroSchema):
-    municipio_id: int | None = Field(default=None, ge=1)
+    codigo_municipio_ibge: int | None = Field(default=None, ge=1)
     bairro_id: int | None = Field(default=None, ge=1)
     bairro_texto: str | None = Field(default=None, max_length=150)
     logradouro: str | None = Field(default=None, max_length=180)
@@ -170,7 +170,7 @@ class EleitorBase(CadastroSchema):
     zona_eleitoral_id: int | None = Field(default=None, ge=1)
     secao_eleitoral_id: int | None = Field(default=None, ge=1)
     local_votacao_id: int | None = Field(default=None, ge=1)
-    municipio_voto_id: int | None = Field(default=None, ge=1)
+    codigo_municipio_ibge: int | None = Field(default=None, ge=1)
     situacao_titulo: SituacaoTitulo | None = "regular"
 
     @field_validator("titulo_eleitor")
@@ -188,7 +188,7 @@ class EleitorUpdate(CadastroSchema):
     zona_eleitoral_id: int | None = Field(default=None, ge=1)
     secao_eleitoral_id: int | None = Field(default=None, ge=1)
     local_votacao_id: int | None = Field(default=None, ge=1)
-    municipio_voto_id: int | None = Field(default=None, ge=1)
+    codigo_municipio_ibge: int | None = Field(default=None, ge=1)
     situacao_titulo: SituacaoTitulo | None = None
 
 
@@ -203,7 +203,6 @@ class EleitorResponse(EleitorBase):
 class LiderancaBase(CadastroSchema):
     tipo_lideranca: TipoLideranca = "lider"
     coordenador_id: int | None = Field(default=None, ge=1)
-    meta_votos: int | None = Field(default=None, ge=0)
     apelido_campanha: str | None = Field(default=None, max_length=120)
     ativo: bool = True
 
@@ -215,7 +214,6 @@ class LiderancaCreate(LiderancaBase):
 class LiderancaUpdate(CadastroSchema):
     tipo_lideranca: TipoLideranca | None = None
     coordenador_id: int | None = Field(default=None, ge=1)
-    meta_votos: int | None = Field(default=None, ge=0)
     apelido_campanha: str | None = Field(default=None, max_length=120)
     ativo: bool | None = None
 
@@ -250,6 +248,12 @@ class PessoaCreate(PessoaBase):
 
     @model_validator(mode="after")
     def validate_principal_records(self) -> "PessoaCreate":
+        document_types = [document.tipo_documento for document in self.documentos]
+        if len(document_types) != len(set(document_types)):
+            raise ValueError("Aceito apenas um documento de cada tipo.")
+        contact_types = [contact.tipo_contato for contact in self.contatos]
+        if len(contact_types) != len(set(contact_types)):
+            raise ValueError("Aceito apenas um contato de cada canal.")
         principal_contacts = [
             contact.tipo_contato for contact in self.contatos if contact.principal
         ]

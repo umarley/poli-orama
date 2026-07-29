@@ -43,7 +43,6 @@ class GoalPeriodCreate(MetaSchema):
     data_inicio: date
     data_fim: date
     ciclo: str | None = Field(default=None, max_length=30)
-    eleicao_id: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def validate_dates(self) -> GoalPeriodCreate:
@@ -57,7 +56,6 @@ class GoalPeriodUpdate(MetaSchema):
     data_inicio: date | None = None
     data_fim: date | None = None
     ciclo: str | None = Field(default=None, max_length=30)
-    eleicao_id: int | None = Field(default=None, ge=1)
     ativo: bool | None = None
 
 
@@ -108,12 +106,6 @@ class GoalTrackingCreate(MetaSchema):
     quantidade_confirmada: int | None = Field(default=None, ge=0)
     observacao: str | None = Field(default=None, max_length=2000)
 
-    @model_validator(mode="after")
-    def validate_quantity(self) -> GoalTrackingCreate:
-        if self.quantidade_projetada is None and self.quantidade_confirmada is None:
-            raise ValueError("Informe quantidade projetada ou confirmada.")
-        return self
-
 
 class GoalTrackingResponse(GoalTrackingCreate):
     id: int
@@ -142,6 +134,8 @@ class GoalAlertResponse(MetaSchema):
 class GoalResponse(MetaSchema):
     id: int
     tenant_id: int
+    campanha_eleicao_id: int
+    campanha_nome: str
     tipo_meta_voto_id: int
     tipo_codigo: str
     tipo_nome: str
@@ -184,6 +178,7 @@ class GoalSummaryResponse(MetaSchema):
 
 class LeadershipRankingResponse(MetaSchema):
     id: int
+    campanha_eleicao_id: int
     lideranca_id: int
     nome_lideranca: str
     data_referencia: date

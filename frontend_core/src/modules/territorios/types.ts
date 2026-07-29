@@ -1,5 +1,4 @@
 export interface Estado {
-  id: number;
   codigo_ibge: number;
   uf: string;
   nome: string;
@@ -7,9 +6,8 @@ export interface Estado {
 }
 
 export interface Municipio {
-  id: number;
-  estado_id: number;
   codigo_ibge: number;
+  codigo_uf_ibge: number;
   codigo_tse: number | null;
   nome: string;
   latitude: string | null;
@@ -18,22 +16,22 @@ export interface Municipio {
 
 export interface Bairro {
   id: number;
-  municipio_id: number;
+  codigo_municipio_ibge: number;
   nome: string;
   origem: string;
 }
 
 export interface ZonaEleitoral {
   id: number;
-  estado_id: number;
-  municipio_id: number | null;
+  codigo_uf_ibge: number;
+  codigo_municipio_ibge: number | null;
   numero_zona: number;
   descricao: string | null;
 }
 
 export interface LocalVotacao {
   id: number;
-  municipio_id: number;
+  codigo_municipio_ibge: number;
   zona_eleitoral_id: number | null;
   bairro_id: number | null;
   codigo_local: number | null;
@@ -95,9 +93,30 @@ export interface TerritorioInput {
   territorio_pai_id?: number;
 }
 
+export type VinculoPessoaTerritorio = 'moradia' | 'atuacao' | 'votacao' | 'responsabilidade';
+
+export interface PessoaTerritorio {
+  id: number;
+  tenant_id: number;
+  pessoa_id: number;
+  territorio_id: number;
+  vinculo: VinculoPessoaTerritorio;
+  territorio_nome: string;
+  tipo_nome: string;
+  territorio_ativo: boolean;
+}
+
 export interface MapMarker {
   latitude: string;
   longitude: string;
   quantidade: number;
   tipo: 'pessoa';
+}
+
+export interface MapPerson {
+  id: number;
+  nome_completo: string;
+  apelido: string | null;
+  telefone: string | null;
+  territorio: string | null;
 }

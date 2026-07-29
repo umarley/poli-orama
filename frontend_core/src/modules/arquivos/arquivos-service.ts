@@ -9,11 +9,8 @@ export async function listAttachmentTypes() {
 }
 
 export async function listAttachments(entity: AttachmentEntity, entityId: number) {
-  return (
-    await httpClient.get<Attachment[]>(
-      `${base}/entidades/${entity}/${entityId}/anexos`,
-    )
-  ).data;
+  return (await httpClient.get<Attachment[]>(`${base}/entidades/${entity}/${entityId}/anexos`))
+    .data;
 }
 
 export async function uploadAttachment(payload: {
@@ -56,10 +53,9 @@ export async function removeAttachment(id: number) {
 
 export async function getAttachmentBlob(id: number, preview = false) {
   return (
-    await httpClient.get<Blob>(
-      `${base}/anexos/${id}/${preview ? 'preview' : 'download'}`,
-      { responseType: 'blob' },
-    )
+    await httpClient.get<Blob>(`${base}/anexos/${id}/${preview ? 'preview' : 'download'}`, {
+      responseType: 'blob',
+    })
   ).data;
 }
 

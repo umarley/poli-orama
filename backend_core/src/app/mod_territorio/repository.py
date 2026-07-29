@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.access import TerritorialAccess
 from app.core.repository import BaseRepository
 from app.mod_territorio.schemas import (
+    BairroCreate,
     GeocodificacaoInput,
     LiderancaTerritorioInput,
     PessoaTerritorioInput,
@@ -66,6 +67,33 @@ class TerritorioRepository(BaseRepository[object]):
         query += " ORDER BY nome" if table in named_tables else " ORDER BY id"
         result = await self.session.execute(text(query), values or {})
         return [dict(row) for row in result.mappings()]
+
+    async def create_neighborhood(self, payload: BairroCreate) -> dict[str, Any]:
+        existing = await self.session.execute(
+            text(
+                "SELECT id, codigo_municipio_ibge, nome, origem"
+                " FROM global.bairro"
+                " WHERE codigo_municipio_ibge = :codigo_municipio_ibge"
+                " AND unaccent(lower(btrim(nome))) = unaccent(lower(btrim(:nome)))"
+                " ORDER BY CASE WHEN origem = 'oficial' THEN 0 ELSE 1 END, id"
+                " LIMIT 1"
+            ),
+            payload.model_dump(),
+        )
+        row = existing.mappings().one_or_none()
+        if row is not None:
+            return dict(row)
+        result = await self.session.execute(
+            text(
+                "INSERT INTO global.bairro (codigo_municipio_ibge, nome, origem)"
+                " VALUES (:codigo_municipio_ibge, btrim(:nome), 'usuario')"
+                " ON CONFLICT (codigo_municipio_ibge, nome) DO UPDATE"
+                " SET nome = EXCLUDED.nome"
+                " RETURNING id, codigo_municipio_ibge, nome, origem"
+            ),
+            payload.model_dump(),
+        )
+        return dict(result.mappings().one())
 
     async def list_types(
         self, tenant_id: int, include_inactive: bool = False
@@ -153,7 +181,7 @@ class TerritorioRepository(BaseRepository[object]):
                 ids.update(int(value) for value in rows)
                 continue
             column = {
-                "estado": "estado_id",
+                "estado": "codigo_uf_ibge",
                 "municipio": "codigo_municipio_ibge",
                 "bairro": "bairro_id",
                 "zona_eleitoral": "zona_eleitoral_id",
@@ -221,12 +249,22 @@ class TerritorioRepository(BaseRepository[object]):
         return rows[0] if rows else None
 
     async def reference_exists(self, table: str, identifier: int) -> bool:
-        allowed = {"estado", "municipio", "bairro", "zona_eleitoral", "secao_eleitoral"}
-        if table not in allowed:
+        identifier_columns = {
+            "estado": "codigo_ibge",
+            "municipio": "codigo_ibge",
+            "bairro": "id",
+            "zona_eleitoral": "id",
+            "secao_eleitoral": "id",
+        }
+        identifier_column = identifier_columns.get(table)
+        if identifier_column is None:
             return False
         return bool(
             await self.session.scalar(
-                text(f"SELECT EXISTS(SELECT 1 FROM global.{table} WHERE id = :id)"),
+                text(
+                    f"SELECT EXISTS(SELECT 1 FROM global.{table} "
+                    f"WHERE {identifier_column} = :id)"
+                ),
                 {"id": identifier},
             )
         )
@@ -241,7 +279,7 @@ class TerritorioRepository(BaseRepository[object]):
                     "INSERT INTO territorio.territorio "
                     "(tenant_id, tipo_territorio_id, nome, codigo_uf_ibge, codigo_municipio_ibge, bairro_id,"
                     " zona_eleitoral_id, secao_eleitoral_id) "
-                    "VALUES (:tenant_id, :tipo_territorio_id, :nome, :estado_id, :municipio_id,"
+                    "VALUES (:tenant_id, :tipo_territorio_id, :nome, :codigo_uf_ibge, :codigo_municipio_ibge,"
                     " :bairro_id, :zona_eleitoral_id, :secao_eleitoral_id) RETURNING id"
                 ),
                 {"tenant_id": tenant_id, **values},
@@ -339,6 +377,36 @@ class TerritorioRepository(BaseRepository[object]):
         )
         return dict(result.mappings().one())
 
+    async def list_person_links(
+        self,
+        tenant_id: int,
+        person_id: int,
+        accessible_ids: set[int] | None,
+    ) -> list[dict[str, Any]]:
+        values: dict[str, Any] = {"tenant_id": tenant_id, "person_id": person_id}
+        territory_filter = ""
+        if accessible_ids is not None:
+            if not accessible_ids:
+                return []
+            territory_filter = "AND pt.territorio_id = ANY(:territory_ids)"
+            values["territory_ids"] = sorted(accessible_ids)
+        result = await self.session.execute(
+            text(
+                "SELECT pt.id, pt.tenant_id, pt.pessoa_id, pt.territorio_id, pt.vinculo,"
+                " t.nome AS territorio_nome, tt.nome AS tipo_nome,"
+                " t.ativo AS territorio_ativo"
+                " FROM territorio.pessoa_territorio pt"
+                " JOIN territorio.territorio t ON t.id = pt.territorio_id"
+                " AND t.tenant_id = pt.tenant_id"
+                " JOIN territorio.tipo_territorio tt ON tt.id = t.tipo_territorio_id"
+                " WHERE pt.tenant_id = :tenant_id AND pt.pessoa_id = :person_id "
+                f" {territory_filter}"
+                " ORDER BY t.nome, pt.vinculo, pt.id"
+            ),
+            values,
+        )
+        return [dict(row) for row in result.mappings()]
+
     async def unlink_person(self, tenant_id: int, link_id: int) -> bool:
         result = await self.session.execute(
             text(
@@ -348,6 +416,18 @@ class TerritorioRepository(BaseRepository[object]):
             {"id": link_id, "tenant_id": tenant_id},
         )
         return bool(cast(CursorResult[Any], result).rowcount)
+
+    async def person_link(self, tenant_id: int, link_id: int) -> dict[str, Any] | None:
+        result = await self.session.execute(
+            text(
+                "SELECT id, pessoa_id, territorio_id, vinculo"
+                " FROM territorio.pessoa_territorio"
+                " WHERE id = :id AND tenant_id = :tenant_id"
+            ),
+            {"id": link_id, "tenant_id": tenant_id},
+        )
+        row = result.mappings().one_or_none()
+        return dict(row) if row else None
 
     async def link_leadership(
         self, tenant_id: int, territory_id: int, payload: LiderancaTerritorioInput
@@ -418,6 +498,53 @@ class TerritorioRepository(BaseRepository[object]):
                 f" AND e.longitude IS NOT NULL {territory_filter}"
                 " GROUP BY round(e.latitude, 3), round(e.longitude, 3)"
                 " ORDER BY quantidade DESC LIMIT 2000"
+            ),
+            values,
+        )
+        return [dict(row) for row in result.mappings()]
+
+    async def map_people(
+        self,
+        tenant_id: int,
+        latitude: Any,
+        longitude: Any,
+        territory_ids: Iterable[int] | None,
+    ) -> list[dict[str, Any]]:
+        values: dict[str, Any] = {
+            "tenant_id": tenant_id,
+            "latitude": latitude,
+            "longitude": longitude,
+        }
+        territory_filter = ""
+        if territory_ids is not None:
+            ids = sorted(set(territory_ids))
+            if not ids:
+                return []
+            territory_filter = "AND pt.territorio_id = ANY(:territory_ids)"
+            values["territory_ids"] = ids
+        result = await self.session.execute(
+            text(
+                "SELECT DISTINCT ON (p.id) p.id, p.nome_completo, p.apelido,"
+                " contact.valor AS telefone, t.nome AS territorio"
+                " FROM cadastro.endereco e"
+                " JOIN cadastro.pessoa_endereco pe ON pe.endereco_id = e.id"
+                " JOIN cadastro.pessoa p ON p.id = pe.pessoa_id"
+                " AND p.tenant_id = pe.tenant_id"
+                " JOIN territorio.pessoa_territorio pt ON pt.pessoa_id = p.id"
+                " AND pt.tenant_id = p.tenant_id"
+                " LEFT JOIN territorio.territorio t ON t.id = pt.territorio_id"
+                " LEFT JOIN LATERAL ("
+                "  SELECT pc.valor FROM cadastro.pessoa_contato pc"
+                "  WHERE pc.tenant_id = p.tenant_id AND pc.pessoa_id = p.id"
+                "  AND pc.tipo_contato IN ('whatsapp','celular','telefone')"
+                "  ORDER BY pc.principal DESC, pc.id LIMIT 1"
+                " ) contact ON true"
+                " WHERE e.tenant_id = :tenant_id AND p.ativo"
+                " AND p.excluido_em IS NULL"
+                " AND round(e.latitude, 3) = :latitude"
+                " AND round(e.longitude, 3) = :longitude"
+                f" {territory_filter}"
+                " ORDER BY p.id, pt.id"
             ),
             values,
         )

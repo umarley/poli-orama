@@ -49,15 +49,10 @@ export async function registrarAcompanhamento(
   id: number,
   payload: {
     data_referencia: string;
-    quantidade_projetada?: number;
-    quantidade_confirmada?: number;
     observacao?: string;
   },
 ) {
-  const { data } = await httpClient.post<GoalTracking>(
-    `${base}/${id}/acompanhamentos`,
-    payload,
-  );
+  const { data } = await httpClient.post<GoalTracking>(`${base}/${id}/acompanhamentos`, payload);
   return data;
 }
 
@@ -79,9 +74,7 @@ export async function listarRanking() {
 }
 
 export async function recalcularRanking() {
-  const { data } = await httpClient.post<LeadershipRanking[]>(
-    `${base}/ranking/recalcular`,
-  );
+  const { data } = await httpClient.post<LeadershipRanking[]>(`${base}/ranking/recalcular`);
   return data;
 }
 
@@ -92,11 +85,7 @@ export async function listarTiposMeta(incluirInativos = false) {
   return data;
 }
 
-export async function criarTipoMeta(payload: {
-  codigo: string;
-  nome: string;
-  descricao?: string;
-}) {
+export async function criarTipoMeta(payload: { codigo: string; nome: string; descricao?: string }) {
   const { data } = await httpClient.post<GoalType>(`${base}/tipos`, payload);
   return data;
 }

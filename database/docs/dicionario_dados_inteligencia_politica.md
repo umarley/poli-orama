@@ -419,7 +419,6 @@ A arquitetura de dados foi projetada em **PostgreSQL** e adota os seguintes padr
 | `pessoa_id` | `bigint` |  | pessoa(id) | Não |  |  |
 | `tipo_lideranca` | `varchar(40)` |  |  | Não | 'lider'::character varying | Restrição: CHECK (((tipo_lideranca)::text = ANY ((ARRAY['coordenador_geral'::character varying, 'coordenador_territorial'::character varying, 'lider'::character varying, 'sublider'::character varying])::text[]))) |
 | `coordenador_id` | `bigint` |  | lideranca(id) | Sim |  |  |
-| `meta_votos` | `integer` |  |  | Sim |  | Restrição: CHECK (((meta_votos IS NULL) OR (meta_votos >= 0))) |
 | `apelido_campanha` | `varchar(120)` |  |  | Sim |  |  |
 | `ativo` | `boolean` |  |  | Não | true |  |
 | `criado_em` | `timestamptz` |  |  | Não | now() |  |

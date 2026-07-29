@@ -17,6 +17,39 @@
   border-radius: 8px;
 }
 
+.settingsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.settingsCard :global(.ant-card-body) {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 132px;
+}
+
+.settingsIcon {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: 12px;
+  color: #0958d9;
+  background: #e6f4ff;
+  font-size: 22px;
+}
+
+.settingsContent h5 {
+  margin: 0 0 6px;
+}
+
+.settingsArrow {
+  color: #8c8c8c;
+}
+
 .form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -25,6 +58,27 @@
 
 .full {
   grid-column: 1 / -1;
+}
+
+.logoPreview,
+.logoPlaceholder {
+  width: 180px !important;
+  height: 100px !important;
+  border: 1px solid #d9d9d9;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.logoPreview {
+  object-fit: contain;
+}
+
+.logoPlaceholder {
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  color: #8c8c8c;
+  text-align: center;
 }
 
 .usage {
@@ -40,7 +94,8 @@
 
 @media (max-width: 767px) {
   .form,
-  .usage {
+  .usage,
+  .settingsGrid {
     grid-template-columns: 1fr;
   }
 }

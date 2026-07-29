@@ -4,9 +4,7 @@ import { GoalProgress } from '@/components/metas/GoalProgress';
 
 describe('GoalProgress', () => {
   it('informa o risco por texto e nao apenas por cor', () => {
-    render(
-      <GoalProgress current={35} target={100} percentage={35} atRisk={true} />,
-    );
+    render(<GoalProgress current={35} target={100} percentage={35} atRisk={true} />);
 
     expect(screen.getByText('35 de 100')).toBeInTheDocument();
     expect(screen.getByText('Meta abaixo do limiar esperado')).toBeInTheDocument();
@@ -15,17 +13,9 @@ describe('GoalProgress', () => {
 
   it('oculta o alerta detalhado no modo compacto', () => {
     render(
-      <GoalProgress
-        current={80}
-        target={100}
-        percentage={80}
-        atRisk={false}
-        compact={true}
-      />,
+      <GoalProgress current={80} target={100} percentage={80} atRisk={false} compact={true} />,
     );
 
-    expect(
-      screen.queryByText('Meta abaixo do limiar esperado'),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Meta abaixo do limiar esperado')).not.toBeInTheDocument();
   });
 });

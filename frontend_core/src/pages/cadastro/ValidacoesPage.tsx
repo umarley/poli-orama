@@ -1,6 +1,7 @@
 import { CheckOutlined, CloseOutlined, TeamOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Card, Form, Modal, Select, Space, Table, Tag, Typography } from 'antd';
+import dayjs from 'dayjs';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
@@ -30,7 +31,7 @@ export function ValidacoesPage() {
   });
   const leadersQuery = useQuery({
     queryKey: ['cadastro', 'liderancas'],
-    queryFn: listarLiderancas,
+    queryFn: () => listarLiderancas(),
   });
   const peopleById = useMemo(
     () => new Map((peopleQuery.data?.items ?? []).map((person) => [person.id, person])),
@@ -71,6 +72,16 @@ export function ValidacoesPage() {
     },
     onError: (error) => AppToast.error(normalizeApiError(error).message),
   });
+  const confirmReject = (item: ValidacaoCadastro) => {
+    Modal.confirm({
+      title: 'Rejeitar cadastro',
+      content: 'Tem certeza de que deseja rejeitar este cadastro?',
+      okText: 'Sim, rejeitar',
+      cancelText: 'Cancelar',
+      okButtonProps: { danger: true },
+      onOk: () => resolveMutation.mutateAsync({ item, status: 'rejeitado' }),
+    });
+  };
 
   return (
     <div>
@@ -110,7 +121,11 @@ export function ValidacoesPage() {
               ),
             },
             { title: 'Observação', dataIndex: 'observacao', render: (value) => value || '—' },
-            { title: 'Criado em', dataIndex: 'criado_em' },
+            {
+              title: 'Criado em',
+              dataIndex: 'criado_em',
+              render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm:ss'),
+            },
             {
               title: 'Ações',
               render: (_, item) => (
@@ -130,7 +145,7 @@ export function ValidacoesPage() {
                     size="small"
                     danger
                     icon={<CloseOutlined />}
-                    onClick={() => resolveMutation.mutate({ item, status: 'rejeitado' })}
+                    onClick={() => confirmReject(item)}
                   >
                     Rejeitar
                   </Button>
