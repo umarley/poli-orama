@@ -8,6 +8,8 @@ import { SaasAdminRoute } from '@/app/SaasAdminRoute';
 import { AuthenticatedLayout } from '@/layouts/AuthenticatedLayout';
 import { AccessHistoryPage } from '@/pages/auth/AccessHistoryPage';
 import { LoginPage } from '@/pages/auth/LoginPage';
+import { MyProfilePage } from '@/pages/auth/MyProfilePage';
+import { RequiredPasswordChangePage } from '@/pages/auth/RequiredPasswordChangePage';
 import { AgendaPage } from '@/pages/agenda/AgendaPage';
 import { EventDetailPage } from '@/pages/agenda/EventDetailPage';
 import { CadastroPage } from '@/pages/cadastro/CadastroPage';
@@ -32,6 +34,7 @@ import { AdminTenantsPage } from '@/pages/tenants/AdminTenantsPage';
 import { SubscriptionPage } from '@/pages/tenants/SubscriptionPage';
 import { TenantSettingsPage } from '@/pages/tenants/TenantSettingsPage';
 import { TerritoriosPage } from '@/pages/territorios/TerritoriosPage';
+import { TerritorioDetailPage } from '@/pages/territorios/TerritorioDetailPage';
 import { UsersPage } from '@/pages/users/UsersPage';
 
 const withPermission = (permission: string, element: React.ReactNode) => (
@@ -40,6 +43,14 @@ const withPermission = (permission: string, element: React.ReactNode) => (
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
+  {
+    path: '/minha-conta/alterar-senha',
+    element: (
+      <ProtectedRoute>
+        <RequiredPasswordChangePage />
+      </ProtectedRoute>
+    ),
+  },
   {
     path: '/',
     element: (
@@ -86,6 +97,10 @@ export const router = createBrowserRouter([
         element: withPermission('territorio.visualizar', <TerritoriosPage />),
       },
       {
+        path: 'territorios/:id',
+        element: withPermission('territorio.visualizar', <TerritorioDetailPage />),
+      },
+      {
         path: 'metas',
         element: withPermission('metas.visualizar', <GoalsPage />),
       },
@@ -123,6 +138,7 @@ export const router = createBrowserRouter([
             description="Registre e acompanhe atendimentos e solicitações da população."
           />,
         ), */
+      { path: 'minha-conta/perfil', element: <MyProfilePage /> },
       { path: 'minha-conta/acessos', element: <AccessHistoryPage /> },
       {
         path: 'usuarios',

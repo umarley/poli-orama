@@ -103,6 +103,10 @@ class Pessoa(Base):
     fonte_dado_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("etl.fonte_dado.id", ondelete="SET NULL")
     )
+    origem_cadastro: Mapped[str | None] = mapped_column(String(30))
+    cadastrado_por_lideranca_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("cadastro.lideranca.id", ondelete="SET NULL")
+    )
     observacoes: Mapped[str | None] = mapped_column(Text)
     ativo: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     criado_por: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("auth.usuario.id"))
@@ -128,7 +132,11 @@ class Pessoa(Base):
         back_populates="pessoa", cascade="all, delete-orphan", uselist=False, lazy="selectin"
     )
     lideranca: Mapped["Lideranca | None"] = relationship(
-        back_populates="pessoa", cascade="all, delete-orphan", uselist=False, lazy="selectin"
+        back_populates="pessoa",
+        cascade="all, delete-orphan",
+        uselist=False,
+        lazy="selectin",
+        foreign_keys="Lideranca.pessoa_id",
     )
 
 
@@ -364,7 +372,10 @@ class Lideranca(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
-    pessoa: Mapped[Pessoa] = relationship(back_populates="lideranca")
+    pessoa: Mapped[Pessoa] = relationship(
+        back_populates="lideranca",
+        foreign_keys=[pessoa_id],
+    )
     coordenador: Mapped["Lideranca | None"] = relationship(
         back_populates="liderados", remote_side="Lideranca.id"
     )

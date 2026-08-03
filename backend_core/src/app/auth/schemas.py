@@ -14,6 +14,7 @@ class LoginRequest(BaseModel):
     senha: str = Field(min_length=1, max_length=128)
     dispositivo: str | None = Field(default=None, max_length=180)
     codigo_mfa: str | None = Field(default=None, pattern=r"^\d{6}$")
+    app_lider: bool = False
 
     @field_validator("email")
     @classmethod
@@ -52,6 +53,9 @@ class UserData(BaseModel):
     uuid_publico: UUID
     tenant_id: int
     pessoa_id: int | None
+    lideranca_id: int | None = None
+    habilitado_app_lider: bool = False
+    ultimo_acesso_app_em: datetime | None = None
     nome: str
     email: str
     telefone: str | None
@@ -165,6 +169,8 @@ class UserCreate(BaseModel):
     senha: str = Field(min_length=1, max_length=128)
     telefone: str | None = Field(default=None, max_length=20)
     pessoa_id: int | None = Field(default=None, ge=1)
+    lideranca_id: int | None = Field(default=None, ge=1)
+    habilitado_app_lider: bool = False
     perfil_ids: list[Annotated[int, Field(ge=1)]] = Field(min_length=1)
 
     @field_validator("email")
@@ -172,12 +178,22 @@ class UserCreate(BaseModel):
     def normalize_email(cls, value: str) -> str:
         return LoginRequest.normalize_email(value)
 
+    @model_validator(mode="after")
+    def validate_app_lider(self) -> "UserCreate":
+        if self.habilitado_app_lider and self.lideranca_id is None:
+            raise ValueError(
+                "lideranca_id e obrigatorio quando habilitado_app_lider e verdadeiro."
+            )
+        return self
+
 
 class UserUpdate(BaseModel):
     nome: str | None = Field(default=None, min_length=2, max_length=180)
     email: str | None = Field(default=None, min_length=3, max_length=254)
     telefone: str | None = Field(default=None, max_length=20)
     pessoa_id: int | None = Field(default=None, ge=1)
+    lideranca_id: int | None = Field(default=None, ge=1)
+    habilitado_app_lider: bool | None = None
     status: str | None = Field(default=None, pattern=r"^(ativo|inativo|bloqueado|pendente)$")
     perfil_ids: list[Annotated[int, Field(ge=1)]] | None = None
 
@@ -195,6 +211,17 @@ class ResetPasswordResponse(BaseModel):
     usuario_id: int
     senha_temporaria: str
     deve_alterar_senha: bool = True
+
+
+class SelfProfileUpdate(BaseModel):
+    nome: str | None = Field(default=None, min_length=2, max_length=180)
+    email: str | None = Field(default=None, min_length=3, max_length=254)
+    telefone: str | None = Field(default=None, max_length=20)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_optional_email(cls, value: str | None) -> str | None:
+        return LoginRequest.normalize_email(value) if value is not None else None
 
 
 class ChangePasswordRequest(BaseModel):

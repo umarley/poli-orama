@@ -131,6 +131,7 @@ class HierarquiaLideranca(Base):
     )
     data_fim: Mapped[date | None] = mapped_column(Date)
     ativo: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    origem: Mapped[str] = mapped_column(String(30), nullable=False, server_default="manual")
     criado_em: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

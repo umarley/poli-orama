@@ -65,7 +65,7 @@ class Settings(BaseSettings):
     refresh_token_days: int = Field(default=7, ge=1, le=30)
     session_idle_minutes: int = Field(default=120, ge=5, le=10080)
     session_touch_interval_seconds: int = Field(default=60, ge=10, le=600)
-    password_min_length: int = Field(default=12, ge=10, le=128)
+    password_min_length: int = Field(default=8, ge=8, le=128)
     mfa_issuer: str = "Poliorama"
     mfa_encryption_key: str = Field(
         default="local-mfa-encryption-key-change-me-32-bytes",

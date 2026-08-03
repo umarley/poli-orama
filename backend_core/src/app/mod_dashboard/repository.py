@@ -240,19 +240,24 @@ class DashboardRepository:
             """
             WITH datas AS (
               SELECT d.id,d.nome,c.nome categoria,d.ambito,
-                make_date(EXTRACT(YEAR FROM :today)::int,d.mes,d.dia) data_base,
+                make_date(
+                  EXTRACT(YEAR FROM CAST(:today AS DATE))::int,
+                  d.mes,
+                  d.dia
+                ) data_base,
                 d.codigo_uf_ibge,d.codigo_municipio_ibge
               FROM global.data_comemorativa d
               LEFT JOIN global.categoria_data_comemorativa c ON c.id=d.categoria_id
               WHERE d.ativo AND NOT d.data_movel AND d.dia IS NOT NULL AND d.mes IS NOT NULL
             ), normalizadas AS (
-              SELECT *, CASE WHEN data_base<:today THEN data_base+INTERVAL '1 year'
+              SELECT *, CASE WHEN data_base<CAST(:today AS DATE)
+                             THEN data_base+INTERVAL '1 year'
                              ELSE data_base END::date data
               FROM datas
             )
             SELECT DISTINCT n.id,n.nome,n.categoria,n.data,n.ambito
             FROM normalizadas n
-            WHERE n.data BETWEEN :today AND :end AND (
+            WHERE n.data BETWEEN CAST(:today AS DATE) AND CAST(:end AS DATE) AND (
               n.ambito='nacional' OR EXISTS (
                 SELECT 1 FROM territorio.territorio t
                 WHERE (CAST(:territory_ids AS BIGINT[]) IS NULL

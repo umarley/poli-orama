@@ -378,7 +378,8 @@ class CommercialRepository(BaseRepository[PlanoAssinatura]):
                 await self.session.scalar(
                     text(
                         "SELECT count(*) FROM auth.usuario "
-                        "WHERE tenant_id = :tenant_id AND excluido_em IS NULL"
+                        "WHERE tenant_id = :tenant_id "
+                        "AND usuario_plataforma_id IS NULL AND excluido_em IS NULL"
                     ),
                     {"tenant_id": tenant_id},
                 )

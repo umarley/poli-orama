@@ -25,6 +25,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 
 import { AttachmentsPanel } from '@/components/arquivos/AttachmentsPanel';
 import { AppToast } from '@/components/feedback/AppToast';
+import { RemotePersonSelect } from '@/components/forms/RemotePersonSelect';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   addAgendaItem,
@@ -37,7 +38,7 @@ import {
   recordAttendance,
   updateEvent,
 } from '@/modules/agenda/agenda-service';
-import { buscarPessoas, listarLiderancas } from '@/modules/cadastro/pessoas-service';
+import { listarLiderancas } from '@/modules/cadastro/pessoas-service';
 import { listDemandCatalog } from '@/modules/demandas/demandas-service';
 import { listarTerritorios } from '@/modules/territorios/territorios-service';
 import { normalizeApiError } from '@/services/api/api-error';
@@ -52,17 +53,11 @@ export function EventDetailPage() {
   const queryClient = useQueryClient();
   const permissions = useSessionStore((state) => state.user?.permissions ?? []);
   const [modal, setModal] = useState<ModalKind | null>(null);
-  const [personQuery, setPersonQuery] = useState('');
   const [form] = Form.useForm();
   const event = useQuery({
     queryKey: ['agenda', 'evento', eventId],
     queryFn: () => getEvent(eventId),
     enabled: eventId > 0,
-  });
-  const people = useQuery({
-    queryKey: ['cadastro', 'pessoas', 'event-detail', personQuery],
-    queryFn: () => buscarPessoas(personQuery),
-    enabled: personQuery.trim().length >= 2,
   });
   const leaderships = useQuery({
     queryKey: ['cadastro', 'liderancas', 'event-detail'],
@@ -160,10 +155,6 @@ export function EventDetailPage() {
     return <Alert type="error" showIcon message={normalizeApiError(event.error).message} />;
   }
   const item = event.data;
-  const personOptions = (people.data ?? []).map((person) => ({
-    value: person.id,
-    label: person.nome_completo,
-  }));
   const openEdit = () => {
     form.setFieldsValue({
       titulo: item?.titulo,
@@ -510,7 +501,7 @@ export function EventDetailPage() {
           )}
           {modal === 'participant' && (
             <>
-              <PersonSelect onSearch={setPersonQuery} options={personOptions} name="pessoa_id" />
+              <PersonSelect name="pessoa_id" />
               <Form.Item name="papel" label="Papel">
                 <Input />
               </Form.Item>
@@ -542,13 +533,7 @@ export function EventDetailPage() {
               <Form.Item name="origem" label="Origem">
                 <Input />
               </Form.Item>
-              <PersonSelect
-                onSearch={setPersonQuery}
-                options={personOptions}
-                name="pessoa_indicou_id"
-                required={false}
-                label="Quem indicou"
-              />
+              <PersonSelect name="pessoa_indicou_id" required={false} label="Quem indicou" />
               <Form.Item name="categoria_demanda_id" label="Categoria" rules={[{ required: true }]}>
                 <Select
                   options={(demandCategories.data ?? []).map((category) => ({
@@ -599,13 +584,7 @@ export function EventDetailPage() {
               <Form.Item name="descricao" label="Descrição" rules={[{ required: true }]}>
                 <Input.TextArea />
               </Form.Item>
-              <PersonSelect
-                onSearch={setPersonQuery}
-                options={personOptions}
-                name="pessoa_solicitante_id"
-                required={false}
-                label="Solicitante"
-              />
+              <PersonSelect name="pessoa_solicitante_id" required={false} label="Solicitante" />
               <Form.Item name="territorio_id" label="Território">
                 <Select
                   allowClear
@@ -639,28 +618,17 @@ function modalTitle(kind: ModalKind | null) {
 }
 
 function PersonSelect({
-  onSearch,
-  options,
   name,
   required = true,
   label = 'Pessoa',
 }: {
-  onSearch: (value: string) => void;
-  options: Array<{ value: number; label: string }>;
   name: string;
   required?: boolean;
   label?: string;
 }) {
   return (
     <Form.Item name={name} label={label} rules={required ? [{ required: true }] : []}>
-      <Select
-        showSearch
-        allowClear={!required}
-        filterOption={false}
-        onSearch={onSearch}
-        options={options}
-        notFoundContent="Digite ao menos dois caracteres"
-      />
+      <RemotePersonSelect allowClear={!required} />
     </Form.Item>
   );
 }

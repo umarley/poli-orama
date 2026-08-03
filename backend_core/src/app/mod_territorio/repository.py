@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+import json
 from typing import Any, cast
 
 from sqlalchemy import text
@@ -21,6 +22,22 @@ from app.mod_territorio.schemas import (
     TipoTerritorioCreate,
     TipoTerritorioUpdate,
 )
+
+AREA_MAPA_TERRITORY_TYPES = frozenset(
+    {"microrregiao", "comunidade", "area_personalizada"}
+)
+MESH_TERRITORY_TYPES = AREA_MAPA_TERRITORY_TYPES | {"bairro"}
+MAP_MESH_TYPES = frozenset(
+    {"municipio", "bairro", "microrregiao", "comunidade", "area_personalizada"}
+)
+
+_GEOJSON_TO_MULTIPOLYGON = (
+    "ST_Multi(ST_CollectionExtract("
+    "ST_MakeValid(ST_SetSRID(ST_GeomFromGeoJSON(:geojson), 4326)), 3)"
+    ")::geography"
+)
+
+_MAP_CONTEXT_TYPES = frozenset({"estado", "municipio", "bairro"}) | AREA_MAPA_TERRITORY_TYPES
 
 
 class TerritorioRepository(BaseRepository[object]):
@@ -46,7 +63,7 @@ class TerritorioRepository(BaseRepository[object]):
         columns = {
             "estado": "codigo_ibge, uf, nome, regiao",
             "municipio": (
-                "codigo_ibge, codigo_uf_ibge, codigo_tse, nome, latitude, longitude"
+                "codigo_ibge, codigo_uf_ibge, codigo_tse, nome, latitude, longitude, habitantes"
             ),
             "bairro": "id, codigo_municipio_ibge, nome, origem",
             "zona_eleitoral": (
@@ -225,8 +242,9 @@ class TerritorioRepository(BaseRepository[object]):
         result = await self.session.execute(
             text(
                 "SELECT t.id, t.tenant_id, t.tipo_territorio_id, tt.codigo AS tipo_codigo,"
-                " tt.nome AS tipo_nome, t.nome, t.nome, t.codigo_uf_ibge, t.codigo_municipio_ibge, t.bairro_id,"
-                " t.zona_eleitoral_id, t.secao_eleitoral_id, h.territorio_pai_id,"
+                " tt.nome AS tipo_nome, t.nome, t.nome, t.codigo_uf_ibge,"
+                " t.codigo_municipio_ibge, t.bairro_id,"
+                " t.zona_eleitoral_id, t.secao_eleitoral_id, h.territorio_pai_id, t.cor,"
                 " t.ativo, t.criado_em, t.atualizado_em"
                 " FROM territorio.territorio t"
                 " JOIN territorio.tipo_territorio tt ON tt.id = t.tipo_territorio_id"
@@ -246,7 +264,166 @@ class TerritorioRepository(BaseRepository[object]):
             query=None,
             accessible_ids={territory_id},
         )
-        return rows[0] if rows else None
+        if not rows:
+            return None
+        return await self.attach_territory_mesh(tenant_id, rows[0])
+
+    async def attach_territory_mesh(
+        self, tenant_id: int, territory: dict[str, Any]
+    ) -> dict[str, Any]:
+        enriched = dict(territory)
+        enriched["malha_geom"] = await self.get_territory_mesh(
+            tenant_id,
+            territory["id"],
+            territory["tipo_codigo"],
+            territory.get("bairro_id"),
+        )
+        return enriched
+
+    async def get_territory_mesh(
+        self,
+        tenant_id: int,
+        territory_id: int,
+        tipo_codigo: str,
+        bairro_id: int | None,
+    ) -> dict[str, Any] | None:
+        if tipo_codigo in AREA_MAPA_TERRITORY_TYPES:
+            result = await self.session.execute(
+                text(
+                    "SELECT ST_AsGeoJSON(am.geom::geometry, 6)::json AS geometry"
+                    " FROM territorio.area_mapa am"
+                    " WHERE am.tenant_id = :tenant_id"
+                    " AND am.territorio_id = :territory_id"
+                ),
+                {"tenant_id": tenant_id, "territory_id": territory_id},
+            )
+            row = result.mappings().one_or_none()
+            geometry = row["geometry"] if row else None
+            return geometry if isinstance(geometry, dict) else None
+
+        if tipo_codigo == "bairro" and bairro_id:
+            result = await self.session.execute(
+                text(
+                    "SELECT ST_AsGeoJSON(b.limite_geom::geometry, 6)::json AS geometry"
+                    " FROM global.bairro b"
+                    " WHERE b.id = :bairro_id AND b.limite_geom IS NOT NULL"
+                ),
+                {"bairro_id": bairro_id},
+            )
+            row = result.mappings().one_or_none()
+            geometry = row["geometry"] if row else None
+            return geometry if isinstance(geometry, dict) else None
+
+        return None
+
+    async def save_territory_mesh(
+        self,
+        tenant_id: int,
+        territory_id: int,
+        tipo_codigo: str,
+        nome: str,
+        cor: str,
+        bairro_id: int | None,
+        malha_geom: dict[str, Any] | None,
+    ) -> None:
+        if tipo_codigo in AREA_MAPA_TERRITORY_TYPES:
+            if malha_geom is None:
+                await self.delete_area_mapa_by_territory(tenant_id, territory_id)
+                return
+            await self.upsert_area_mapa(
+                tenant_id,
+                territory_id,
+                nome,
+                cor,
+                json.dumps(malha_geom, ensure_ascii=False, separators=(",", ":")),
+            )
+            return
+
+        if tipo_codigo == "bairro":
+            if not bairro_id:
+                return
+            geojson = (
+                json.dumps(malha_geom, ensure_ascii=False, separators=(",", ":"))
+                if malha_geom is not None
+                else None
+            )
+            await self.update_bairro_limite_geom(bairro_id, geojson)
+
+    async def delete_area_mapa_by_territory(
+        self, tenant_id: int, territory_id: int
+    ) -> None:
+        await self.session.execute(
+            text(
+                "DELETE FROM territorio.area_mapa"
+                " WHERE tenant_id = :tenant_id AND territorio_id = :territory_id"
+            ),
+            {"tenant_id": tenant_id, "territory_id": territory_id},
+        )
+
+    async def upsert_area_mapa(
+        self,
+        tenant_id: int,
+        territory_id: int,
+        nome: str,
+        cor: str,
+        geojson: str,
+    ) -> None:
+        existing_id = await self.session.scalar(
+            text(
+                "SELECT id FROM territorio.area_mapa"
+                " WHERE tenant_id = :tenant_id AND territorio_id = :territory_id"
+            ),
+            {"tenant_id": tenant_id, "territory_id": territory_id},
+        )
+        if existing_id:
+            await self.session.execute(
+                text(
+                    f"UPDATE territorio.area_mapa"
+                    f" SET nome = :nome, cor = :cor, geom = {_GEOJSON_TO_MULTIPOLYGON}"
+                    f" WHERE id = :id AND tenant_id = :tenant_id"
+                ),
+                {
+                    "id": existing_id,
+                    "tenant_id": tenant_id,
+                    "nome": nome,
+                    "cor": cor,
+                    "geojson": geojson,
+                },
+            )
+            return
+
+        await self.session.execute(
+            text(
+                f"INSERT INTO territorio.area_mapa"
+                f" (tenant_id, territorio_id, nome, geom, cor)"
+                f" VALUES (:tenant_id, :territory_id, :nome, {_GEOJSON_TO_MULTIPOLYGON}, :cor)"
+            ),
+            {
+                "tenant_id": tenant_id,
+                "territory_id": territory_id,
+                "nome": nome,
+                "cor": cor,
+                "geojson": geojson,
+            },
+        )
+
+    async def update_bairro_limite_geom(
+        self, bairro_id: int, geojson: str | None
+    ) -> None:
+        if geojson is None:
+            await self.session.execute(
+                text("UPDATE global.bairro SET limite_geom = NULL WHERE id = :bairro_id"),
+                {"bairro_id": bairro_id},
+            )
+            return
+
+        await self.session.execute(
+            text(
+                f"UPDATE global.bairro SET limite_geom = {_GEOJSON_TO_MULTIPOLYGON}"
+                f" WHERE id = :bairro_id"
+            ),
+            {"bairro_id": bairro_id, "geojson": geojson},
+        )
 
     async def reference_exists(self, table: str, identifier: int) -> bool:
         identifier_columns = {
@@ -272,15 +449,17 @@ class TerritorioRepository(BaseRepository[object]):
     async def create_territory(
         self, tenant_id: int, payload: TerritorioCreate
     ) -> dict[str, Any]:
-        values = payload.model_dump(exclude={"territorio_pai_id"})
+        values = payload.model_dump(exclude={"territorio_pai_id", "malha_geom"})
         territory_id = int(
             await self.session.scalar(
                 text(
                     "INSERT INTO territorio.territorio "
-                    "(tenant_id, tipo_territorio_id, nome, codigo_uf_ibge, codigo_municipio_ibge, bairro_id,"
-                    " zona_eleitoral_id, secao_eleitoral_id) "
-                    "VALUES (:tenant_id, :tipo_territorio_id, :nome, :codigo_uf_ibge, :codigo_municipio_ibge,"
-                    " :bairro_id, :zona_eleitoral_id, :secao_eleitoral_id) RETURNING id"
+                    "(tenant_id, tipo_territorio_id, nome, codigo_uf_ibge,"
+                    " codigo_municipio_ibge, bairro_id,"
+                    " zona_eleitoral_id, secao_eleitoral_id, cor) "
+                    "VALUES (:tenant_id, :tipo_territorio_id, :nome, :codigo_uf_ibge,"
+                    " :codigo_municipio_ibge,"
+                    " :bairro_id, :zona_eleitoral_id, :secao_eleitoral_id, :cor) RETURNING id"
                 ),
                 {"tenant_id": tenant_id, **values},
             )
@@ -294,7 +473,10 @@ class TerritorioRepository(BaseRepository[object]):
     async def update_territory(
         self, tenant_id: int, territory_id: int, payload: TerritorioUpdate
     ) -> dict[str, Any] | None:
-        values = payload.model_dump(exclude_unset=True, exclude={"territorio_pai_id"})
+        values = payload.model_dump(
+            exclude_unset=True,
+            exclude={"territorio_pai_id", "malha_geom"},
+        )
         if values:
             assignments = ", ".join(f"{key} = :{key}" for key in values)
             await self.session.execute(
@@ -503,6 +685,185 @@ class TerritorioRepository(BaseRepository[object]):
         )
         return [dict(row) for row in result.mappings()]
 
+    async def get_territory_map_context(
+        self, tenant_id: int, territory_id: int
+    ) -> dict[str, Any] | None:
+        result = await self.session.execute(
+            text(
+                "SELECT t.id, tt.codigo AS tipo_codigo,"
+                " t.codigo_municipio_ibge, t.codigo_uf_ibge"
+                " FROM territorio.territorio t"
+                " JOIN territorio.tipo_territorio tt ON tt.id = t.tipo_territorio_id"
+                " WHERE t.id = :territory_id AND t.tenant_id = :tenant_id AND t.ativo"
+            ),
+            {"tenant_id": tenant_id, "territory_id": territory_id},
+        )
+        row = result.mappings().one_or_none()
+        return dict(row) if row else None
+
+    def _build_accessible_filter(
+        self, accessible_ids: Iterable[int] | None, values: dict[str, Any]
+    ) -> str:
+        if accessible_ids is None:
+            return ""
+        ids = sorted(set(accessible_ids))
+        if not ids:
+            return " AND FALSE"
+        values["accessible_ids"] = ids
+        return " AND t.id = ANY(:accessible_ids)"
+
+    def _build_map_scope_filter(
+        self,
+        context: dict[str, Any] | None,
+        layer_tipo: str,
+        values: dict[str, Any],
+    ) -> str:
+        if context is None:
+            return ""
+
+        ctx_tipo = context["tipo_codigo"]
+        territory_id = context["id"]
+        municipio_ibge = context.get("codigo_municipio_ibge")
+        uf_ibge = context.get("codigo_uf_ibge")
+
+        if ctx_tipo == layer_tipo:
+            values["scope_territory_id"] = territory_id
+            return " AND t.id = :scope_territory_id"
+
+        if ctx_tipo == "estado" and uf_ibge:
+            values["scope_uf_ibge"] = uf_ibge
+            if layer_tipo == "municipio":
+                return " AND t.codigo_uf_ibge = :scope_uf_ibge"
+            return (
+                " AND t.codigo_municipio_ibge IN ("
+                "  SELECT m_scope.codigo_ibge FROM global.municipio m_scope"
+                "  WHERE m_scope.codigo_uf_ibge = :scope_uf_ibge"
+                " )"
+            )
+
+        if municipio_ibge and ctx_tipo in _MAP_CONTEXT_TYPES:
+            values["scope_municipio_ibge"] = municipio_ibge
+            if layer_tipo == "municipio":
+                return (
+                    " AND t.codigo_municipio_ibge = :scope_municipio_ibge"
+                    " AND tt.codigo = 'municipio'"
+                )
+            return " AND t.codigo_municipio_ibge = :scope_municipio_ibge"
+
+        values["scope_territory_id"] = territory_id
+        return " AND t.id = :scope_territory_id"
+
+    async def map_municipality_shapes(
+        self,
+        tenant_id: int,
+        accessible_ids: Iterable[int] | None,
+        context_territory_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        values: dict[str, Any] = {"tenant_id": tenant_id}
+        context = (
+            await self.get_territory_map_context(tenant_id, context_territory_id)
+            if context_territory_id
+            else None
+        )
+        scope_filter = self._build_map_scope_filter(context, "municipio", values)
+        access_filter = self._build_accessible_filter(accessible_ids, values)
+        result = await self.session.execute(
+            text(
+                "SELECT t.id AS territorio_id, t.codigo_municipio_ibge, t.nome, t.cor,"
+                " COALESCE(eleitorado.quantidade_eleitores, 0)::int AS quantidade_eleitores,"
+                " COALESCE(people.quantidade, 0)::int AS quantidade_pessoas,"
+                " ST_AsGeoJSON(m.limite_geom::geometry, 6)::json AS geometry"
+                " FROM territorio.territorio t"
+                " JOIN territorio.tipo_territorio tt ON tt.id = t.tipo_territorio_id"
+                " JOIN global.municipio m ON m.codigo_ibge = t.codigo_municipio_ibge"
+                " LEFT JOIN LATERAL ("
+                "  SELECT pem.quantidade_eleitores"
+                "  FROM tse.perfil_eleitorado_municipio pem"
+                "  WHERE pem.codigo_municipio_ibge = t.codigo_municipio_ibge"
+                "  ORDER BY pem.ano DESC"
+                "  LIMIT 1"
+                " ) eleitorado ON true"
+                " LEFT JOIN LATERAL ("
+                "  SELECT count(DISTINCT p.id)::int AS quantidade"
+                "  FROM territorio.pessoa_territorio pt"
+                "  JOIN cadastro.pessoa p ON p.id = pt.pessoa_id"
+                "  AND p.tenant_id = pt.tenant_id"
+                "  WHERE pt.territorio_id = t.id AND pt.tenant_id = t.tenant_id"
+                "  AND p.ativo AND p.excluido_em IS NULL"
+                " ) people ON true"
+                " WHERE t.tenant_id = :tenant_id AND t.ativo"
+                " AND tt.codigo = 'municipio' AND m.limite_geom IS NOT NULL"
+                f"{scope_filter}{access_filter}"
+                " ORDER BY t.nome, t.id"
+            ),
+            values,
+        )
+        return [dict(row) for row in result.mappings()]
+
+    async def map_territory_shapes(
+        self,
+        tenant_id: int,
+        tipo_codigo: str,
+        accessible_ids: Iterable[int] | None,
+        context_territory_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        if tipo_codigo == "municipio":
+            rows = await self.map_municipality_shapes(
+                tenant_id, accessible_ids, context_territory_id
+            )
+            return [{**row, "tipo_codigo": "municipio"} for row in rows]
+
+        if tipo_codigo not in AREA_MAPA_TERRITORY_TYPES and tipo_codigo != "bairro":
+            return []
+
+        values: dict[str, Any] = {"tenant_id": tenant_id, "tipo_codigo": tipo_codigo}
+        context = (
+            await self.get_territory_map_context(tenant_id, context_territory_id)
+            if context_territory_id
+            else None
+        )
+        scope_filter = self._build_map_scope_filter(context, tipo_codigo, values)
+        access_filter = self._build_accessible_filter(accessible_ids, values)
+
+        if tipo_codigo == "bairro":
+            geometry_source = "b.limite_geom"
+            join_clause = " JOIN global.bairro b ON b.id = t.bairro_id"
+            geom_filter = " AND b.limite_geom IS NOT NULL"
+        else:
+            geometry_source = "am.geom"
+            join_clause = (
+                " JOIN territorio.area_mapa am"
+                " ON am.territorio_id = t.id AND am.tenant_id = t.tenant_id"
+            )
+            geom_filter = " AND am.geom IS NOT NULL"
+
+        result = await self.session.execute(
+            text(
+                f"SELECT t.id AS territorio_id, tt.codigo AS tipo_codigo,"
+                f" t.codigo_municipio_ibge, t.nome, t.cor,"
+                f" 0::int AS quantidade_eleitores,"
+                f" COALESCE(people.quantidade, 0)::int AS quantidade_pessoas,"
+                f" ST_AsGeoJSON({geometry_source}::geometry, 6)::json AS geometry"
+                f" FROM territorio.territorio t"
+                f" JOIN territorio.tipo_territorio tt ON tt.id = t.tipo_territorio_id"
+                f"{join_clause}"
+                f" LEFT JOIN LATERAL ("
+                f"  SELECT count(DISTINCT p.id)::int AS quantidade"
+                f"  FROM territorio.pessoa_territorio pt"
+                f"  JOIN cadastro.pessoa p ON p.id = pt.pessoa_id"
+                f"  AND p.tenant_id = pt.tenant_id"
+                f"  WHERE pt.territorio_id = t.id AND pt.tenant_id = t.tenant_id"
+                f"  AND p.ativo AND p.excluido_em IS NULL"
+                f" ) people ON true"
+                f" WHERE t.tenant_id = :tenant_id AND t.ativo"
+                f" AND tt.codigo = :tipo_codigo{geom_filter}"
+                f"{scope_filter}{access_filter}"
+                f" ORDER BY t.nome, t.id"
+            ),
+            values,
+        )
+        return [dict(row) for row in result.mappings()]
+
     async def map_people(
         self,
         tenant_id: int,
@@ -547,6 +908,140 @@ class TerritorioRepository(BaseRepository[object]):
                 " ORDER BY p.id, pt.id"
             ),
             values,
+        )
+        return [dict(row) for row in result.mappings()]
+
+    async def territory_detail(
+        self, tenant_id: int, territory_id: int
+    ) -> dict[str, Any] | None:
+        result = await self.session.execute(
+            text(
+                "SELECT t.id AS territorio_id, t.nome AS territorio_nome, t.cor,"
+                " t.codigo_municipio_ibge, t.codigo_uf_ibge,"
+                " tt.codigo AS tipo_codigo, tt.nome AS tipo_nome,"
+                " e.uf, e.nome AS estado_nome,"
+                " m.nome AS municipio_nome,"
+                " CASE"
+                "  WHEN tt.codigo = 'estado' THEN ("
+                "   SELECT COALESCE(SUM(m2.habitantes), 0)::int"
+                "   FROM global.municipio m2"
+                "   WHERE m2.codigo_uf_ibge = t.codigo_uf_ibge"
+                "  )"
+                "  ELSE m.habitantes"
+                " END AS habitantes,"
+                " CASE"
+                "  WHEN tt.codigo = 'estado' THEN ("
+                "   SELECT COALESCE(SUM(pem.quantidade_eleitores), 0)::int"
+                "   FROM tse.perfil_eleitorado_municipio pem"
+                "   WHERE pem.codigo_uf_ibge = t.codigo_uf_ibge"
+                "   AND pem.ano = ("
+                "    SELECT MAX(ano) FROM tse.perfil_eleitorado_municipio"
+                "    WHERE codigo_uf_ibge = t.codigo_uf_ibge"
+                "   )"
+                "  )"
+                "  ELSE COALESCE(eleitorado.quantidade_eleitores, 0)::int"
+                " END AS quantidade_eleitores,"
+                " CASE"
+                "  WHEN tt.codigo = 'estado' THEN ("
+                "   SELECT count(DISTINCT p.id)::int"
+                "   FROM territorio.territorio_hierarquia th"
+                "   JOIN territorio.pessoa_territorio pt"
+                "    ON pt.territorio_id = th.territorio_filho_id"
+                "   AND pt.tenant_id = th.tenant_id"
+                "   JOIN cadastro.pessoa p ON p.id = pt.pessoa_id"
+                "   AND p.tenant_id = pt.tenant_id"
+                "   WHERE th.territorio_pai_id = t.id"
+                "   AND th.tenant_id = t.tenant_id"
+                "   AND p.ativo AND p.excluido_em IS NULL"
+                "  )"
+                "  ELSE COALESCE(people.quantidade, 0)::int"
+                " END AS quantidade_pessoas,"
+                " CASE"
+                "  WHEN tt.codigo = 'estado' AND e.limite_geom IS NOT NULL"
+                "  THEN ST_AsGeoJSON(e.limite_geom::geometry, 6)::json"
+                "  WHEN tt.codigo = 'municipio' AND m.limite_geom IS NOT NULL"
+                "  THEN ST_AsGeoJSON(m.limite_geom::geometry, 6)::json"
+                "  WHEN tt.codigo IN ('microrregiao', 'comunidade', 'area_personalizada')"
+                "   AND am.geom IS NOT NULL"
+                "  THEN ST_AsGeoJSON(am.geom::geometry, 6)::json"
+                "  WHEN tt.codigo = 'bairro' AND b.limite_geom IS NOT NULL"
+                "  THEN ST_AsGeoJSON(b.limite_geom::geometry, 6)::json"
+                "  ELSE NULL"
+                " END AS geometry"
+                " FROM territorio.territorio t"
+                " JOIN territorio.tipo_territorio tt ON tt.id = t.tipo_territorio_id"
+                " LEFT JOIN global.estado e ON e.codigo_ibge = t.codigo_uf_ibge"
+                " LEFT JOIN global.municipio m ON m.codigo_ibge = t.codigo_municipio_ibge"
+                " LEFT JOIN global.bairro b ON b.id = t.bairro_id"
+                " LEFT JOIN territorio.area_mapa am"
+                "  ON am.territorio_id = t.id AND am.tenant_id = t.tenant_id"
+                " LEFT JOIN LATERAL ("
+                "  SELECT pem.quantidade_eleitores"
+                "  FROM tse.perfil_eleitorado_municipio pem"
+                "  WHERE pem.codigo_municipio_ibge = t.codigo_municipio_ibge"
+                "  ORDER BY pem.ano DESC"
+                "  LIMIT 1"
+                " ) eleitorado ON true"
+                " LEFT JOIN LATERAL ("
+                "  SELECT count(DISTINCT p.id)::int AS quantidade"
+                "  FROM territorio.pessoa_territorio pt"
+                "  JOIN cadastro.pessoa p ON p.id = pt.pessoa_id"
+                "  AND p.tenant_id = pt.tenant_id"
+                "  WHERE pt.territorio_id = t.id AND pt.tenant_id = t.tenant_id"
+                "  AND p.ativo AND p.excluido_em IS NULL"
+                " ) people ON true"
+                " WHERE t.id = :territory_id AND t.tenant_id = :tenant_id AND t.ativo"
+            ),
+            {"tenant_id": tenant_id, "territory_id": territory_id},
+        )
+        row = result.mappings().one_or_none()
+        if row is None:
+            return None
+        detail = dict(row)
+        if detail.get("tipo_codigo") == "municipio":
+            detail["pessoas"] = await self.territory_linked_people(tenant_id, territory_id)
+        else:
+            detail["pessoas"] = []
+        return detail
+
+    async def territory_linked_people(
+        self, tenant_id: int, territory_id: int
+    ) -> list[dict[str, Any]]:
+        result = await self.session.execute(
+            text(
+                "SELECT DISTINCT ON (p.id) p.id, p.nome_completo,"
+                " phone.valor AS telefone, email.valor AS email,"
+                " COALESCE(roles.papeis, 'Sem papel') AS papel"
+                " FROM territorio.pessoa_territorio pt_link"
+                " JOIN cadastro.pessoa p ON p.id = pt_link.pessoa_id"
+                " AND p.tenant_id = pt_link.tenant_id"
+                " LEFT JOIN LATERAL ("
+                "  SELECT pc.valor FROM cadastro.pessoa_contato pc"
+                "  WHERE pc.pessoa_id = p.id AND pc.tenant_id = p.tenant_id"
+                "  AND pc.tipo_contato IN ('whatsapp', 'celular', 'telefone')"
+                "  ORDER BY CASE pc.tipo_contato"
+                "   WHEN 'whatsapp' THEN 0 WHEN 'celular' THEN 1 ELSE 2 END,"
+                "   pc.principal DESC, pc.id LIMIT 1"
+                " ) phone ON true"
+                " LEFT JOIN LATERAL ("
+                "  SELECT pc.valor FROM cadastro.pessoa_contato pc"
+                "  WHERE pc.pessoa_id = p.id AND pc.tenant_id = p.tenant_id"
+                "  AND pc.tipo_contato = 'email'"
+                "  ORDER BY pc.principal DESC, pc.id LIMIT 1"
+                " ) email ON true"
+                " LEFT JOIN LATERAL ("
+                "  SELECT string_agg(DISTINCT pt_tipo.nome, ', '"
+                "   ORDER BY pt_tipo.nome) AS papeis"
+                "  FROM cadastro.pessoa_pessoa_tipo ppt"
+                "  JOIN cadastro.pessoa_tipo pt_tipo ON pt_tipo.id = ppt.pessoa_tipo_id"
+                "  WHERE ppt.pessoa_id = p.id AND ppt.tenant_id = p.tenant_id"
+                " ) roles ON true"
+                " WHERE pt_link.territorio_id = :territory_id"
+                " AND pt_link.tenant_id = :tenant_id"
+                " AND p.ativo AND p.excluido_em IS NULL"
+                " ORDER BY p.id, p.nome_completo"
+            ),
+            {"tenant_id": tenant_id, "territory_id": territory_id},
         )
         return [dict(row) for row in result.mappings()]
 

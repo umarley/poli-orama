@@ -85,7 +85,7 @@ def validate_database_url(url: str) -> None:
 
 def validate_password(password: str) -> None:
     requirements = (
-        (len(password) >= 12, "ter ao menos 12 caracteres"),
+        (len(password) >= 8, "ter ao menos 8 caracteres"),
         (len(password) <= 128, "ter no maximo 128 caracteres"),
         (bool(re.search(r"[a-z]", password)), "conter letra minuscula"),
         (bool(re.search(r"[A-Z]", password)), "conter letra maiuscula"),

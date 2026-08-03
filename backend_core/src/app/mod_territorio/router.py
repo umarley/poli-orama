@@ -12,7 +12,7 @@ from app.auth.access import (
     require_permission,
 )
 from app.core.errors import ResourceNotFoundError
-from app.mod_territorio.repository import TerritorioRepository
+from app.mod_territorio.repository import MAP_MESH_TYPES, TerritorioRepository
 from app.mod_territorio.schemas import (
     BairroCreate,
     BairroResponse,
@@ -23,13 +23,16 @@ from app.mod_territorio.schemas import (
     LiderancaTerritorioResponse,
     LocalVotacaoResponse,
     MapMarker,
+    MapMunicipalityShape,
     MapPerson,
+    MapTerritoryShape,
     MunicipioResponse,
     PessoaTerritorioDetalhe,
     PessoaTerritorioInput,
     PessoaTerritorioResponse,
     SecaoEleitoralResponse,
     TerritorioCreate,
+    TerritorioDetalheResponse,
     TerritorioResponse,
     TerritorioTreeNode,
     TerritorioUpdate,
@@ -220,6 +223,45 @@ async def map_markers(
     return await service.repository.map_markers(actor.tenant_id, ids)
 
 
+@router.get(
+    "/territorios/mapa/municipios",
+    response_model=list[MapMunicipalityShape],
+)
+async def map_municipality_shapes(
+    actor: Annotated[RequestActor, Depends(require_permission("territorio", "visualizar"))],
+    access: Annotated[TerritorialAccess, Depends(get_territorial_access)],
+    service: Annotated[TerritorioService, Depends(get_service)],
+    territorio_id: int | None = Query(default=None, ge=1),
+) -> list[dict[str, Any]]:
+    ids = await service.accessible_ids(actor, access)
+    if territorio_id:
+        await service.ensure_access(actor, access, territorio_id, administer=False)
+    return await service.repository.map_municipality_shapes(
+        actor.tenant_id, ids, territorio_id
+    )
+
+
+@router.get(
+    "/territorios/mapa/malhas",
+    response_model=list[MapTerritoryShape],
+)
+async def map_territory_shapes(
+    actor: Annotated[RequestActor, Depends(require_permission("territorio", "visualizar"))],
+    access: Annotated[TerritorialAccess, Depends(get_territorial_access)],
+    service: Annotated[TerritorioService, Depends(get_service)],
+    tipo: Annotated[str, Query(min_length=1, max_length=40)],
+    territorio_id: int | None = Query(default=None, ge=1),
+) -> list[dict[str, Any]]:
+    if tipo not in MAP_MESH_TYPES:
+        raise ResourceNotFoundError("Tipo de malha", tipo)
+    ids = await service.accessible_ids(actor, access)
+    if territorio_id:
+        await service.ensure_access(actor, access, territorio_id, administer=False)
+    return await service.repository.map_territory_shapes(
+        actor.tenant_id, tipo, ids, territorio_id
+    )
+
+
 @router.get("/territorios/mapa/pessoas", response_model=list[MapPerson])
 async def map_people(
     actor: Annotated[RequestActor, Depends(require_permission("territorio", "visualizar"))],
@@ -266,6 +308,16 @@ async def create_territory(
     service: Annotated[TerritorioService, Depends(get_service)],
 ) -> dict[str, Any]:
     return await service.create_territory(actor, access, payload)
+
+
+@router.get("/territorios/{territory_id}/detalhes", response_model=TerritorioDetalheResponse)
+async def get_territory_detail(
+    actor: Annotated[RequestActor, Depends(require_permission("territorio", "visualizar"))],
+    access: Annotated[TerritorialAccess, Depends(get_territorial_access)],
+    service: Annotated[TerritorioService, Depends(get_service)],
+    territory_id: int = Path(ge=1),
+) -> dict[str, Any]:
+    return await service.get_territory_detail(actor, access, territory_id)
 
 
 @router.get("/territorios/{territory_id}", response_model=TerritorioResponse)

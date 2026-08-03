@@ -7,6 +7,7 @@ import {
   MenuUnfoldOutlined,
   SearchOutlined,
   SafetyCertificateOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 import {
   Avatar,
@@ -260,6 +261,12 @@ export function AuthenticatedLayout() {
                           },
                         ]
                       : []),
+                    {
+                      key: 'profile',
+                      label: 'Meu perfil',
+                      icon: <UserOutlined />,
+                      onClick: () => navigate('/minha-conta/perfil'),
+                    },
                     {
                       key: 'security',
                       label: 'Segurança e acessos',

@@ -207,6 +207,8 @@ class PessoaFiltros(CadastroSchema):
     telefone: str | None = Field(default=None, max_length=20)
     tipo_id: int | None = Field(default=None, ge=1)
     lideranca_id: int | None = Field(default=None, ge=1)
+    cadastrado_por_lideranca_id: int | None = Field(default=None, ge=1)
+    origem_cadastro: str | None = Field(default=None, max_length=30)
     territorio_id: int | None = Field(default=None, ge=1)
     tag_id: int | None = Field(default=None, ge=1)
     incluir_inativos: bool = False
@@ -224,6 +226,7 @@ class HierarquiaInput(CadastroSchema):
     data_inicio: date = Field(default_factory=date.today)
     data_fim: date | None = None
     ativo: bool = True
+    origem: str | None = Field(default=None, max_length=30)
 
     @model_validator(mode="after")
     def validate_dates(self) -> "HierarquiaInput":

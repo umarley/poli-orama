@@ -12,6 +12,7 @@ from app.auth.schemas import (
     PermissionResponse,
     ProfileResponse,
     ResetPasswordResponse,
+    SelfProfileUpdate,
     SessionResponse,
     TenantSwitchRequest,
     TerritorialAccessInput,
@@ -92,6 +93,9 @@ class AuthService:
             )
             await self.repository.commit()
             raise AuthenticationError("Credenciais invalidas.")
+        if user.usuario_plataforma_id is not None:
+            consume_password_verification_time(payload.senha)
+            raise AuthenticationError("Credenciais invalidas.")
         if not verify_password(payload.senha, user.hash_senha):
             await self.repository.register_login_failure(user)
             await self.audit.record(
@@ -109,6 +113,16 @@ class AuthService:
             raise AuthenticationError("Credenciais invalidas.")
         if user.status != "ativo":
             raise AuthenticationError("Usuario inativo ou bloqueado.")
+
+        if payload.app_lider:
+            if not user.habilitado_app_lider:
+                raise AuthenticationError(
+                    "Usuario nao habilitado para o app mobile de lideranca."
+                )
+            if user.lideranca_id is None:
+                raise AuthenticationError(
+                    "Usuario sem lideranca vinculada para o app mobile."
+                )
 
         profiles = await self.repository.profiles_for_user(user.id)
         if user.mfa_habilitado:
@@ -160,7 +174,10 @@ class AuthService:
         )
         user_session.token_hash = token_digest(token)
         user_session.refresh_token_hash = token_digest(refresh_token)
-        await self.repository.register_login_success(user)
+        if payload.app_lider:
+            await self.repository.register_mobile_app_access(user)
+        else:
+            await self.repository.register_login_success(user)
         await self.audit.record(
             action="login",
             tenant_id=tenant.id,
@@ -421,6 +438,33 @@ class AuthService:
         user = await self._get_user(actor.tenant_id, actor.user_id)
         return await self._response(user)
 
+    async def update_me(
+        self,
+        actor: RequestActor,
+        payload: SelfProfileUpdate,
+        *,
+        ip_address: str | None,
+        user_agent: str | None,
+    ) -> UserResponse:
+        user = await self._get_user(actor.tenant_id, actor.user_id)
+        before = _user_snapshot(user, await self.repository.profiles_for_user(user.id))
+        update = UserUpdate(**payload.model_dump(exclude_unset=True))
+        await self.repository.update_user(user, update)
+        await self.audit.record(
+            action="editar",
+            tenant_id=actor.tenant_id,
+            user_id=actor.user_id,
+            schema_name="auth",
+            table_name="usuario",
+            record_id=user.id,
+            before=before,
+            after=_user_snapshot(user, await self.repository.profiles_for_user(user.id)),
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+        await self.repository.commit()
+        return await self._response(user)
+
     async def list_users(
         self, actor: RequestActor, params: ListParams, status: str | None
     ) -> Page[UserResponse]:
@@ -431,7 +475,7 @@ class AuthService:
         )
 
     async def get_user(self, actor: RequestActor, user_id: int) -> UserResponse:
-        return await self._response(await self._get_user(actor.tenant_id, user_id))
+        return await self._response(await self._get_manageable_user(actor, user_id))
 
     async def create_user(
         self,
@@ -472,7 +516,7 @@ class AuthService:
     ) -> UserResponse:
         if payload.perfil_ids is not None:
             await self._validate_profile_assignment(actor, payload.perfil_ids)
-        user = await self._get_user(actor.tenant_id, user_id)
+        user = await self._get_manageable_user(actor, user_id)
         before_profiles = await self.repository.profiles_for_user(user.id)
         before = _user_snapshot(user, before_profiles)
         await self.repository.update_user(user, payload)
@@ -502,7 +546,7 @@ class AuthService:
         ip_address: str | None,
         user_agent: str | None,
     ) -> ResetPasswordResponse:
-        user = await self._get_user(actor.tenant_id, user_id)
+        user = await self._get_manageable_user(actor, user_id)
         temporary_password = supplied_password or generate_temporary_password()
         validate_password_policy(temporary_password, self.settings)
         await self.repository.set_password(
@@ -535,7 +579,7 @@ class AuthService:
                 "O usuario nao pode excluir a propria conta.",
                 code="cannot_delete_current_user",
             )
-        user = await self._get_user(actor.tenant_id, user_id)
+        user = await self._get_manageable_user(actor, user_id)
         before = _user_snapshot(user)
         await self.repository.delete_user(user)
         await self.audit.record(
@@ -565,7 +609,12 @@ class AuthService:
         if not verify_password(current_password, user.hash_senha):
             raise BusinessRuleError("Senha atual incorreta.", code="current_password_invalid")
         validate_password_policy(new_password, self.settings)
-        await self.repository.set_password(user, hash_password(new_password), must_change=False)
+        await self.repository.set_password(
+            user,
+            hash_password(new_password),
+            must_change=False,
+            keep_session_id=actor.session_id,
+        )
         await self.audit.record(
             action="editar",
             tenant_id=actor.tenant_id,
@@ -582,7 +631,7 @@ class AuthService:
     async def list_profiles(self, actor: RequestActor) -> list[ProfileResponse]:
         responses: list[ProfileResponse] = []
         for profile in await self.repository.available_profiles(actor.tenant_id):
-            if profile.codigo == "gestor_saas" and "gestor_saas" not in actor.profiles:
+            if profile.codigo == "gestor_saas":
                 continue
             response = ProfileResponse.model_validate(profile)
             response.permissoes = [
@@ -651,17 +700,16 @@ class AuthService:
         self, actor: RequestActor, profile_ids: list[int]
     ) -> None:
         profiles = await self.repository.available_profiles(actor.tenant_id, profile_ids)
-        if any(profile.codigo == "gestor_saas" for profile in profiles) and (
-            "gestor_saas" not in actor.profiles
-        ):
+        if any(profile.codigo == "gestor_saas" for profile in profiles):
             raise AuthorizationError(
-                "O perfil gestor_saas e exclusivo da equipe fornecedora da plataforma."
+                "O perfil gestor_saas pertence a identidade global da plataforma e nao pode "
+                "ser atribuido a usuarios de tenants."
             )
 
     async def get_territorial_access(
         self, actor: RequestActor, user_id: int
     ) -> list[TerritorialAccessResponse]:
-        await self._get_user(actor.tenant_id, user_id)
+        await self._get_manageable_user(actor, user_id)
         return [
             TerritorialAccessResponse.model_validate(policy)
             for policy in await self.repository.territorial_access_for_user(
@@ -678,7 +726,7 @@ class AuthService:
         ip_address: str | None,
         user_agent: str | None,
     ) -> list[TerritorialAccessResponse]:
-        await self._get_user(actor.tenant_id, user_id)
+        await self._get_manageable_user(actor, user_id)
         before = [
             TerritorialAccessResponse.model_validate(item).model_dump(mode="json")
             for item in await self.repository.territorial_access_for_user(actor.tenant_id, user_id)
@@ -708,6 +756,12 @@ class AuthService:
     async def _get_user(self, tenant_id: int, user_id: int) -> User:
         user = await self.repository.get_user(tenant_id, user_id)
         if user is None:
+            raise ResourceNotFoundError("Usuario", user_id)
+        return user
+
+    async def _get_manageable_user(self, actor: RequestActor, user_id: int) -> User:
+        user = await self._get_user(actor.tenant_id, user_id)
+        if user.usuario_plataforma_id is not None and "gestor_saas" not in actor.profiles:
             raise ResourceNotFoundError("Usuario", user_id)
         return user
 
@@ -761,6 +815,8 @@ def _user_snapshot(user: User, profiles: list[AccessProfile] | None = None) -> d
         "email": user.email,
         "telefone": user.telefone,
         "pessoa_id": user.pessoa_id,
+        "lideranca_id": user.lideranca_id,
+        "habilitado_app_lider": user.habilitado_app_lider,
         "status": user.status,
         "deve_alterar_senha": user.deve_alterar_senha,
     }

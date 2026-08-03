@@ -22,6 +22,7 @@ from app.auth.schemas import (
     RefreshRequest,
     ResetPasswordRequest,
     ResetPasswordResponse,
+    SelfProfileUpdate,
     SessionResponse,
     TenantSwitchRequest,
     TerritorialAccessReplace,
@@ -64,6 +65,25 @@ async def login(
 ) -> TokenResponse:
     return await service.login(
         payload,
+        ip_address=_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+    )
+
+
+@router.post(
+    "/auth/login/mobile",
+    response_model=TokenResponse,
+    tags=["Autenticacao"],
+    summary="Autentica lider/coordenador no app mobile",
+)
+async def login_mobile(
+    payload: LoginRequest,
+    request: Request,
+    service: Annotated[AuthService, Depends(get_public_auth_service)],
+) -> TokenResponse:
+    mobile_payload = payload.model_copy(update={"app_lider": True})
+    return await service.login(
+        mobile_payload,
         ip_address=_client_ip(request),
         user_agent=request.headers.get("user-agent"),
     )
@@ -132,6 +152,26 @@ async def me(
     service: Annotated[AuthService, Depends(get_auth_service)],
 ) -> UserResponse:
     return await service.me(actor)
+
+
+@router.patch(
+    "/auth/me",
+    response_model=UserResponse,
+    tags=["Autenticacao"],
+    summary="Atualiza dados pessoais do usuario atual",
+)
+async def update_me(
+    payload: SelfProfileUpdate,
+    request: Request,
+    actor: Annotated[RequestActor, Depends(get_current_user)],
+    service: Annotated[AuthService, Depends(get_auth_service)],
+) -> UserResponse:
+    return await service.update_me(
+        actor,
+        payload,
+        ip_address=_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+    )
 
 
 @router.post(

@@ -20,8 +20,9 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { AppToast } from '@/components/feedback/AppToast';
+import { RemotePersonSelect } from '@/components/forms/RemotePersonSelect';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { buscarPessoas, listarLiderancas } from '@/modules/cadastro/pessoas-service';
+import { listarLiderancas } from '@/modules/cadastro/pessoas-service';
 import {
   classifyDemand,
   createDemand,
@@ -53,7 +54,6 @@ export function DemandasPage() {
   const permissions = useSessionStore((state) => state.user?.permissions ?? []);
   const [filters, setFilters] = useState<DemandFilters>({});
   const [open, setOpen] = useState(false);
-  const [personQuery, setPersonQuery] = useState('');
   const [form] = Form.useForm<DemandForm>();
   const demands = useQuery({
     queryKey: ['demandas', 'lista', filters],
@@ -79,11 +79,6 @@ export function DemandasPage() {
   const leaderships = useQuery({
     queryKey: ['cadastro', 'liderancas', 'demandas'],
     queryFn: () => listarLiderancas(),
-  });
-  const people = useQuery({
-    queryKey: ['cadastro', 'pessoas', 'demandas', personQuery],
-    queryFn: () => buscarPessoas(personQuery),
-    enabled: personQuery.trim().length >= 2,
   });
   const creation = useMutation({
     mutationFn: (values: DemandForm) =>
@@ -220,17 +215,7 @@ export function DemandasPage() {
             />
           </Form.Item>
           <Form.Item name="pessoa_solicitante_id" label="Solicitante">
-            <Select
-              showSearch
-              allowClear
-              filterOption={false}
-              onSearch={setPersonQuery}
-              options={(people.data ?? []).map((item) => ({
-                value: item.id,
-                label: item.nome_completo,
-              }))}
-              notFoundContent="Digite ao menos dois caracteres"
-            />
+            <RemotePersonSelect allowClear />
           </Form.Item>
           <Form.Item name="lideranca_indicacao_id" label="Liderança indicadora">
             <Select

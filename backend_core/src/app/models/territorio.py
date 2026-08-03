@@ -55,6 +55,7 @@ class Municipio(Base):
     latitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
     longitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
     geom: Mapped[Any | None] = mapped_column(Geography("Point"))
+    habitantes: Mapped[int | None] = mapped_column(Integer)
 
 
 class Bairro(Base):
@@ -68,6 +69,7 @@ class Bairro(Base):
     )
     nome: Mapped[str] = mapped_column(String(150))
     origem: Mapped[str] = mapped_column(String(20))
+    limite_geom: Mapped[Any | None] = mapped_column(Geography("MultiPolygon"))
 
 
 class ZonaEleitoral(Base):
@@ -171,6 +173,7 @@ class Territorio(Base):
         BigInteger, ForeignKey("global.secao_eleitoral.id")
     )
     geom: Mapped[Any | None] = mapped_column(Geography("MultiPolygon"))
+    limite_geom: Mapped[Any | None] = mapped_column(Geography("MultiPolygon"))
     ativo: Mapped[bool] = mapped_column(Boolean)
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     atualizado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True))

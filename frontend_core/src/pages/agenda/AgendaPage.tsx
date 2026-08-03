@@ -27,8 +27,9 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { AppToast } from '@/components/feedback/AppToast';
+import { RemotePersonSelect } from '@/components/forms/RemotePersonSelect';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { buscarPessoas, listarLiderancas } from '@/modules/cadastro/pessoas-service';
+import { listarLiderancas } from '@/modules/cadastro/pessoas-service';
 import {
   createEvent,
   downloadAgenda,
@@ -68,7 +69,6 @@ export function AgendaPage() {
   const [referenceDate, setReferenceDate] = useState(dayjs());
   const [filters, setFilters] = useState<AgendaFilters>({});
   const [modalOpen, setModalOpen] = useState(false);
-  const [personQuery, setPersonQuery] = useState('');
   const [form] = Form.useForm<EventForm>();
   const monthFilters = useMemo(() => {
     const periodStart =
@@ -99,11 +99,6 @@ export function AgendaPage() {
   const leaderships = useQuery({
     queryKey: ['cadastro', 'liderancas', 'agenda'],
     queryFn: () => listarLiderancas(),
-  });
-  const people = useQuery({
-    queryKey: ['cadastro', 'pessoas', 'agenda-search', personQuery],
-    queryFn: () => buscarPessoas(personQuery),
-    enabled: personQuery.trim().length >= 2,
   });
   const creation = useMutation({
     mutationFn: (values: EventForm) =>
@@ -356,16 +351,7 @@ export function AgendaPage() {
             </Col>
           </Row>
           <Form.Item name="responsavel_pessoa_id" label="Responsável" rules={[{ required: true }]}>
-            <Select
-              showSearch
-              filterOption={false}
-              onSearch={setPersonQuery}
-              options={(people.data ?? []).map((item) => ({
-                value: item.id,
-                label: item.nome_completo,
-              }))}
-              notFoundContent="Digite ao menos dois caracteres"
-            />
+            <RemotePersonSelect />
           </Form.Item>
         </Form>
       </Modal>

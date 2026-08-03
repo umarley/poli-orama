@@ -9,7 +9,7 @@ from sqlalchemy import Select, delete, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
-from app.audit.service import AuditService
+from app.mod_cadastro.mobile import MobileLeaderContext
 from app.core.errors import BusinessRuleError
 from app.core.pagination import ListParams, SortDirection
 from app.core.repository import BaseRepository
@@ -126,6 +126,12 @@ class CadastroRepository(BaseRepository[Pessoa]):
                     "AND hl.lideranca_superior_id = :lideranca_id)"
                 )
             )
+        if filters.cadastrado_por_lideranca_id:
+            statement = statement.where(
+                Pessoa.cadastrado_por_lideranca_id == filters.cadastrado_por_lideranca_id
+            )
+        if filters.origem_cadastro:
+            statement = statement.where(Pessoa.origem_cadastro == filters.origem_cadastro)
         if filters.territorio_id:
             statement = statement.where(
                 text(
@@ -307,10 +313,33 @@ class CadastroRepository(BaseRepository[Pessoa]):
                 return "titulo_eleitor", int(person_id)
         return None
 
+    async def resolve_global_fonte_dado_id(self, codigo: str) -> int | None:
+        value = await self.session.scalar(
+            text(
+                "SELECT id FROM etl.fonte_dado "
+                "WHERE codigo = :codigo AND tenant_id IS NULL AND ativo LIMIT 1"
+            ),
+            {"codigo": codigo},
+        )
+        return int(value) if value is not None else None
+
     async def create_person(
-        self, tenant_id: int, user_id: int, payload: PessoaCadastroCreate
+        self,
+        tenant_id: int,
+        user_id: int,
+        payload: PessoaCadastroCreate,
+        *,
+        mobile: MobileLeaderContext | None = None,
     ) -> Pessoa:
         now = datetime.now(UTC)
+        mobile_fields: dict[str, Any] = {}
+        if mobile is not None:
+            mobile_fields = {
+                "origem_cadastro": mobile.origem_cadastro,
+                "cadastrado_por_lideranca_id": mobile.cadastrado_por_lideranca_id,
+            }
+            if mobile.fonte_dado_id is not None:
+                mobile_fields["fonte_dado_id"] = mobile.fonte_dado_id
         person = Pessoa(
             uuid_publico=uuid4(),
             tenant_id=tenant_id,
@@ -329,6 +358,7 @@ class CadastroRepository(BaseRepository[Pessoa]):
                     "complemento_politico",
                 }
             ),
+            **mobile_fields,
             ativo=True,
             criado_por=user_id,
             atualizado_por=user_id,
@@ -359,14 +389,13 @@ class CadastroRepository(BaseRepository[Pessoa]):
         if payload.lideranca:
             await self.upsert_leadership(tenant_id, person.id, payload.lideranca)
         if payload.lideranca_superior_id:
-            await self.add_hierarchy(
-                tenant_id,
-                HierarquiaInput(
-                    lideranca_superior_id=payload.lideranca_superior_id,
-                    pessoa_subordinada_id=person.id,
-                    papel_subordinado=payload.papel_subordinado,
-                ),
+            hierarchy_payload = HierarquiaInput(
+                lideranca_superior_id=payload.lideranca_superior_id,
+                pessoa_subordinada_id=person.id,
+                papel_subordinado=payload.papel_subordinado,
+                origem=mobile.hierarquia_origem if mobile is not None else None,
             )
+            await self.add_hierarchy(tenant_id, hierarchy_payload)
         if payload.indicacao:
             await self.add_indication(tenant_id, person.id, payload.indicacao)
         if payload.complemento_politico:
@@ -1106,10 +1135,13 @@ class CadastroRepository(BaseRepository[Pessoa]):
         )
 
     async def add_hierarchy(self, tenant_id: int, payload: HierarquiaInput) -> HierarquiaLideranca:
+        data = payload.model_dump()
+        if data.get("origem") is None:
+            data.pop("origem", None)
         item = HierarquiaLideranca(
             tenant_id=tenant_id,
             campanha_eleicao_id=await self._active_campaign_id(tenant_id),
-            **payload.model_dump(),
+            **data,
         )
         self.session.add(item)
         await self.session.flush()

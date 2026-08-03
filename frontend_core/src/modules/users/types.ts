@@ -9,6 +9,8 @@ export interface UserCreateInput {
   senha: string;
   telefone?: string;
   pessoa_id?: number;
+  lideranca_id?: number;
+  habilitado_app_lider?: boolean;
   perfil_ids: number[];
 }
 
@@ -17,6 +19,8 @@ export interface UserUpdateInput {
   email?: string;
   telefone?: string;
   pessoa_id?: number;
+  lideranca_id?: number | null;
+  habilitado_app_lider?: boolean;
   status?: UserRecord['status'];
   perfil_ids?: number[];
 }

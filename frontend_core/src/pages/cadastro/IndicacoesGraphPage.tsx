@@ -1,13 +1,14 @@
-import { ApartmentOutlined, FilterOutlined, SearchOutlined } from '@ant-design/icons';
+import { ApartmentOutlined, FilterOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
-import { Alert, Button, Card, DatePicker, Empty, Form, Input, Select, Space, Spin } from 'antd';
+import { Alert, Button, Card, DatePicker, Empty, Form, Input, Select, Space } from 'antd';
 import type { Dayjs } from 'dayjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { PageHeader } from '@/components/layout/PageHeader';
 import { LocalizedStatistic as Statistic } from '@/components/data/LocalizedStatistic';
-import { buscarPessoas, obterGrafoIndicacoes } from '@/modules/cadastro/pessoas-service';
+import { RemotePersonSelect } from '@/components/forms/RemotePersonSelect';
+import { obterGrafoIndicacoes } from '@/modules/cadastro/pessoas-service';
 import type {
   IndicacaoGraphEdge,
   IndicacaoGraphFilters,
@@ -84,13 +85,7 @@ export function IndicacoesGraphPage() {
   const navigate = useNavigate();
   const [form] = Form.useForm<FilterForm>();
   const [filters, setFilters] = useState<IndicacaoGraphFilters>({ profundidade: 3 });
-  const [personSearch, setPersonSearch] = useState('');
   const graphViewportRef = useRef<HTMLDivElement>(null);
-  const peopleQuery = useQuery({
-    queryKey: ['cadastro', 'busca-grafo', personSearch],
-    queryFn: () => buscarPessoas(personSearch),
-    enabled: personSearch.trim().length >= 2,
-  });
   const graphQuery = useQuery({
     queryKey: ['cadastro', 'grafo-indicacoes', filters],
     queryFn: () => obterGrafoIndicacoes(filters),
@@ -135,19 +130,7 @@ export function IndicacoesGraphPage() {
       <Card size="small">
         <Form form={form} layout="inline" onFinish={applyFilters} className={styles.filters}>
           <Form.Item name="pessoa_id" className={styles.personFilter}>
-            <Select
-              allowClear
-              showSearch
-              filterOption={false}
-              suffixIcon={<SearchOutlined />}
-              placeholder="Buscar pessoa para centralizar"
-              onSearch={setPersonSearch}
-              options={(peopleQuery.data ?? []).map((item) => ({
-                value: item.id,
-                label: item.nome_completo,
-              }))}
-              notFoundContent={peopleQuery.isFetching ? <Spin size="small" /> : null}
-            />
+            <RemotePersonSelect allowClear placeholder="Buscar pessoa para centralizar" />
           </Form.Item>
           <Form.Item name="origem">
             <Input allowClear placeholder="Origem da indicação" />

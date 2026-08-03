@@ -6,6 +6,7 @@ from typing import Any
 from app.auth.access import RequestActor, TerritorialAccess
 from app.core.errors import AuthorizationError, BusinessRuleError, ResourceNotFoundError
 from app.core.pagination import ListParams, Page
+from app.mod_cadastro.mobile import MobileLeaderContext
 from app.mod_cadastro.repository import CadastroRepository, person_snapshot
 from app.mod_territorio.repository import TerritorioRepository
 from app.schemas.cadastro import (
@@ -91,6 +92,7 @@ class CadastroService:
         filters: PessoaFiltros,
         territorial_access: TerritorialAccess | None = None,
     ) -> Page[PessoaListItem]:
+        filters = self._scope_mobile_leader_filters(actor, filters)
         accessible_ids = None
         if territorial_access is not None:
             accessible_ids = await TerritorioRepository(
@@ -216,9 +218,15 @@ class CadastroService:
                 details={"criterio": criterion, "pessoa_id": person_id},
             )
         await self._validate_references(actor.tenant_id, payload)
-        person = await self.repository.create_person(actor.tenant_id, actor.user_id, payload)
+        payload, mobile = await self._prepare_mobile_create(actor, payload)
+        person = await self.repository.create_person(
+            actor.tenant_id,
+            actor.user_id,
+            payload,
+            mobile=mobile,
+        )
         await self.repository.create_duplicate_suspicions(actor.tenant_id, person, payload)
-        if not self._has_assigned_leader(payload):
+        if not self._has_assigned_leader(payload, actor):
             await self.repository.create_validation(
                 actor.tenant_id,
                 person.id,
@@ -1268,8 +1276,59 @@ class CadastroService:
             raise ResourceNotFoundError("Lideranca responsavel", payload.lideranca_superior_id)
 
     @staticmethod
-    def _has_assigned_leader(payload: PessoaCadastroCreate) -> bool:
+    def _scope_mobile_leader_filters(
+        actor: RequestActor, filters: PessoaFiltros
+    ) -> PessoaFiltros:
+        if not actor.habilitado_app_lider or actor.lideranca_id is None:
+            return filters
+        if (
+            filters.cadastrado_por_lideranca_id is None
+            and filters.lideranca_id is None
+            and filters.origem_cadastro is None
+        ):
+            return filters.model_copy(
+                update={"cadastrado_por_lideranca_id": actor.lideranca_id}
+            )
+        return filters
+
+    async def _prepare_mobile_create(
+        self, actor: RequestActor, payload: PessoaCadastroCreate
+    ) -> tuple[PessoaCadastroCreate, MobileLeaderContext | None]:
+        if not actor.habilitado_app_lider or actor.lideranca_id is None:
+            return payload, None
+
+        data = payload.model_copy(deep=True)
+        if data.lideranca_superior_id is None:
+            data.lideranca_superior_id = actor.lideranca_id
+
+        if data.indicacao is None:
+            data.indicacao = IndicacaoInput(
+                pessoa_indicante_id=actor.pessoa_id,
+                origem="lider_mobile",
+            )
+        else:
+            indicacao_updates: dict[str, Any] = {}
+            if data.indicacao.pessoa_indicante_id is None and actor.pessoa_id is not None:
+                indicacao_updates["pessoa_indicante_id"] = actor.pessoa_id
+            if not data.indicacao.origem:
+                indicacao_updates["origem"] = "lider_mobile"
+            if indicacao_updates:
+                data.indicacao = data.indicacao.model_copy(update=indicacao_updates)
+
+        fonte_dado_id = await self.repository.resolve_global_fonte_dado_id("app_lider_mobile")
+        mobile = MobileLeaderContext(
+            cadastrado_por_lideranca_id=actor.lideranca_id,
+            fonte_dado_id=fonte_dado_id,
+        )
+        return data, mobile
+
+    @staticmethod
+    def _has_assigned_leader(
+        payload: PessoaCadastroCreate, actor: RequestActor | None = None
+    ) -> bool:
         if payload.lideranca_superior_id is not None:
+            return True
+        if actor is not None and actor.habilitado_app_lider and actor.lideranca_id is not None:
             return True
         leadership = payload.lideranca
         return bool(

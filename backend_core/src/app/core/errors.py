@@ -93,6 +93,15 @@ class TenantInactiveError(AppError):
         )
 
 
+class PasswordChangeRequiredError(AppError):
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=status.HTTP_403_FORBIDDEN,
+            code="password_change_required",
+            message="E necessario alterar a senha antes de continuar.",
+        )
+
+
 class DatabaseUnavailableError(AppError):
     def __init__(self) -> None:
         super().__init__(

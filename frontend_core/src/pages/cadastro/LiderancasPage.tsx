@@ -19,6 +19,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { AppToast } from '@/components/feedback/AppToast';
 import { LocalizedStatistic as Statistic } from '@/components/data/LocalizedStatistic';
+import { RemotePersonSelect } from '@/components/forms/RemotePersonSelect';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   alterarStatusHierarquia,
@@ -28,14 +29,8 @@ import {
   excluirLideranca,
   listarHierarquia,
   listarLiderancas,
-  listarPessoas,
 } from '@/modules/cadastro/pessoas-service';
-import type {
-  Hierarquia,
-  Lideranca,
-  LiderancaInput,
-  PessoaListItem,
-} from '@/modules/cadastro/types';
+import type { Hierarquia, Lideranca, LiderancaInput } from '@/modules/cadastro/types';
 import { normalizeApiError } from '@/services/api/api-error';
 import { useSessionStore } from '@/stores/session-store';
 
@@ -114,18 +109,10 @@ export function LiderancasPage() {
     queryKey: ['cadastro', 'hierarquia', 'options'],
     queryFn: () => listarHierarquia(),
   });
-  const peopleQuery = useQuery({
-    queryKey: ['cadastro', 'pessoas', 'leadership-options'],
-    queryFn: () => listarPessoas({ page: 1, page_size: 100 }),
-  });
   const leaders = useMemo(() => leadershipOptionsQuery.data ?? [], [leadershipOptionsQuery.data]);
-  const peopleById = useMemo(
-    () => new Map((peopleQuery.data?.items ?? []).map((person) => [person.id, person])),
-    [peopleQuery.data],
-  );
   const leaderPersonIds = useMemo(
-    () => new Set((leadersQuery.data ?? []).map((leader) => leader.pessoa_id)),
-    [leadersQuery.data],
+    () => new Set(leaders.map((leader) => leader.pessoa_id)),
+    [leaders],
   );
   const leadersById = useMemo(
     () => new Map((leadersQuery.data ?? []).map((leader) => [leader.id, leader])),
@@ -221,7 +208,7 @@ export function LiderancasPage() {
       render: (id: number, item) => (
         <div>
           <strong>
-            {item.pessoa_nome_completo || peopleById.get(id)?.nome_completo || `Pessoa #${id}`}
+            {item.pessoa_nome_completo || `Pessoa #${id}`}
             {item.apelido_campanha ? ` (${item.apelido_campanha})` : ''}
           </strong>
           <Typography.Text type="secondary" style={{ display: 'block' }}>
@@ -300,19 +287,13 @@ export function LiderancasPage() {
       dataIndex: 'lideranca_superior_id',
       render: (id: number, item) => {
         const leader = leadersById.get(id);
-        return (
-          item.lideranca_superior_nome ||
-          leader?.pessoa_nome_completo ||
-          (leader ? peopleById.get(leader.pessoa_id)?.nome_completo : null) ||
-          `Liderança #${id}`
-        );
+        return item.lideranca_superior_nome || leader?.pessoa_nome_completo || `Liderança #${id}`;
       },
     },
     {
       title: 'Pessoa vinculada',
       dataIndex: 'pessoa_subordinada_id',
-      render: (id: number, item) =>
-        item.pessoa_subordinada_nome || peopleById.get(id)?.nome_completo || `Pessoa #${id}`,
+      render: (id: number, item) => item.pessoa_subordinada_nome || `Pessoa #${id}`,
     },
     {
       title: 'Papel',
@@ -515,10 +496,7 @@ export function LiderancasPage() {
               showSearch
               optionFilterProp="label"
               options={leaders.map((item) => {
-                const nome =
-                  item.pessoa_nome_completo ||
-                  peopleById.get(item.pessoa_id)?.nome_completo ||
-                  `Liderança #${item.id}`;
+                const nome = item.pessoa_nome_completo || `Liderança #${item.id}`;
                 return {
                   value: item.id,
                   label: item.apelido_campanha ? `${nome} (${item.apelido_campanha})` : nome,
@@ -527,16 +505,7 @@ export function LiderancasPage() {
             />
           </Form.Item>
           <Form.Item name="pessoa_subordinada_id" label="Pessoa" rules={[{ required: true }]}>
-            <Select
-              showSearch
-              optionFilterProp="label"
-              options={(peopleQuery.data?.items ?? [])
-                .filter((item) => !activelyLinkedPersonIds.has(item.id))
-                .map((item: PessoaListItem) => ({
-                  value: item.id,
-                  label: item.nome_completo,
-                }))}
-            />
+            <RemotePersonSelect excludeIds={activelyLinkedPersonIds} />
           </Form.Item>
           <Form.Item name="papel_subordinado" label="Papel" initialValue="liderado">
             <Select
@@ -571,14 +540,7 @@ export function LiderancasPage() {
           }}
         >
           <Form.Item name="pessoa_id" label="Pessoa" rules={[{ required: true }]}>
-            <Select
-              showSearch
-              optionFilterProp="label"
-              placeholder="Selecione a pessoa"
-              options={(peopleQuery.data?.items ?? [])
-                .filter((person) => !leaderPersonIds.has(person.id))
-                .map((person) => ({ value: person.id, label: person.nome_completo }))}
-            />
+            <RemotePersonSelect excludeIds={leaderPersonIds} />
           </Form.Item>
           <Form.Item name="tipo_lideranca" label="Tipo de liderança" rules={[{ required: true }]}>
             <Select
@@ -601,10 +563,7 @@ export function LiderancasPage() {
                   ['coordenador_geral', 'coordenador_territorial'].includes(leader.tipo_lideranca),
                 )
                 .map((leader) => {
-                  const nome =
-                    leader.pessoa_nome_completo ||
-                    peopleById.get(leader.pessoa_id)?.nome_completo ||
-                    `Liderança #${leader.id}`;
+                  const nome = leader.pessoa_nome_completo || `Liderança #${leader.id}`;
                   return {
                     value: leader.id,
                     label: leader.apelido_campanha ? `${nome} (${leader.apelido_campanha})` : nome,

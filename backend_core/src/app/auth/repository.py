@@ -79,7 +79,11 @@ class AuthRepository(BaseRepository[User]):
                 code="invalid_order_field",
                 details={"allowed": sorted(self.sortable_columns)},
             )
-        statement = select(User).where(User.tenant_id == tenant_id, User.excluido_em.is_(None))
+        statement = select(User).where(
+            User.tenant_id == tenant_id,
+            User.usuario_plataforma_id.is_(None),
+            User.excluido_em.is_(None),
+        )
         if status:
             statement = statement.where(User.status == status)
         if params.query:
@@ -97,6 +101,9 @@ class AuthRepository(BaseRepository[User]):
         return list(users.all()), total
 
     async def profiles_for_user(self, user_id: int) -> list[AccessProfile]:
+        platform_profile = await self._platform_context_profile(user_id)
+        if platform_profile is not None:
+            return [platform_profile]
         profiles = await self.session.scalars(
             select(AccessProfile)
             .join(UserProfile, UserProfile.perfil_acesso_id == AccessProfile.id)
@@ -106,6 +113,9 @@ class AuthRepository(BaseRepository[User]):
         return list(profiles.all())
 
     async def permissions_for_user(self, user_id: int) -> list[Permission]:
+        platform_profile = await self._platform_context_profile(user_id)
+        if platform_profile is not None:
+            return await self.permissions_for_profile(platform_profile.id)
         permissions = await self.session.scalars(
             select(Permission)
             .join(ProfilePermission, ProfilePermission.permissao_id == Permission.id)
@@ -118,6 +128,18 @@ class AuthRepository(BaseRepository[User]):
             .order_by(Permission.codigo)
         )
         return list(permissions.all())
+
+    async def _platform_context_profile(self, user_id: int) -> AccessProfile | None:
+        user = await self.session.get(User, user_id)
+        if user is None or user.usuario_plataforma_id is None:
+            return None
+        profile: AccessProfile | None = await self.session.scalar(
+            select(AccessProfile).where(
+                AccessProfile.codigo == "gestor_saas",
+                AccessProfile.tenant_id.is_(None),
+            )
+        )
+        return profile
 
     async def permissions_for_profile(self, profile_id: int) -> list[Permission]:
         permissions = await self.session.scalars(
@@ -224,15 +246,12 @@ class AuthRepository(BaseRepository[User]):
             )
         )
         if existing is not None:
+            if existing.usuario_plataforma_id is not None:
+                await self.session.execute(
+                    delete(UserProfile).where(UserProfile.usuario_id == existing.id)
+                )
+                await self.session.flush()
             return existing
-        support_profile: AccessProfile | None = await self.session.scalar(
-            select(AccessProfile).where(
-                AccessProfile.codigo == "gestor_saas",
-                AccessProfile.tenant_id.is_(None),
-            )
-        )
-        if support_profile is None:
-            raise BusinessRuleError("Perfil gestor_saas nao configurado.")
         email = source.email
         email_in_use = await self.session.scalar(
             select(User.id).where(
@@ -270,15 +289,6 @@ class AuthRepository(BaseRepository[User]):
         )
         self.session.add(user)
         await self.session.flush()
-        self.session.add(
-            UserProfile(
-                usuario_id=user.id,
-                perfil_acesso_id=support_profile.id,
-                tenant_id=tenant_id,
-                atribuido_em=now,
-            )
-        )
-        await self.session.flush()
         return user
 
     async def create_user(self, tenant_id: int, payload: UserCreate, password_hash: str) -> User:
@@ -287,6 +297,8 @@ class AuthRepository(BaseRepository[User]):
             uuid_publico=uuid4(),
             tenant_id=tenant_id,
             pessoa_id=payload.pessoa_id,
+            lideranca_id=payload.lideranca_id,
+            habilitado_app_lider=payload.habilitado_app_lider,
             nome=payload.nome,
             email=payload.email,
             hash_senha=password_hash,
@@ -441,13 +453,27 @@ class AuthRepository(BaseRepository[User]):
         user.tentativas_login = 0
         await self.session.flush()
 
+    async def register_mobile_app_access(self, user: User) -> None:
+        now = datetime.now(UTC)
+        user.ultimo_acesso_app_em = now
+        user.ultimo_login_em = now
+        user.tentativas_login = 0
+        await self.session.flush()
+
     async def register_login_failure(self, user: User) -> None:
         user.tentativas_login = min(user.tentativas_login + 1, 32767)
         if user.tentativas_login >= 5:
             user.status = "bloqueado"
         await self.session.flush()
 
-    async def set_password(self, user: User, password_hash: str, *, must_change: bool) -> None:
+    async def set_password(
+        self,
+        user: User,
+        password_hash: str,
+        *,
+        must_change: bool,
+        keep_session_id: int | None = None,
+    ) -> None:
         user.hash_senha = password_hash
         user.senha_alterada_em = datetime.now(UTC)
         user.deve_alterar_senha = must_change
@@ -455,7 +481,10 @@ class AuthRepository(BaseRepository[User]):
         if user.status == "bloqueado":
             user.status = "ativo"
         user.atualizado_em = datetime.now(UTC)
-        await self.revoke_all_user_sessions(user.id)
+        if keep_session_id is not None:
+            await self.revoke_other_user_sessions(user.id, keep_session_id)
+        else:
+            await self.revoke_all_user_sessions(user.id)
         await self.session.flush()
 
     async def set_mfa_secret(self, user: User, encrypted_secret: str) -> None:

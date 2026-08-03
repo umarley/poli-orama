@@ -287,6 +287,8 @@ class PessoaResponse(PessoaBase):
     score_confiabilidade: Decimal | None
     completude_cadastral: Decimal | None
     ativo: bool
+    origem_cadastro: str | None = None
+    cadastrado_por_lideranca_id: int | None = None
     criado_por: int | None
     atualizado_por: int | None
     criado_em: datetime

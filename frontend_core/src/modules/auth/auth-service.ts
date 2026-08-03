@@ -5,6 +5,7 @@ import type {
   AuthUser,
   LoginInput,
   MfaSetup,
+  SelfProfileUpdateInput,
   TenantSwitchInput,
   UserSession,
 } from './types';
@@ -28,6 +29,11 @@ export async function switchTenant(payload: TenantSwitchInput): Promise<Authenti
 
 export async function getCurrentUser(): Promise<AuthUser> {
   const { data } = await httpClient.get<AuthUser>('/api/v1/auth/me');
+  return data;
+}
+
+export async function updateCurrentUser(payload: SelfProfileUpdateInput): Promise<AuthUser> {
+  const { data } = await httpClient.patch<AuthUser>('/api/v1/auth/me', payload);
   return data;
 }
 

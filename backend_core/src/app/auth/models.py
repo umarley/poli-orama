@@ -31,6 +31,11 @@ class User(Base):
         BigInteger, ForeignKey("auth.usuario.id", ondelete="RESTRICT")
     )
     pessoa_id: Mapped[int | None] = mapped_column(BigInteger)
+    lideranca_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("cadastro.lideranca.id", ondelete="SET NULL")
+    )
+    habilitado_app_lider: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    ultimo_acesso_app_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     nome: Mapped[str] = mapped_column(String(180))
     email: Mapped[str] = mapped_column(String(254))
     hash_senha: Mapped[str] = mapped_column(Text)

@@ -44,7 +44,7 @@ entregar a conexao aos endpoints privados. A API deve conectar como
 Senhas de usuarios, inclusive senhas temporarias emitidas no reset administrativo,
 devem:
 
-- ter entre `PASSWORD_MIN_LENGTH` (12 por padrao) e 128 caracteres;
+- ter entre `PASSWORD_MIN_LENGTH` (8 por padrao) e 128 caracteres;
 - conter ao menos uma letra minuscula e uma letra maiuscula;
 - conter ao menos um algarismo;
 - conter ao menos um caractere especial (nao alfanumerico).

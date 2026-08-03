@@ -27,6 +27,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { AppToast } from '@/components/feedback/AppToast';
+import { RemotePersonSelect } from '@/components/forms/RemotePersonSelect';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   atualizarTag,
@@ -38,7 +39,6 @@ import {
   listarNucleos,
   listarPapeisComunidade,
   listarParentescos,
-  listarPessoas,
   listarPessoasComunidade,
   listarPessoasNucleo,
   listarPessoasTag,
@@ -50,12 +50,7 @@ import {
   vincularNucleo,
   vincularTag,
 } from '@/modules/cadastro/pessoas-service';
-import type {
-  Comunidade,
-  NucleoFamiliar,
-  PessoaListItem,
-  TagCadastro,
-} from '@/modules/cadastro/types';
+import type { Comunidade, NucleoFamiliar, TagCadastro } from '@/modules/cadastro/types';
 import { listarTerritorios } from '@/modules/territorios/territorios-service';
 import { normalizeApiError } from '@/services/api/api-error';
 import { useSessionStore } from '@/stores/session-store';
@@ -87,7 +82,6 @@ export function SegmentacaoPage() {
   const [viewedTag, setViewedTag] = useState<TagCadastro | null>(null);
   const [viewedCommunity, setViewedCommunity] = useState<Comunidade | null>(null);
   const [viewedNucleus, setViewedNucleus] = useState<NucleoFamiliar | null>(null);
-  const [personSearch, setPersonSearch] = useState('');
   const [form] = Form.useForm<DialogValues>();
   const tagsQuery = useQuery({ queryKey: ['cadastro', 'tags'], queryFn: listarTags });
   const tagStatusMutation = useMutation({
@@ -166,11 +160,6 @@ export function SegmentacaoPage() {
     },
     onError: (error) => AppToast.error(normalizeApiError(error).message),
   });
-  const peopleQuery = useQuery({
-    queryKey: ['cadastro', 'pessoas', 'nucleo-referencia', personSearch],
-    queryFn: () =>
-      listarPessoas({ page: 1, page_size: 100, query: personSearch.trim() || undefined }),
-  });
   const mutation = useMutation({
     mutationFn: async (values: DialogValues) => {
       if (!dialog) return;
@@ -231,7 +220,6 @@ export function SegmentacaoPage() {
 
   const open = (next: Dialog) => {
     setDialog(next);
-    setPersonSearch('');
     form.resetFields();
     if (next?.mode === 'edit') {
       form.setFieldsValue({
@@ -776,29 +764,14 @@ export function SegmentacaoPage() {
           {dialog?.mode === 'link' ? (
             <>
               <Form.Item name="pessoa_id" label="Pessoa" rules={[{ required: true }]}>
-                <Select
-                  showSearch
-                  filterOption={false}
-                  loading={peopleQuery.isPending}
-                  onSearch={setPersonSearch}
-                  optionFilterProp="label"
-                  placeholder="Selecione uma pessoa"
-                  options={(peopleQuery.data?.items ?? [])
-                    .filter(
-                      (item) =>
-                        (dialog.entity !== 'tag' ||
-                          !(tagPeopleQuery.data ?? []).some((person) => person.id === item.id)) &&
-                        (dialog.entity !== 'community' ||
-                          !(communityPeopleQuery.data ?? []).some(
-                            (person) => person.id === item.id,
-                          )) &&
-                        (dialog.entity !== 'nucleus' ||
-                          !(nucleusPeopleQuery.data ?? []).some((person) => person.id === item.id)),
-                    )
-                    .map((item: PessoaListItem) => ({
-                      value: item.id,
-                      label: item.nome_completo,
-                    }))}
+                <RemotePersonSelect
+                  excludeIds={
+                    dialog.entity === 'tag'
+                      ? (tagPeopleQuery.data ?? []).map((person) => person.id)
+                      : dialog.entity === 'community'
+                        ? (communityPeopleQuery.data ?? []).map((person) => person.id)
+                        : (nucleusPeopleQuery.data ?? []).map((person) => person.id)
+                  }
                 />
               </Form.Item>
               {dialog.entity === 'community' ? (
@@ -892,18 +865,7 @@ export function SegmentacaoPage() {
                   label="Pessoa referência"
                   rules={[{ required: true }]}
                 >
-                  <Select
-                    showSearch
-                    filterOption={false}
-                    loading={peopleQuery.isPending}
-                    onSearch={setPersonSearch}
-                    optionFilterProp="label"
-                    placeholder="Selecione uma pessoa"
-                    options={(peopleQuery.data?.items ?? []).map((item: PessoaListItem) => ({
-                      value: item.id,
-                      label: item.nome_completo,
-                    }))}
-                  />
+                  <RemotePersonSelect />
                 </Form.Item>
               ) : null}
               <Form.Item name="descricao" label="Descrição">

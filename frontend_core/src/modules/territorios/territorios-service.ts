@@ -6,10 +6,14 @@ import type {
   LocalVotacao,
   MapMarker,
   MapPerson,
+  MapMunicipalityShape,
+  MapTerritoryMeshType,
+  MapTerritoryShape,
   Municipio,
   PessoaTerritorio,
   SecaoEleitoral,
   Territorio,
+  TerritorioDetalhe,
   TerritorioInput,
   TerritorioTreeNode,
   TipoTerritorio,
@@ -151,6 +155,27 @@ export async function vincularLideranca(
 export async function obterMarcadores(territorioId?: number) {
   const { data } = await httpClient.get<MapMarker[]>(`${base}/territorios/mapa/marcadores`, {
     params: { territorio_id: territorioId },
+  });
+  return data;
+}
+
+export async function obterTerritorio(id: number) {
+  const { data } = await httpClient.get<Territorio>(`${base}/territorios/${id}`);
+  return data;
+}
+
+export async function obterDetalhesTerritorio(id: number) {
+  const { data } = await httpClient.get<TerritorioDetalhe>(`${base}/territorios/${id}/detalhes`);
+  return data;
+}
+
+export async function obterShapesMunicipios(territorioId?: number) {
+  return obterShapesMalhas('municipio', territorioId);
+}
+
+export async function obterShapesMalhas(tipo: MapTerritoryMeshType, territorioId?: number) {
+  const { data } = await httpClient.get<MapTerritoryShape[]>(`${base}/territorios/mapa/malhas`, {
+    params: { tipo, territorio_id: territorioId },
   });
   return data;
 }

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,9 +12,20 @@ from app.auth.repository import AuthRepository
 from app.auth.security import decode_access_token, session_is_inactive, token_digest
 from app.core.config import get_settings
 from app.core.database import get_session
-from app.core.errors import AuthenticationError, AuthorizationError, TenantInactiveError
+from app.core.errors import (
+    AuthenticationError,
+    AuthorizationError,
+    PasswordChangeRequiredError,
+    TenantInactiveError,
+)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
+
+_PASSWORD_CHANGE_ALLOWED_PATH_SUFFIXES = (
+    "/auth/change-password",
+    "/auth/logout",
+    "/auth/me",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +36,9 @@ class RequestActor:
     profiles: tuple[str, ...]
     permissions: frozenset[str]
     token: str
+    pessoa_id: int | None = None
+    lideranca_id: int | None = None
+    habilitado_app_lider: bool = False
 
     @property
     def role(self) -> str:
@@ -54,6 +68,7 @@ class TerritorialAccess:
 
 
 async def get_current_user(
+    request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
     token: Annotated[str | None, Depends(oauth2_scheme)],
 ) -> RequestActor:
@@ -96,6 +111,11 @@ async def get_current_user(
         await repository.commit()
         await repository.set_tenant_context(tenant_id)
 
+    if user.deve_alterar_senha:
+        path = request.url.path.rstrip("/")
+        if not any(path.endswith(suffix) for suffix in _PASSWORD_CHANGE_ALLOWED_PATH_SUFFIXES):
+            raise PasswordChangeRequiredError()
+
     profiles = tuple(profile.codigo for profile in await repository.profiles_for_user(user_id))
     if tenant.status not in {"ativo", "trial"} and "gestor_saas" not in profiles:
         raise TenantInactiveError(tenant.status)
@@ -109,6 +129,9 @@ async def get_current_user(
         profiles=profiles,
         permissions=permissions,
         token=token,
+        pessoa_id=user.pessoa_id,
+        lideranca_id=user.lideranca_id,
+        habilitado_app_lider=user.habilitado_app_lider,
     )
 
 

@@ -13,6 +13,7 @@ import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Brand } from '@/components/brand/Brand';
 import { getDefaultRoute } from '@/app/navigation';
 import { login } from '@/modules/auth/auth-service';
+import { passwordMinLengthRule } from '@/modules/auth/password-policy';
 import { normalizeApiError } from '@/services/api/api-error';
 import { mapAuthUser, useSessionStore } from '@/stores/session-store';
 
@@ -32,10 +33,13 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [mfaRequired, setMfaRequired] = useState(false);
   const isAuthenticated = useSessionStore((state) => state.isAuthenticated);
+  const mustChangePassword = useSessionStore((state) => state.user?.mustChangePassword);
   const setSession = useSessionStore((state) => state.setSession);
 
   if (isAuthenticated) {
-    return <Navigate to="/dashboard" replace />;
+    return (
+      <Navigate to={mustChangePassword ? '/minha-conta/alterar-senha' : '/dashboard'} replace />
+    );
   }
 
   const handleSubmit = async (values: LoginFormValues) => {
@@ -72,12 +76,13 @@ export function LoginPage() {
         authentication.refresh_token,
         authentication.expires_in,
       );
-      const destination =
-        (location.state as { from?: string } | null)?.from ??
-        getDefaultRoute(
-          authentication.usuario.permissoes,
-          authentication.usuario.perfis.map((profile) => profile.codigo),
-        );
+      const destination = authentication.usuario.deve_alterar_senha
+        ? '/minha-conta/alterar-senha'
+        : ((location.state as { from?: string } | null)?.from ??
+            getDefaultRoute(
+              authentication.usuario.permissoes,
+              authentication.usuario.perfis.map((profile) => profile.codigo),
+            ));
       navigate(destination, { replace: true });
     } catch (requestError) {
       useSessionStore.getState().clearSession();
@@ -164,7 +169,7 @@ export function LoginPage() {
               name="password"
               rules={[
                 { required: true, message: 'Informe sua senha.' },
-                { min: 12, message: 'A senha deve ter pelo menos 12 caracteres.' },
+                passwordMinLengthRule,
               ]}
             >
               <Input.Password

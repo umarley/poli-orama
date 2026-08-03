@@ -1,4 +1,4 @@
-import { DeleteOutlined, EnvironmentOutlined, KeyOutlined, PlusOutlined } from '@ant-design/icons';
+import { DeleteOutlined, EnvironmentOutlined, KeyOutlined, MobileOutlined, PlusOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
@@ -24,6 +24,8 @@ import { AppToast } from '@/components/feedback/AppToast';
 import { BaseModal } from '@/components/feedback/BaseModal';
 import { PageHeader } from '@/components/layout/PageHeader';
 import type { TerritorialAccess } from '@/modules/auth/types';
+import { listarLiderancas } from '@/modules/cadastro/pessoas-service';
+import { PASSWORD_POLICY_HINT, passwordMinLengthRule } from '@/modules/auth/password-policy';
 import {
   createUser,
   deleteUser,
@@ -88,9 +90,28 @@ export function UsersPage() {
     queryFn: () => listUsers(filters),
   });
   const profiles = useQuery({ queryKey: ['access-profiles'], queryFn: listProfiles });
+  const leaderships = useQuery({
+    queryKey: ['cadastro', 'liderancas', 'users'],
+    queryFn: () => listarLiderancas(),
+  });
+
+  const leadershipOptions = (leaderships.data ?? [])
+    .filter((item) => item.ativo)
+    .map((item) => ({
+    value: item.id,
+    label: item.apelido_campanha
+      ? `${item.pessoa_nome_completo ?? `Liderança #${item.id}`} (${item.apelido_campanha})`
+      : (item.pessoa_nome_completo ?? `Liderança #${item.id}`),
+  }));
+
+  const leadershipNameById = new Map(leadershipOptions.map((item) => [item.value, item.label]));
 
   const saveUser = useMutation({
     mutationFn: (values: UserFormValues) => {
+      const mobileFields = {
+        lideranca_id: values.lideranca_id ?? null,
+        habilitado_app_lider: Boolean(values.habilitado_app_lider),
+      };
       if (editing) {
         const update: UserUpdateInput = {
           nome: values.nome,
@@ -99,10 +120,20 @@ export function UsersPage() {
           pessoa_id: values.pessoa_id,
           status: values.status,
           perfil_ids: values.perfil_ids,
+          ...mobileFields,
         };
         return updateUser(editing.id, update);
       }
-      return createUser(values);
+      return createUser({
+        nome: values.nome,
+        email: values.email,
+        senha: values.senha!,
+        telefone: values.telefone,
+        pessoa_id: values.pessoa_id,
+        perfil_ids: values.perfil_ids,
+        lideranca_id: values.lideranca_id ?? undefined,
+        habilitado_app_lider: Boolean(values.habilitado_app_lider),
+      });
     },
     onSuccess: async () => {
       AppToast.success(editing ? 'Usuário atualizado.' : 'Usuário criado.');
@@ -131,7 +162,11 @@ export function UsersPage() {
   const openCreate = () => {
     setEditing(null);
     userForm.resetFields();
-    userForm.setFieldsValue({ status: 'ativo', perfil_ids: [] });
+    userForm.setFieldsValue({
+      status: 'ativo',
+      perfil_ids: [],
+      habilitado_app_lider: false,
+    });
     setUserModalOpen(true);
   };
 
@@ -143,6 +178,8 @@ export function UsersPage() {
       telefone: user.telefone ?? undefined,
       status: user.status,
       perfil_ids: user.perfis.map((profile) => profile.id),
+      lideranca_id: user.lideranca_id ?? undefined,
+      habilitado_app_lider: user.habilitado_app_lider ?? false,
     });
     setUserModalOpen(true);
   };
@@ -202,6 +239,25 @@ export function UsersPage() {
       render: (_, user) => user.perfis.map((profile) => <Tag key={profile.id}>{profile.nome}</Tag>),
     },
     {
+      title: 'App mobile',
+      key: 'app_mobile',
+      render: (_, user) =>
+        user.habilitado_app_lider ? (
+          <Space direction="vertical" size={0}>
+            <Tag icon={<MobileOutlined />} color="processing">
+              Habilitado
+            </Tag>
+            {user.lideranca_id ? (
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {leadershipNameById.get(user.lideranca_id) ?? `Liderança #${user.lideranca_id}`}
+              </Typography.Text>
+            ) : null}
+          </Space>
+        ) : (
+          <Typography.Text type="secondary">—</Typography.Text>
+        ),
+    },
+    {
       title: 'Status',
       dataIndex: 'status',
       render: (value: UserRecord['status']) => (
@@ -223,9 +279,15 @@ export function UsersPage() {
               <Button icon={<EnvironmentOutlined />} onClick={() => openTerritorial(user)}>
                 Territórios
               </Button>
-              <Button icon={<KeyOutlined />} onClick={() => void handleResetPassword(user)}>
-                Redefinir senha
-              </Button>
+              <Popconfirm
+                title="Redefinir senha deste usuário?"
+                description="Uma nova senha temporária será gerada. No próximo acesso, o usuário será obrigado a definir uma nova senha pessoal."
+                okText="Sim"
+                cancelText="Não"
+                onConfirm={() => void handleResetPassword(user)}
+              >
+                <Button icon={<KeyOutlined />}>Redefinir senha</Button>
+              </Popconfirm>
             </>
           )}
           {permissions.includes('usuarios.excluir') && (
@@ -342,9 +404,18 @@ export function UsersPage() {
             <Input />
           </Form.Item>
           {!editing && (
-            <Form.Item name="senha" label="Senha inicial" rules={[{ required: true }, { min: 12 }]}>
-              <Input.Password />
-            </Form.Item>
+            <>
+              <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
+                {PASSWORD_POLICY_HINT}
+              </Typography.Paragraph>
+              <Form.Item
+                name="senha"
+                label="Senha inicial"
+                rules={[{ required: true }, passwordMinLengthRule]}
+              >
+                <Input.Password />
+              </Form.Item>
+            </>
           )}
           <Form.Item name="telefone" label="Telefone">
             <Input />
@@ -362,6 +433,47 @@ export function UsersPage() {
               }))}
             />
           </Form.Item>
+
+          <Typography.Title level={5} style={{ marginTop: 8, marginBottom: 12 }}>
+            App mobile de liderança
+          </Typography.Title>
+          <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+            Permite que o usuário acesse o aplicativo de campo para cadastrar pessoas. É
+            necessário vincular uma liderança operacional.
+          </Typography.Paragraph>
+
+          <Form.Item name="habilitado_app_lider" valuePropName="checked">
+            <Checkbox>Habilitado no app mobile</Checkbox>
+          </Form.Item>
+
+          <Form.Item
+            noStyle
+            shouldUpdate={(before, after) =>
+              before.habilitado_app_lider !== after.habilitado_app_lider
+            }
+          >
+            {({ getFieldValue }) => (
+              <Form.Item
+                name="lideranca_id"
+                label="Liderança vinculada"
+                rules={
+                  getFieldValue('habilitado_app_lider')
+                    ? [{ required: true, message: 'Selecione a liderança vinculada ao usuário.' }]
+                    : []
+                }
+              >
+                <Select
+                  allowClear
+                  showSearch
+                  loading={leaderships.isPending}
+                  optionFilterProp="label"
+                  placeholder="Selecione a liderança do usuário"
+                  options={leadershipOptions}
+                />
+              </Form.Item>
+            )}
+          </Form.Item>
+
           {editing && (
             <Form.Item name="status" label="Status">
               <Select

@@ -37,11 +37,20 @@ export interface TerritorialAccess {
   criado_em: string;
 }
 
+export interface SelfProfileUpdateInput {
+  nome?: string;
+  email?: string;
+  telefone?: string | null;
+}
+
 export interface AuthUser {
   id: number;
   uuid_publico: string;
   tenant_id: number;
   pessoa_id?: number | null;
+  lideranca_id?: number | null;
+  habilitado_app_lider?: boolean;
+  ultimo_acesso_app_em?: string | null;
   nome: string;
   email: string;
   telefone?: string | null;

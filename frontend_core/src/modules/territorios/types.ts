@@ -73,7 +73,9 @@ export interface Territorio {
   zona_eleitoral_id: number | null;
   secao_eleitoral_id: number | null;
   territorio_pai_id: number | null;
+  cor: string;
   ativo: boolean;
+  malha_geom?: TerritorioMalhaGeometry | null;
   criado_em: string;
   atualizado_em: string;
 }
@@ -91,7 +93,14 @@ export interface TerritorioInput {
   zona_eleitoral_id?: number;
   secao_eleitoral_id?: number;
   territorio_pai_id?: number;
+  cor?: string;
+  malha_geom?: TerritorioMalhaGeometry | null;
 }
+
+export type TerritorioMalhaGeometry = {
+  type: 'Polygon' | 'MultiPolygon';
+  coordinates: number[][][] | number[][][][];
+};
 
 export type VinculoPessoaTerritorio = 'moradia' | 'atuacao' | 'votacao' | 'responsabilidade';
 
@@ -119,4 +128,65 @@ export interface MapPerson {
   apelido: string | null;
   telefone: string | null;
   territorio: string | null;
+}
+
+export interface MapMunicipalityShape {
+  territorio_id: number;
+  codigo_municipio_ibge: number;
+  nome: string;
+  cor: string;
+  quantidade_eleitores: number;
+  quantidade_pessoas: number;
+  geometry: MapTerritoryGeometry;
+}
+
+export type MapTerritoryMeshType =
+  | 'municipio'
+  | 'bairro'
+  | 'microrregiao'
+  | 'comunidade'
+  | 'area_personalizada';
+
+export type MapLayerMode = MapTerritoryMeshType | 'people';
+
+export type MapTerritoryGeometry = {
+  type: 'Polygon' | 'MultiPolygon';
+  coordinates: number[][][] | number[][][][];
+};
+
+export interface MapTerritoryShape {
+  territorio_id: number;
+  tipo_codigo: string;
+  codigo_municipio_ibge: number | null;
+  nome: string;
+  cor: string;
+  quantidade_eleitores: number;
+  quantidade_pessoas: number;
+  geometry: MapTerritoryGeometry;
+}
+
+export interface TerritorioPessoaVinculada {
+  id: number;
+  nome_completo: string;
+  telefone: string | null;
+  email: string | null;
+  papel: string;
+}
+
+export interface TerritorioDetalhe {
+  territorio_id: number;
+  territorio_nome: string;
+  cor: string;
+  tipo_codigo: string;
+  tipo_nome: string;
+  codigo_municipio_ibge: number | null;
+  codigo_uf_ibge: number | null;
+  uf: string | null;
+  estado_nome: string | null;
+  municipio_nome: string | null;
+  habitantes: number | null;
+  quantidade_eleitores: number;
+  quantidade_pessoas: number;
+  geometry: MapTerritoryGeometry | null;
+  pessoas: TerritorioPessoaVinculada[];
 }

@@ -6,7 +6,7 @@ from typing import Any
 
 from app.auth.access import RequestActor, TerritorialAccess
 from app.core.errors import AuthorizationError, BusinessRuleError, ResourceNotFoundError
-from app.mod_territorio.repository import TerritorioRepository
+from app.mod_territorio.repository import MESH_TERRITORY_TYPES, TerritorioRepository
 from app.mod_territorio.schemas import (
     BairroCreate,
     GeocodificacaoInput,
@@ -121,6 +121,49 @@ class TerritorioService:
                 raise AuthorizationError("Administracao territorial nao permitida.")
         return territory
 
+    async def get_territory_detail(
+        self,
+        actor: RequestActor,
+        access: TerritorialAccess,
+        territory_id: int,
+    ) -> dict[str, Any]:
+        await self.ensure_access(actor, access, territory_id, administer=False)
+        detail = await self.repository.territory_detail(actor.tenant_id, territory_id)
+        if detail is None:
+            raise ResourceNotFoundError("Territorio", territory_id)
+        return detail
+
+    async def _persist_territory_mesh(
+        self,
+        tenant_id: int,
+        territory: dict[str, Any],
+        payload: TerritorioCreate | TerritorioUpdate,
+        *,
+        is_update: bool,
+    ) -> None:
+        tipo_codigo = territory["tipo_codigo"]
+        if tipo_codigo not in MESH_TERRITORY_TYPES:
+            return
+        if is_update and "malha_geom" not in payload.model_fields_set:
+            return
+        if not is_update and payload.malha_geom is None:
+            return
+
+        malha_geom = (
+            payload.malha_geom.model_dump()
+            if payload.malha_geom is not None
+            else None
+        )
+        await self.repository.save_territory_mesh(
+            tenant_id,
+            territory["id"],
+            tipo_codigo,
+            territory["nome"],
+            territory["cor"],
+            territory.get("bairro_id"),
+            malha_geom,
+        )
+
     async def create_territory(
         self,
         actor: RequestActor,
@@ -135,8 +178,13 @@ class TerritorioService:
         elif not access.unrestricted:
             raise AuthorizationError("Apenas gestores podem criar territorios raiz.")
         item = await self.repository.create_territory(actor.tenant_id, payload)
+        await self._persist_territory_mesh(
+            actor.tenant_id, item, payload, is_update=False
+        )
         await self.repository.commit()
-        return item
+        refreshed = await self.repository.get_territory(actor.tenant_id, item["id"])
+        assert refreshed is not None
+        return refreshed
 
     async def update_territory(
         self,
@@ -163,8 +211,13 @@ class TerritorioService:
         )
         if item is None:
             raise ResourceNotFoundError("Territorio", territory_id)
+        await self._persist_territory_mesh(
+            actor.tenant_id, item, payload, is_update=True
+        )
         await self.repository.commit()
-        return item
+        refreshed = await self.repository.get_territory(actor.tenant_id, territory_id)
+        assert refreshed is not None
+        return refreshed
 
     async def tree(
         self, actor: RequestActor, access: TerritorialAccess

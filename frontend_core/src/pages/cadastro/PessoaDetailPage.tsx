@@ -37,6 +37,7 @@ import 'leaflet/dist/leaflet.css';
 import { AttachmentsPanel } from '@/components/arquivos/AttachmentsPanel';
 import { PersonInteractionsPanel } from '@/components/comunicacao/PersonInteractionsPanel';
 import { AppToast } from '@/components/feedback/AppToast';
+import { RemotePersonSelect } from '@/components/forms/RemotePersonSelect';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   ElectoralLocationFields,
@@ -48,7 +49,6 @@ import {
   atualizarEndereco,
   atualizarPessoa,
   atualizarRedeSocial,
-  buscarPessoas,
   calcularCompletudePessoa,
   criarContato,
   criarDocumento,
@@ -335,7 +335,6 @@ export function PessoaDetailPage() {
   const [printing, setPrinting] = useState(false);
   const [territoryModalOpen, setTerritoryModalOpen] = useState(false);
   const [indicationModalOpen, setIndicationModalOpen] = useState(false);
-  const [indicatedPersonSearch, setIndicatedPersonSearch] = useState('');
   const [form] = Form.useForm<EditValues>();
   const [territoryForm] = Form.useForm<TerritoryLinkValues>();
   const [indicationForm] = Form.useForm<IndicationValues>();
@@ -369,11 +368,6 @@ export function PessoaDetailPage() {
     queryKey: ['cadastro', 'pessoa', personId],
     queryFn: () => obterPessoa(personId),
     enabled: Number.isInteger(personId),
-  });
-  const indicatedPeopleQuery = useQuery({
-    queryKey: ['cadastro', 'pessoas', 'busca-indicada', indicatedPersonSearch],
-    queryFn: () => buscarPessoas(indicatedPersonSearch),
-    enabled: indicationModalOpen && indicatedPersonSearch.trim().length >= 2,
   });
   const tagsQuery = useQuery({ queryKey: ['cadastro', 'tags'], queryFn: listarTags });
   const tagColorsById = useMemo(() => {
@@ -583,7 +577,6 @@ export function PessoaDetailPage() {
     onSuccess: async () => {
       AppToast.success('Indicação adicionada.');
       setIndicationModalOpen(false);
-      setIndicatedPersonSearch('');
       indicationForm.resetFields();
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['cadastro', 'pessoa', personId] }),
@@ -1451,7 +1444,6 @@ export function PessoaDetailPage() {
         confirmLoading={createIndicationMutation.isPending}
         onCancel={() => {
           setIndicationModalOpen(false);
-          setIndicatedPersonSearch('');
           indicationForm.resetFields();
         }}
         onOk={() =>
@@ -1464,21 +1456,7 @@ export function PessoaDetailPage() {
             label="Pessoa indicada"
             rules={[{ required: true, message: 'Selecione a pessoa indicada' }]}
           >
-            <Select
-              showSearch
-              filterOption={false}
-              placeholder="Digite ao menos dois caracteres"
-              onSearch={setIndicatedPersonSearch}
-              loading={indicatedPeopleQuery.isFetching}
-              notFoundContent={
-                indicatedPersonSearch.trim().length < 2
-                  ? 'Digite ao menos dois caracteres'
-                  : 'Nenhuma pessoa encontrada'
-              }
-              options={(indicatedPeopleQuery.data ?? [])
-                .filter((item) => item.id !== personId)
-                .map((item) => ({ value: item.id, label: item.nome_completo }))}
-            />
+            <RemotePersonSelect excludeIds={[personId]} />
           </Form.Item>
           <Form.Item name="data_indicacao" label="Data da indicação" rules={[{ required: true }]}>
             <Input type="date" />

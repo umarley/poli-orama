@@ -9,12 +9,19 @@ export function ProtectedRoute({ children }: PropsWithChildren) {
   const hasSessionToken = useSessionStore((state) =>
     Boolean(state.accessToken || state.refreshToken),
   );
+  const mustChangePassword = useSessionStore((state) => state.user?.mustChangePassword);
   const location = useLocation();
   const tenant = useSessionStore((state) => state.tenant);
   const clearSession = useSessionStore((state) => state.clearSession);
 
+  const changePasswordPath = '/minha-conta/alterar-senha';
+
   if (!isAuthenticated || !hasSessionToken) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  if (mustChangePassword && location.pathname !== changePasswordPath) {
+    return <Navigate to={changePasswordPath} replace />;
   }
 
   if (tenant && !['ativo', 'trial'].includes(tenant.status)) {

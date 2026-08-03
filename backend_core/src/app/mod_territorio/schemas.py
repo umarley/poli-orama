@@ -13,6 +13,20 @@ class TerritorySchema(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
 
+class TerritorioMalhaGeom(TerritorySchema):
+    type: Literal["Polygon", "MultiPolygon"]
+    coordinates: list[object]
+
+    @model_validator(mode="after")
+    def validate_coordinates(self) -> TerritorioMalhaGeom:
+        if self.type == "Polygon":
+            if not isinstance(self.coordinates, list) or len(self.coordinates) < 1:
+                raise ValueError("Polygon exige ao menos um anel de coordenadas.")
+        elif not isinstance(self.coordinates, list) or len(self.coordinates) < 1:
+            raise ValueError("MultiPolygon exige ao menos um poligono.")
+        return self
+
+
 class EstadoResponse(TerritorySchema):
     codigo_ibge: int
     uf: str
@@ -27,6 +41,7 @@ class MunicipioResponse(TerritorySchema):
     nome: str
     latitude: Decimal | None = None
     longitude: Decimal | None = None
+    habitantes: int | None = Field(default=None, ge=0)
 
 
 class BairroResponse(TerritorySchema):
@@ -111,6 +126,8 @@ class TerritorioCreate(TerritorySchema):
     zona_eleitoral_id: int | None = Field(default=None, ge=1)
     secao_eleitoral_id: int | None = Field(default=None, ge=1)
     territorio_pai_id: int | None = Field(default=None, ge=1)
+    cor: str = Field(default="#1677FF", pattern=r"^#[0-9A-Fa-f]{6}$")
+    malha_geom: TerritorioMalhaGeom | None = None
 
 
 class TerritorioUpdate(TerritorySchema):
@@ -122,7 +139,9 @@ class TerritorioUpdate(TerritorySchema):
     zona_eleitoral_id: int | None = Field(default=None, ge=1)
     secao_eleitoral_id: int | None = Field(default=None, ge=1)
     territorio_pai_id: int | None = Field(default=None, ge=1)
+    cor: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
     ativo: bool | None = None
+    malha_geom: TerritorioMalhaGeom | None = None
 
 
 class TerritorioResponse(TerritorySchema):
@@ -138,7 +157,9 @@ class TerritorioResponse(TerritorySchema):
     zona_eleitoral_id: int | None = None
     secao_eleitoral_id: int | None = None
     territorio_pai_id: int | None = None
+    cor: str
     ativo: bool
+    malha_geom: dict[str, object] | None = None
     criado_em: datetime
     atualizado_em: datetime
 
@@ -218,3 +239,50 @@ class MapPerson(TerritorySchema):
     apelido: str | None = None
     telefone: str | None = None
     territorio: str | None = None
+
+
+class MapMunicipalityShape(TerritorySchema):
+    territorio_id: int
+    codigo_municipio_ibge: int
+    nome: str
+    cor: str
+    quantidade_eleitores: int = Field(ge=0)
+    quantidade_pessoas: int = Field(ge=0)
+    geometry: dict[str, object]
+
+
+class MapTerritoryShape(TerritorySchema):
+    territorio_id: int
+    tipo_codigo: str
+    codigo_municipio_ibge: int | None = None
+    nome: str
+    cor: str
+    quantidade_eleitores: int = Field(default=0, ge=0)
+    quantidade_pessoas: int = Field(ge=0)
+    geometry: dict[str, object]
+
+
+class TerritorioPessoaVinculada(TerritorySchema):
+    id: int
+    nome_completo: str
+    telefone: str | None = None
+    email: str | None = None
+    papel: str
+
+
+class TerritorioDetalheResponse(TerritorySchema):
+    territorio_id: int
+    territorio_nome: str
+    cor: str
+    tipo_codigo: str
+    tipo_nome: str
+    codigo_municipio_ibge: int | None = None
+    codigo_uf_ibge: int | None = None
+    uf: str | None = None
+    estado_nome: str | None = None
+    municipio_nome: str | None = None
+    habitantes: int | None = Field(default=None, ge=0)
+    quantidade_eleitores: int = Field(ge=0)
+    quantidade_pessoas: int = Field(ge=0)
+    geometry: dict[str, object] | None = None
+    pessoas: list[TerritorioPessoaVinculada]
