@@ -275,7 +275,10 @@ function TerritoryMapShapes({
             const color = String(feature?.properties?.cor ?? '#1677FF');
             pathLayer.setStyle({ color, fillColor: color, fillOpacity: 0.2, opacity: 0.9, weight: 2 });
           });
-          pathLayer.getElement()?.style.setProperty('cursor', 'pointer');
+          const pathElement = pathLayer.getElement();
+          if (pathElement instanceof HTMLElement || pathElement instanceof SVGElement) {
+            pathElement.style.setProperty('cursor', 'pointer');
+          }
         }
       }}
     />
@@ -367,7 +370,10 @@ export function TerritoriosPage() {
     mapTerritoryFilter === 'all' ? undefined : mapTerritoryFilter;
   const territoryShapes = useQuery({
     queryKey: ['territorios', 'mapa', 'malhas', mapLayerMode, selectedMapTerritoryId],
-    queryFn: () => obterShapesMalhas(mapLayerMode, selectedMapTerritoryId),
+    queryFn: () => {
+      if (mapLayerMode === 'people') return Promise.resolve([]);
+      return obterShapesMalhas(mapLayerMode, selectedMapTerritoryId);
+    },
     enabled: mapLayerMode !== 'people',
   });
   const types = useQuery({
@@ -388,7 +394,8 @@ export function TerritoriosPage() {
   const meshContextStateCode =
     selectedStateCode ??
     selectedTerritory?.codigo_uf_ibge ??
-    parentTerritory?.codigo_uf_ibge;
+    parentTerritory?.codigo_uf_ibge ??
+    undefined;
   const states = useQuery({
     queryKey: ['territorios', 'global', 'estados'],
     queryFn: listarEstados,
