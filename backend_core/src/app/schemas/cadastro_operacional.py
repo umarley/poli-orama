@@ -392,7 +392,9 @@ class SuspeitaDuplicidadeResponse(CadastroSchema):
     id: int
     tenant_id: int
     pessoa_id: int
+    pessoa_nome: str | None = None
     pessoa_duplicada_id: int
+    pessoa_duplicada_nome: str | None = None
     criterio: CriterioDuplicidade
     score_similaridade: Decimal | None
     status: StatusDuplicidade

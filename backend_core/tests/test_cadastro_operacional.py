@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.access import RequestActor
@@ -24,6 +25,7 @@ from app.schemas.cadastro_operacional import (
     PessoaCadastroCreate,
     PessoaFiltros,
     PessoaMergeRequest,
+    TagInput,
 )
 
 
@@ -43,6 +45,42 @@ def make_actor() -> RequestActor:
         ),
         token="token",
     )
+
+
+def test_create_tag_translates_duplicate_name_to_business_error() -> None:
+    session = AsyncMock(spec=AsyncSession)
+    session.flush.side_effect = IntegrityError(
+        "INSERT INTO cadastro.tag",
+        {},
+        Exception('duplicate key value violates unique constraint "uq_tag_nome"'),
+    )
+    repository = CadastroRepository(session)
+
+    with pytest.raises(BusinessRuleError) as error:
+        asyncio.run(repository.create_tag(10, TagInput(nome="Mobilizacao")))
+
+    assert error.value.code == "tag_name_already_exists"
+    session.rollback.assert_awaited_once()
+
+
+def test_cadastro_audit_uses_shared_audit_service() -> None:
+    session = AsyncMock(spec=AsyncSession)
+    repository = CadastroRepository(session)
+
+    asyncio.run(
+        repository.audit(
+            tenant_id=10,
+            user_id=20,
+            action="criar",
+            table_name="tag",
+            record_id=30,
+            before=None,
+            after={"id": 30},
+        )
+    )
+
+    session.add.assert_called_once()
+    session.flush.assert_awaited_once()
 
 
 def test_cpf_is_normalized_and_validated() -> None:
@@ -183,6 +221,33 @@ async def test_inactive_link_cannot_be_reactivated_when_another_is_active() -> N
 
     assert error.value.code == "person_already_has_active_leadership"
     repository.set_hierarchy_status.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_duplicate_list_includes_both_person_names() -> None:
+    repository = AsyncMock()
+    repository.list_duplicates.return_value = [
+        SimpleNamespace(
+            id=7,
+            tenant_id=10,
+            pessoa_id=11,
+            pessoa_duplicada_id=12,
+            criterio="telefone",
+            score_similaridade=None,
+            status="pendente",
+            resolvido_por=None,
+            resolvido_em=None,
+            criado_em=datetime.now(UTC),
+        )
+    ]
+    repository.duplicate_person_names.return_value = {11: "Maria A", 12: "Maria B"}
+    service = CadastroService(repository)
+
+    result = await service.list_duplicates(make_actor(), "pendente")
+
+    assert result[0].pessoa_nome == "Maria A"
+    assert result[0].pessoa_duplicada_nome == "Maria B"
+    repository.duplicate_person_names.assert_awaited_once_with(10, {11, 12})
 
 
 def test_cadastro_router_exposes_required_operational_routes() -> None:

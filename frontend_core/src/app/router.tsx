@@ -13,6 +13,7 @@ import { RequiredPasswordChangePage } from '@/pages/auth/RequiredPasswordChangeP
 import { AgendaPage } from '@/pages/agenda/AgendaPage';
 import { EventDetailPage } from '@/pages/agenda/EventDetailPage';
 import { CadastroPage } from '@/pages/cadastro/CadastroPage';
+import { DuplicidadesPage } from '@/pages/cadastro/DuplicidadesPage';
 import { IndicacoesGraphPage } from '@/pages/cadastro/IndicacoesGraphPage';
 import { LiderancasPage } from '@/pages/cadastro/LiderancasPage';
 import { PessoaDetailPage } from '@/pages/cadastro/PessoaDetailPage';
@@ -33,6 +34,7 @@ import { NotFoundPage } from '@/pages/shared/NotFoundPage';
 import { AdminTenantsPage } from '@/pages/tenants/AdminTenantsPage';
 import { SubscriptionPage } from '@/pages/tenants/SubscriptionPage';
 import { TenantSettingsPage } from '@/pages/tenants/TenantSettingsPage';
+import { TenantTerminologySettingsPage } from '@/pages/tenants/TenantTerminologySettingsPage';
 import { TerritoriosPage } from '@/pages/territorios/TerritoriosPage';
 import { TerritorioDetailPage } from '@/pages/territorios/TerritorioDetailPage';
 import { UsersPage } from '@/pages/users/UsersPage';
@@ -83,6 +85,14 @@ export const router = createBrowserRouter([
       {
         path: 'cadastro/validacoes',
         element: withPermission('cadastro.visualizar', <ValidacoesPage />),
+      },
+      {
+        path: 'cadastro/duplicidades',
+        element: (
+          <ProfileRoute profiles={['gestor', 'gestor_saas']}>
+            {withPermission('cadastro.visualizar', <DuplicidadesPage />)}
+          </ProfileRoute>
+        ),
       },
       {
         path: 'cadastro/indicacoes',
@@ -160,6 +170,14 @@ export const router = createBrowserRouter([
         element: (
           <ProfileRoute profiles={['gestor', 'gestor_saas', 'coordenador_territorial']}>
             <CampaignManagementPage />
+          </ProfileRoute>
+        ),
+      },
+      {
+        path: 'configuracoes/nomenclaturas',
+        element: (
+          <ProfileRoute profiles={['gestor', 'gestor_saas']}>
+            <TenantTerminologySettingsPage />
           </ProfileRoute>
         ),
       },

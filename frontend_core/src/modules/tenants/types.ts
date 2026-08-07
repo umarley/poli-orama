@@ -6,6 +6,12 @@ export type TenantStatus =
   | 'trial'
   | 'inadimplente';
 
+export type CommunityTerminology = 'comunidades' | 'frentes';
+
+export interface TenantPreferences extends Record<string, unknown> {
+  nomenclatura_comunidades?: CommunityTerminology;
+}
+
 export interface Plan {
   id: number;
   uuid_publico: string;
@@ -28,7 +34,7 @@ export interface TenantConfiguration {
   fuso_horario: string;
   percentual_alerta_meta: string;
   integracoes: Record<string, unknown>;
-  preferencias: Record<string, unknown>;
+  preferencias: TenantPreferences;
 }
 
 export interface TenantRecord {

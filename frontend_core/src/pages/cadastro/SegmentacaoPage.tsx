@@ -51,6 +51,8 @@ import {
   vincularTag,
 } from '@/modules/cadastro/pessoas-service';
 import type { Comunidade, NucleoFamiliar, TagCadastro } from '@/modules/cadastro/types';
+import { getTenantConfiguration } from '@/modules/tenants/tenant-service';
+import { getCommunityTerminologyLabels } from '@/modules/tenants/tenant-preferences';
 import { listarTerritorios } from '@/modules/territorios/territorios-service';
 import { normalizeApiError } from '@/services/api/api-error';
 import { useSessionStore } from '@/stores/session-store';
@@ -83,6 +85,11 @@ export function SegmentacaoPage() {
   const [viewedCommunity, setViewedCommunity] = useState<Comunidade | null>(null);
   const [viewedNucleus, setViewedNucleus] = useState<NucleoFamiliar | null>(null);
   const [form] = Form.useForm<DialogValues>();
+  const configurationQuery = useQuery({
+    queryKey: ['tenant-configuration'],
+    queryFn: getTenantConfiguration,
+  });
+  const communityTerms = getCommunityTerminologyLabels(configurationQuery.data);
   const tagsQuery = useQuery({ queryKey: ['cadastro', 'tags'], queryFn: listarTags });
   const tagStatusMutation = useMutation({
     mutationFn: ({ id, ativo }: { id: number; ativo: boolean }) => atualizarTag(id, { ativo }),
@@ -237,7 +244,7 @@ export function SegmentacaoPage() {
     <div>
       <PageHeader
         title="Segmentação"
-        description="Tags, comunidades e núcleos familiares da base de pessoas."
+        description={`Tags, ${communityTerms.pluralLower} e núcleos familiares da base de pessoas.`}
         breadcrumbs={[{ label: 'Cadastro', to: '/cadastro' }, { label: 'Segmentação' }]}
       />
       <Card>
@@ -328,7 +335,7 @@ export function SegmentacaoPage() {
             },
             {
               key: 'communities',
-              label: `Comunidades (${communitiesQuery.data?.length ?? 0})`,
+              label: `${communityTerms.plural} (${communitiesQuery.data?.length ?? 0})`,
               children: (
                 <>
                   {canManageSegmentation && (
@@ -338,7 +345,7 @@ export function SegmentacaoPage() {
                       onClick={() => open({ mode: 'create', entity: 'community' })}
                       style={{ marginBottom: 16 }}
                     >
-                      Nova comunidade
+                      Nova {communityTerms.singular}
                     </Button>
                   )}
                   <Table<Comunidade>
@@ -644,7 +651,7 @@ export function SegmentacaoPage() {
 
       <Modal
         open={Boolean(viewedCommunity)}
-        title="Detalhes da comunidade"
+        title={`Detalhes da ${communityTerms.singular}`}
         width={780}
         footer={null}
         onCancel={() => setViewedCommunity(null)}
@@ -714,7 +721,7 @@ export function SegmentacaoPage() {
                   render: (_, person) => (
                     <Popconfirm
                       title="Remover vínculo"
-                      description="Confirma a remoção desta pessoa da comunidade?"
+                      description={`Confirma a remoção desta pessoa da ${communityTerms.singular}?`}
                       okText="Sim"
                       cancelText="Não"
                       okButtonProps={{ danger: true }}
@@ -750,7 +757,7 @@ export function SegmentacaoPage() {
           dialog?.mode === 'link'
             ? 'Vincular pessoa'
             : dialog?.mode === 'edit' && dialog.entity === 'community'
-              ? 'Editar comunidade'
+              ? `Editar ${communityTerms.singular}`
               : dialog?.mode === 'edit'
                 ? 'Editar item'
                 : 'Cadastrar item'
@@ -775,7 +782,7 @@ export function SegmentacaoPage() {
                 />
               </Form.Item>
               {dialog.entity === 'community' ? (
-                <Form.Item name="papel" label="Papel na comunidade">
+                <Form.Item name="papel" label={`Papel na ${communityTerms.singular}`}>
                   <Select
                     allowClear
                     loading={communityRolesQuery.isPending}

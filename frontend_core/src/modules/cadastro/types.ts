@@ -370,6 +370,69 @@ export interface ValidacaoCadastro {
   criado_em: string;
 }
 
+export type CriterioDuplicidade =
+  | 'cpf'
+  | 'telefone'
+  | 'email'
+  | 'titulo_eleitor'
+  | 'nome_data_nascimento'
+  | 'fuzzy';
+
+export type StatusDuplicidade = 'pendente' | 'confirmada' | 'descartada' | 'mesclada';
+
+export type CampoMergePessoa =
+  | 'nome_completo'
+  | 'nome_social'
+  | 'apelido'
+  | 'sexo'
+  | 'data_nascimento'
+  | 'estado_civil'
+  | 'escolaridade_id'
+  | 'profissao_id'
+  | 'religiao_id'
+  | 'observacoes';
+
+export interface SuspeitaDuplicidade {
+  id: number;
+  tenant_id: number;
+  pessoa_id: number;
+  pessoa_nome: string | null;
+  pessoa_duplicada_id: number;
+  pessoa_duplicada_nome: string | null;
+  criterio: CriterioDuplicidade;
+  score_similaridade: string | null;
+  status: StatusDuplicidade;
+  resolvido_por: number | null;
+  resolvido_em: string | null;
+  criado_em: string;
+}
+
+export interface ConflitoMergePessoa {
+  campo: CampoMergePessoa;
+  valor_principal: unknown;
+  valor_origem: unknown;
+}
+
+export interface PessoaMergePreview {
+  suspeita_id: number;
+  pessoa_a: PessoaDetalhe;
+  pessoa_b: PessoaDetalhe;
+  conflitos: ConflitoMergePessoa[];
+}
+
+export interface PessoaMergeInput {
+  pessoa_principal_id: number;
+  campos_origem: CampoMergePessoa[];
+  confirmar: true;
+}
+
+export interface PessoaMergeResponse {
+  merge_id: number;
+  pessoa_principal: PessoaDetalhe;
+  pessoa_origem_id: number;
+  resumo_operacao: Record<string, number>;
+}
+
 export interface BuscaRapidaItem {
   id: number;
   nome_completo: string;

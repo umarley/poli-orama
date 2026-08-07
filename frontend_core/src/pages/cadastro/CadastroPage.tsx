@@ -1,4 +1,10 @@
-import { MoreOutlined, PlusOutlined, SearchOutlined, UserOutlined } from '@ant-design/icons';
+import {
+  MergeCellsOutlined,
+  MoreOutlined,
+  PlusOutlined,
+  SearchOutlined,
+  UserOutlined,
+} from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
@@ -30,6 +36,7 @@ import {
 } from '@/modules/cadastro/pessoas-service';
 import type { PessoaFilters, PessoaListItem } from '@/modules/cadastro/types';
 import { normalizeApiError } from '@/services/api/api-error';
+import { useSessionStore } from '@/stores/session-store';
 import { formatInteger } from '@/utils/number-format';
 
 import styles from './CadastroPage.module.css';
@@ -58,6 +65,10 @@ function formatPhone(value: string | null): string {
 }
 
 export function CadastroPage() {
+  const profiles = useSessionStore((state) => state.user?.profiles ?? []);
+  const canMergeDuplicates = profiles.some((profile) =>
+    ['gestor', 'gestor_saas'].includes(profile),
+  );
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [form] = Form.useForm<PessoaFilters>();
@@ -294,6 +305,14 @@ export function CadastroPage() {
             <Button icon={<UserOutlined />} onClick={() => navigate('/cadastro/validacoes')}>
               Cadastros pendentes
             </Button>
+            {canMergeDuplicates ? (
+              <Button
+                icon={<MergeCellsOutlined />}
+                onClick={() => navigate('/cadastro/duplicidades')}
+              >
+                Duplicidades
+              </Button>
+            ) : null}
           </Space>
         </div>
         <BaseTable<PessoaListItem>

@@ -6,6 +6,7 @@ import {
   FlagOutlined,
   GlobalOutlined,
   ImportOutlined,
+  MergeCellsOutlined,
   FileTextOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
@@ -62,6 +63,13 @@ export const navigationItems: NavigationItem[] = [
     label: 'Rede de indicações',
     icon: <ShareAltOutlined />,
     permission: 'cadastro.visualizar',
+  },
+  {
+    key: '/cadastro/duplicidades',
+    label: 'Duplicidades',
+    icon: <MergeCellsOutlined />,
+    permission: 'cadastro.visualizar',
+    profiles: ['gestor', 'gestor_saas'],
   },
   {
     key: '/territorios',

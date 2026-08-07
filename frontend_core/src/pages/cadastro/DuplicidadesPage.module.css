@@ -1,0 +1,120 @@
+.page {
+  display: grid;
+  gap: 20px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.pairCell {
+  display: grid;
+  min-width: 260px;
+  gap: 3px;
+}
+
+.pairLine {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.drawerContent {
+  display: grid;
+  gap: 20px;
+}
+
+.peopleGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.personCard {
+  height: 100%;
+  cursor: pointer;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+
+.personCardSelected {
+  border-color: #1677ff;
+  box-shadow: 0 0 0 2px rgb(22 119 255 / 10%);
+}
+
+.personTitle {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.personTitleText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dataList {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.dataLine {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dataValue {
+  max-width: 65%;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.sectionHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.comparisonTable :global(.ant-table-cell) {
+  vertical-align: top;
+}
+
+.choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.choiceValue {
+  overflow-wrap: anywhere;
+}
+
+.confirmBox {
+  padding: 14px 16px;
+  border: 1px solid #ffe58f;
+  border-radius: 8px;
+  background: #fffbe6;
+}
+
+@media (max-width: 767px) {
+  .toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .peopleGrid {
+    grid-template-columns: 1fr;
+  }
+}

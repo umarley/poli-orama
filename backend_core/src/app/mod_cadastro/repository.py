@@ -9,10 +9,11 @@ from sqlalchemy import Select, delete, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
-from app.mod_cadastro.mobile import MobileLeaderContext
+from app.audit.service import AuditService
 from app.core.errors import BusinessRuleError
 from app.core.pagination import ListParams, SortDirection
 from app.core.repository import BaseRepository
+from app.mod_cadastro.mobile import MobileLeaderContext
 from app.models import (
     Comunidade,
     Eleitor,
@@ -1372,7 +1373,7 @@ class CadastroRepository(BaseRepository[Pessoa]):
             criado_em=datetime.now(UTC),
         )
         self.session.add(item)
-        await self.session.flush()
+        await self._flush_tag()
         return item
 
     async def tag(self, tenant_id: int, tag_id: int) -> Tag | None:
@@ -1390,8 +1391,20 @@ class CadastroRepository(BaseRepository[Pessoa]):
     async def update_tag(self, item: Tag, payload: TagUpdate) -> Tag:
         for field, value in payload.model_dump(exclude_unset=True).items():
             setattr(item, field, value)
-        await self.session.flush()
+        await self._flush_tag()
         return item
+
+    async def _flush_tag(self) -> None:
+        try:
+            await self.session.flush()
+        except IntegrityError as exc:
+            await self.session.rollback()
+            if "uq_tag_nome" in str(exc.orig).lower():
+                raise BusinessRuleError(
+                    "Ja existe uma tag com este nome neste tenant.",
+                    code="tag_name_already_exists",
+                ) from exc
+            raise
 
     async def add_person_tag(self, tenant_id: int, tag_id: int, person_id: int) -> PessoaTag:
         item = PessoaTag(
@@ -1469,6 +1482,19 @@ class CadastroRepository(BaseRepository[Pessoa]):
             statement.order_by(SuspeitaDuplicidade.criado_em.desc())
         )
         return list(result.all())
+
+    async def duplicate_person_names(
+        self, tenant_id: int, person_ids: set[int]
+    ) -> dict[int, str]:
+        if not person_ids:
+            return {}
+        result = await self.session.execute(
+            select(Pessoa.id, Pessoa.nome_completo).where(
+                Pessoa.tenant_id == tenant_id,
+                Pessoa.id.in_(person_ids),
+            )
+        )
+        return {int(person_id): str(name) for person_id, name in result.all()}
 
     async def duplicate(self, tenant_id: int, duplicate_id: int) -> SuspeitaDuplicidade | None:
         result: SuspeitaDuplicidade | None = await self.session.scalar(
@@ -2024,6 +2050,11 @@ class CadastroRepository(BaseRepository[Pessoa]):
                 raise BusinessRuleError(
                     "Esta pessoa ja possui uma lideranca ativa.",
                     code="person_already_has_active_leadership",
+                ) from exc
+            if "uq_tag_nome" in message:
+                raise BusinessRuleError(
+                    "Ja existe uma tag com este nome neste tenant.",
+                    code="tag_name_already_exists",
                 ) from exc
             raise BusinessRuleError(
                 "Registro duplicado ou referencia invalida.",

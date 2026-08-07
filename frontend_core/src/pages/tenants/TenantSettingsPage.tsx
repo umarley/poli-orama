@@ -1,4 +1,5 @@
 import {
+  ApartmentOutlined,
   BankOutlined,
   CreditCardOutlined,
   FlagOutlined,
@@ -130,7 +131,18 @@ export function TenantSettingsPage() {
   const campaignManager = ['gestor', 'gestor_saas', 'coordenador_territorial'].some((profile) =>
     user?.profiles.includes(profile),
   );
+  const tenantManager = ['gestor', 'gestor_saas'].some((profile) =>
+    user?.profiles.includes(profile),
+  );
   const availableCards: Array<SettingsCard | null> = [
+    tenantManager
+      ? {
+          title: 'Nomenclaturas',
+          description: 'Escolha os termos exibidos na interface para este tenant.',
+          icon: <ApartmentOutlined />,
+          path: '/configuracoes/nomenclaturas',
+        }
+      : null,
     campaignManager
       ? {
           title: 'Campanhas eleitorais',

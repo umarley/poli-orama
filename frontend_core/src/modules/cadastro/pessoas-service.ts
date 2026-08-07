@@ -31,6 +31,11 @@ import type {
   Religiao,
   RedeSocial,
   ValidacaoCadastro,
+  PessoaMergeInput,
+  PessoaMergePreview,
+  PessoaMergeResponse,
+  StatusDuplicidade,
+  SuspeitaDuplicidade,
 } from './types';
 
 const base = '/api/v1/cadastro';
@@ -404,6 +409,39 @@ export async function resolverValidacao(
     status,
     observacao,
   });
+  return data;
+}
+
+export async function listarDuplicidades(status?: StatusDuplicidade) {
+  const { data } = await httpClient.get<SuspeitaDuplicidade[]>(`${base}/duplicidades`, {
+    params: { status },
+  });
+  return data;
+}
+
+export async function obterPreviewMerge(duplicateId: number) {
+  const { data } = await httpClient.get<PessoaMergePreview>(
+    `${base}/duplicidades/${duplicateId}/merge-preview`,
+  );
+  return data;
+}
+
+export async function resolverDuplicidade(
+  duplicateId: number,
+  decisao: 'duplicado' | 'falso_positivo' | 'pendente',
+) {
+  const { data } = await httpClient.patch<SuspeitaDuplicidade>(
+    `${base}/duplicidades/${duplicateId}`,
+    { decisao },
+  );
+  return data;
+}
+
+export async function mesclarDuplicidade(duplicateId: number, payload: PessoaMergeInput) {
+  const { data } = await httpClient.post<PessoaMergeResponse>(
+    `${base}/duplicidades/${duplicateId}/merge`,
+    payload,
+  );
   return data;
 }
 

@@ -36,15 +36,36 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     await dispose_database()
 
 
-app = FastAPI(
+api_app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     openapi_tags=OPENAPI_TAGS,
     lifespan=lifespan,
 )
 
-app.add_middleware(
-    CORSMiddleware,
+api_app.add_middleware(RequestContextMiddleware)
+install_exception_handlers(api_app)
+
+api_app.include_router(health_router)
+api_app.include_router(public_router)
+api_app.include_router(auth_router, prefix=settings.api_v1_prefix)
+api_app.include_router(tenants_router, prefix=settings.api_v1_prefix)
+api_app.include_router(cadastro_router, prefix=settings.api_v1_prefix)
+api_app.include_router(callcenter_router, prefix=settings.api_v1_prefix)
+api_app.include_router(comunicacao_router, prefix=settings.api_v1_prefix)
+api_app.include_router(territorio_router, prefix=settings.api_v1_prefix)
+api_app.include_router(metas_router, prefix=settings.api_v1_prefix)
+api_app.include_router(agenda_router, prefix=settings.api_v1_prefix)
+api_app.include_router(arquivos_router, prefix=settings.api_v1_prefix)
+api_app.include_router(demandas_router, prefix=settings.api_v1_prefix)
+api_app.include_router(eleicoes_router, prefix=settings.api_v1_prefix)
+api_app.include_router(etl_router, prefix=settings.api_v1_prefix)
+api_app.include_router(dashboard_router, prefix=settings.api_v1_prefix)
+
+# O CORS precisa envolver toda a aplicacao para tambem adicionar os headers
+# nas respostas 500 produzidas pelo ServerErrorMiddleware do Starlette.
+app = CORSMiddleware(
+    app=api_app,
     allow_origins=settings.cors_origin_list,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -58,21 +79,3 @@ app.add_middleware(
     ],
     expose_headers=["X-Request-ID"],
 )
-app.add_middleware(RequestContextMiddleware)
-install_exception_handlers(app)
-
-app.include_router(health_router)
-app.include_router(public_router)
-app.include_router(auth_router, prefix=settings.api_v1_prefix)
-app.include_router(tenants_router, prefix=settings.api_v1_prefix)
-app.include_router(cadastro_router, prefix=settings.api_v1_prefix)
-app.include_router(callcenter_router, prefix=settings.api_v1_prefix)
-app.include_router(comunicacao_router, prefix=settings.api_v1_prefix)
-app.include_router(territorio_router, prefix=settings.api_v1_prefix)
-app.include_router(metas_router, prefix=settings.api_v1_prefix)
-app.include_router(agenda_router, prefix=settings.api_v1_prefix)
-app.include_router(arquivos_router, prefix=settings.api_v1_prefix)
-app.include_router(demandas_router, prefix=settings.api_v1_prefix)
-app.include_router(eleicoes_router, prefix=settings.api_v1_prefix)
-app.include_router(etl_router, prefix=settings.api_v1_prefix)
-app.include_router(dashboard_router, prefix=settings.api_v1_prefix)

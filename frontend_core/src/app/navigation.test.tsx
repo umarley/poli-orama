@@ -21,5 +21,6 @@ describe('navegação por permissão', () => {
   it('usa o item mais específico em rotas internas de cadastro', () => {
     expect(getNavigationLabel('/cadastro/segmentacao')).toBe('Tags e comunidades');
     expect(getNavigationLabel('/cadastro/indicacoes')).toBe('Rede de indicações');
+    expect(getNavigationLabel('/cadastro/duplicidades')).toBe('Duplicidades');
   });
 });

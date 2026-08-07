@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.access import get_db_session, require_saas_admin
 from app.core.errors import ResourceNotFoundError
-from app.main import app
+from app.main import api_app, app
 
 
 @pytest.fixture(autouse=True)
@@ -17,10 +17,10 @@ def authenticated_admin() -> None:
     async def fake_session():
         yield AsyncMock(spec=AsyncSession)
 
-    app.dependency_overrides[require_saas_admin] = fake_admin
-    app.dependency_overrides[get_db_session] = fake_session
+    api_app.dependency_overrides[require_saas_admin] = fake_admin
+    api_app.dependency_overrides[get_db_session] = fake_session
     yield
-    app.dependency_overrides.clear()
+    api_app.dependency_overrides.clear()
 
 
 def test_validation_error_uses_standard_contract() -> None:
@@ -52,12 +52,12 @@ def test_not_found_uses_standard_contract() -> None:
         async def get_by_id(tenant_id: int) -> None:
             raise ResourceNotFoundError("Tenant", tenant_id)
 
-    app.dependency_overrides[get_tenant_service] = MissingService
+    api_app.dependency_overrides[get_tenant_service] = MissingService
     try:
         with TestClient(app) as client:
             response = client.get("/api/v1/tenants/99")
     finally:
-        app.dependency_overrides.pop(get_tenant_service, None)
+        api_app.dependency_overrides.pop(get_tenant_service, None)
 
     assert response.status_code == 404
     assert response.json()["code"] == "resource_not_found"
@@ -72,14 +72,18 @@ def test_internal_error_hides_implementation_details() -> None:
         async def get_by_id(tenant_id: int) -> None:
             raise RuntimeError(f"sensitive failure for {tenant_id}")
 
-    app.dependency_overrides[get_tenant_service] = BrokenService
+    api_app.dependency_overrides[get_tenant_service] = BrokenService
     try:
         with TestClient(app, raise_server_exceptions=False) as client:
-            response = client.get("/api/v1/tenants/1")
+            response = client.get(
+                "/api/v1/tenants/1",
+                headers={"Origin": "https://app.poliorama.com.br"},
+            )
     finally:
-        app.dependency_overrides.pop(get_tenant_service, None)
+        api_app.dependency_overrides.pop(get_tenant_service, None)
 
     assert response.status_code == 500
     assert response.json()["code"] == "internal_error"
     assert response.json()["details"] is None
     assert "sensitive" not in response.text
+    assert response.headers["access-control-allow-origin"] == "https://app.poliorama.com.br"

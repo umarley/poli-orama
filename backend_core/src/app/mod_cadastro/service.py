@@ -999,9 +999,23 @@ class CadastroService:
     async def list_duplicates(
         self, actor: RequestActor, status: str | None
     ) -> list[SuspeitaDuplicidadeResponse]:
+        items = await self.repository.list_duplicates(actor.tenant_id, status)
+        names = await self.repository.duplicate_person_names(
+            actor.tenant_id,
+            {
+                person_id
+                for item in items
+                for person_id in (item.pessoa_id, item.pessoa_duplicada_id)
+            },
+        )
         return [
-            SuspeitaDuplicidadeResponse.model_validate(item)
-            for item in await self.repository.list_duplicates(actor.tenant_id, status)
+            SuspeitaDuplicidadeResponse.model_validate(item).model_copy(
+                update={
+                    "pessoa_nome": names.get(item.pessoa_id),
+                    "pessoa_duplicada_nome": names.get(item.pessoa_duplicada_id),
+                }
+            )
+            for item in items
         ]
 
     async def merge_preview(self, actor: RequestActor, duplicate_id: int) -> PessoaMergePreview:

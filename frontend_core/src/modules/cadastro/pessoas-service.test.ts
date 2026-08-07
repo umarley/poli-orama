@@ -22,10 +22,14 @@ import {
   definirEleitor,
   definirLideranca,
   listarHierarquia,
+  listarDuplicidades,
   listarLiderancas,
   listarPessoas,
   listarReligioes,
   obterGrafoIndicacoes,
+  obterPreviewMerge,
+  mesclarDuplicidade,
+  resolverDuplicidade,
   resolverValidacao,
   substituirTiposPessoa,
 } from './pessoas-service';
@@ -223,5 +227,46 @@ describe('serviços de cadastro', () => {
     expect(get).toHaveBeenCalledWith('/api/v1/cadastro/indicacoes/grafo', {
       params: { pessoa_id: 10, profundidade: 4, limite: 300 },
     });
+  });
+
+  it('lista suspeitas de duplicidade por situação', async () => {
+    get.mockResolvedValueOnce({ data: [] });
+
+    await listarDuplicidades('pendente');
+
+    expect(get).toHaveBeenCalledWith('/api/v1/cadastro/duplicidades', {
+      params: { status: 'pendente' },
+    });
+  });
+
+  it('consulta o preview do merge assistido', async () => {
+    get.mockResolvedValueOnce({ data: { suspeita_id: 8, conflitos: [] } });
+
+    await obterPreviewMerge(8);
+
+    expect(get).toHaveBeenCalledWith('/api/v1/cadastro/duplicidades/8/merge-preview');
+  });
+
+  it('confirma ou descarta uma suspeita', async () => {
+    patch.mockResolvedValueOnce({ data: { id: 8, status: 'descartada' } });
+
+    await resolverDuplicidade(8, 'falso_positivo');
+
+    expect(patch).toHaveBeenCalledWith('/api/v1/cadastro/duplicidades/8', {
+      decisao: 'falso_positivo',
+    });
+  });
+
+  it('envia a escolha de principal e campos para o merge', async () => {
+    post.mockResolvedValueOnce({ data: { merge_id: 3 } });
+    const payload = {
+      pessoa_principal_id: 10,
+      campos_origem: ['apelido'] as ['apelido'],
+      confirmar: true as const,
+    };
+
+    await mesclarDuplicidade(8, payload);
+
+    expect(post).toHaveBeenCalledWith('/api/v1/cadastro/duplicidades/8/merge', payload);
   });
 });
