@@ -1135,7 +1135,10 @@ export function TerritoriosPage() {
               optionFilterProp="label"
               options={activeTerritories
                 .filter((item) => item.id !== selectedTerritory?.id)
-                .map((item) => ({ value: item.id, label: item.nome }))}
+                .map((item) => ({
+                  value: item.id,
+                  label: `${item.nome} (${item.tipo_nome})`,
+                }))}
             />
           </Form.Item>
           {usesMeshDrawing ? (
