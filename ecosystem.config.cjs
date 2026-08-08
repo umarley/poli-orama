@@ -93,11 +93,10 @@ module.exports = {
     {
       name: 'poliorama-site',
       cwd: publicSiteDir,
-      script: 'serve',
-      interpreter: 'node',
+      script: 'server.mjs',
       env: {
-        PM2_SERVE_PATH: 'dist',
-        PM2_SERVE_PORT: '4321',
+        HOST: '127.0.0.1',
+        PORT: '4321',
         NODE_ENV: 'production',
       },
     },
