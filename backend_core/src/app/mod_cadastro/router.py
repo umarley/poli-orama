@@ -40,6 +40,7 @@ from app.schemas.cadastro_operacional import (
     ComunidadeInput,
     ComunidadePessoaResponse,
     ComunidadeResponse,
+    DuplicidadeResumoResponse,
     EstadoCivilResponse,
     HierarquiaInput,
     HierarquiaResponse,
@@ -866,6 +867,14 @@ async def list_duplicates(
     ),
 ) -> list[SuspeitaDuplicidadeResponse]:
     return await service.list_duplicates(actor, duplicate_status)
+
+
+@router.get("/duplicidades/resumo", response_model=DuplicidadeResumoResponse)
+async def duplicate_summary(
+    actor: Annotated[RequestActor, Depends(require_permission("cadastro", "visualizar"))],
+    service: Annotated[CadastroService, Depends(get_cadastro_service)],
+) -> DuplicidadeResumoResponse:
+    return await service.duplicate_summary(actor)
 
 
 @router.get(

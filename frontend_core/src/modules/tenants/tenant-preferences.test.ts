@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { getCommunityTerminology, getCommunityTerminologyLabels } from './tenant-preferences';
+import {
+  getCommunityTerminology,
+  getCommunityTerminologyLabels,
+  getLeadershipTerminology,
+  getLeadershipTerminologyLabels,
+} from './tenant-preferences';
 
 describe('preferências de nomenclatura do tenant', () => {
   it('usa Comunidades quando a preferência não está configurada', () => {
@@ -14,7 +19,9 @@ describe('preferências de nomenclatura do tenant', () => {
     expect(getCommunityTerminology(configuration)).toBe('frentes');
     expect(getCommunityTerminologyLabels(configuration)).toMatchObject({
       singular: 'frente',
+      singularTitle: 'Frente',
       plural: 'Frentes',
+      pluralLower: 'frentes',
     });
   });
 
@@ -22,5 +29,35 @@ describe('preferências de nomenclatura do tenant', () => {
     const configuration = { preferencias: { nomenclatura_comunidades: 'grupos' } };
 
     expect(getCommunityTerminology(configuration)).toBe('comunidades');
+  });
+
+  it('usa Lideranças como padrão quando a preferência não está configurada', () => {
+    expect(getLeadershipTerminology()).toBe('liderancas');
+    expect(getLeadershipTerminologyLabels(null)).toMatchObject({
+      menu: 'Lideranças',
+      registeredTitle: 'Lideranças cadastradas',
+      columnTitle: 'Liderança',
+      activeTitle: 'Lideranças ativas',
+    });
+  });
+
+  it('aplica a nomenclatura de Coordenadores', () => {
+    const configuration = {
+      preferencias: { nomenclatura_liderancas: 'coordenadores' },
+    } as const;
+
+    expect(getLeadershipTerminology(configuration)).toBe('coordenadores');
+    expect(getLeadershipTerminologyLabels(configuration)).toMatchObject({
+      menu: 'Coordenadores',
+      registeredTitle: 'Coordenadores cadastrados',
+      columnTitle: 'Coordenadores',
+      activeTitle: 'Coordenações ativas',
+    });
+  });
+
+  it('mantém Lideranças diante de uma nomenclatura inválida', () => {
+    const configuration = { preferencias: { nomenclatura_liderancas: 'chefes' } };
+
+    expect(getLeadershipTerminology(configuration)).toBe('liderancas');
   });
 });

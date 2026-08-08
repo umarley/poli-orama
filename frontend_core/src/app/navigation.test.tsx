@@ -1,4 +1,9 @@
-import { canViewNavigationItem, getNavigationLabel, navigationItems } from '@/app/navigation';
+import {
+  canViewNavigationItem,
+  getNavigationItems,
+  getNavigationLabel,
+  navigationItems,
+} from '@/app/navigation';
 
 describe('navegação por permissão', () => {
   it('oculta módulos sem permissão efetiva', () => {
@@ -22,5 +27,23 @@ describe('navegação por permissão', () => {
     expect(getNavigationLabel('/cadastro/segmentacao')).toBe('Tags e comunidades');
     expect(getNavigationLabel('/cadastro/indicacoes')).toBe('Rede de indicações');
     expect(getNavigationLabel('/cadastro/duplicidades')).toBe('Duplicidades');
+  });
+
+  it('aplica a nomenclatura de frentes ao menu e ao título móvel', () => {
+    const configuration = { preferencias: { nomenclatura_comunidades: 'frentes' } };
+    const segmentation = getNavigationItems(configuration).find(
+      (item) => item.key === '/cadastro/segmentacao',
+    );
+
+    expect(segmentation?.label).toBe('Tags e frentes');
+    expect(getNavigationLabel('/cadastro/segmentacao', configuration)).toBe('Tags e frentes');
+  });
+
+  it('aplica a nomenclatura de coordenadores ao menu e ao título móvel', () => {
+    const configuration = { preferencias: { nomenclatura_liderancas: 'coordenadores' } };
+    const leadership = getNavigationItems(configuration).find((item) => item.key === '/liderancas');
+
+    expect(leadership?.label).toBe('Coordenadores');
+    expect(getNavigationLabel('/liderancas', configuration)).toBe('Coordenadores');
   });
 });

@@ -49,6 +49,7 @@ describe('TenantTerminologySettingsPage', () => {
     );
 
     expect(await screen.findByText('Como o sistema deve chamar Comunidades?')).toBeInTheDocument();
+    expect(screen.getByText('Como o sistema deve chamar Lideranças?')).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText('Frentes'));
     fireEvent.click(screen.getByRole('button', { name: 'Salvar nomenclatura' }));
 
@@ -57,6 +58,32 @@ describe('TenantTerminologySettingsPage', () => {
         preferencias: {
           painel_compacto: true,
           nomenclatura_comunidades: 'frentes',
+          nomenclatura_liderancas: 'liderancas',
+        },
+      }),
+    );
+  });
+
+  it('salva Coordenadores como nomenclatura das lideranças', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TenantTerminologySettingsPage />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Como o sistema deve chamar Lideranças?')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Coordenadores'));
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar nomenclatura' }));
+
+    await waitFor(() =>
+      expect(updateConfiguration).toHaveBeenCalledWith({
+        preferencias: {
+          painel_compacto: true,
+          nomenclatura_comunidades: 'comunidades',
+          nomenclatura_liderancas: 'coordenadores',
         },
       }),
     );

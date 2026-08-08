@@ -34,7 +34,7 @@ import {
   listarTags,
   listarTiposPessoa,
 } from '@/modules/cadastro/pessoas-service';
-import type { PessoaFilters, PessoaListItem } from '@/modules/cadastro/types';
+import type { Lideranca, PessoaFilters, PessoaListItem } from '@/modules/cadastro/types';
 import { normalizeApiError } from '@/services/api/api-error';
 import { useSessionStore } from '@/stores/session-store';
 import { formatInteger } from '@/utils/number-format';
@@ -62,6 +62,14 @@ function formatPhone(value: string | null): string {
     return `(${localDigits.slice(0, 2)}) ${localDigits.slice(2, 7)}-${localDigits.slice(7)}`;
   }
   return value;
+}
+
+function formatLeadershipLabel(
+  leadership: Pick<Lideranca, 'id' | 'pessoa_nome_completo' | 'apelido_campanha'>,
+): string {
+  const name = leadership.pessoa_nome_completo?.trim() || `Liderança #${leadership.id}`;
+  const nickname = leadership.apelido_campanha?.trim();
+  return nickname ? `${name} (${nickname})` : name;
 }
 
 export function CadastroPage() {
@@ -98,7 +106,7 @@ export function CadastroPage() {
       new Map(
         liderancasQuery.data?.map((lideranca) => [
           lideranca.id,
-          lideranca.pessoa_nome_completo || 'Nome não informado',
+          formatLeadershipLabel(lideranca),
         ]) ?? [],
       ),
     [liderancasQuery.data],
@@ -258,9 +266,9 @@ export function CadastroPage() {
               placeholder="Liderança"
               options={liderancasQuery.data?.map((item) => ({
                 value: item.id,
-                label: item.apelido_campanha || `Liderança #${item.id}`,
+                label: formatLeadershipLabel(item),
               }))}
-              style={{ width: 170 }}
+              style={{ width: 280 }}
             />
           </Form.Item>
           <Form.Item name="tag_id">

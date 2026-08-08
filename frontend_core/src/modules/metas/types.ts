@@ -73,8 +73,8 @@ export interface Goal {
   tipo_meta_voto_id: number;
   tipo_codigo: string;
   tipo_nome: string;
-  periodo_meta_id: number;
-  periodo_nome: string;
+  periodo_meta_id: number | null;
+  periodo_nome: string | null;
   titulo: string;
   quantidade_meta: number;
   quantidade_atual: number;
@@ -136,7 +136,7 @@ export interface TargetOption {
 
 export interface GoalInput {
   tipo_meta_voto_id: number;
-  periodo_meta_id: number;
+  periodo_meta_id?: number;
   titulo: string;
   quantidade_meta: number;
   coordenador_id?: number;

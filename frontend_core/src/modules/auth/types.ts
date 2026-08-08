@@ -89,6 +89,7 @@ export interface TenantSwitchInput {
 
 export interface UserSession {
   id: number;
+  origem_login: 'web' | 'app_lider';
   dispositivo?: string | null;
   user_agent?: string | null;
   ip_origem?: string | null;

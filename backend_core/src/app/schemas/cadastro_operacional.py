@@ -382,6 +382,7 @@ class ValidacaoResponse(ValidacaoInput):
     id: int
     tenant_id: int
     pessoa_id: int
+    pessoa_nome: str | None = None
     status: StatusValidacao
     revisado_por: int | None
     revisado_em: datetime | None
@@ -401,6 +402,13 @@ class SuspeitaDuplicidadeResponse(CadastroSchema):
     resolvido_por: int | None
     resolvido_em: datetime | None
     criado_em: datetime
+
+
+class DuplicidadeResumoResponse(CadastroSchema):
+    pendentes: int = 0
+    confirmadas: int = 0
+    descartadas: int = 0
+    mescladas: int = 0
 
 
 class SuspeitaDuplicidadeResolve(CadastroSchema):

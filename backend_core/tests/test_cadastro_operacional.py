@@ -47,6 +47,28 @@ def make_actor() -> RequestActor:
     )
 
 
+def test_mobile_leader_filter_is_applied_only_to_mobile_session() -> None:
+    filters = PessoaFiltros()
+    common = {
+        "tenant_id": 10,
+        "user_id": 20,
+        "session_id": 30,
+        "profiles": ("gestor", "lider"),
+        "permissions": frozenset({"cadastro.visualizar"}),
+        "token": "token",
+        "habilitado_app_lider": True,
+        "lideranca_id": 5,
+    }
+    web_actor = RequestActor(**common, login_origin="web")
+    mobile_actor = RequestActor(**common, login_origin="app_lider")
+
+    web_filters = CadastroService._scope_mobile_leader_filters(web_actor, filters)
+    mobile_filters = CadastroService._scope_mobile_leader_filters(mobile_actor, filters)
+
+    assert web_filters.cadastrado_por_lideranca_id is None
+    assert mobile_filters.cadastrado_por_lideranca_id == 5
+
+
 def test_create_tag_translates_duplicate_name_to_business_error() -> None:
     session = AsyncMock(spec=AsyncSession)
     session.flush.side_effect = IntegrityError(
@@ -250,6 +272,88 @@ async def test_duplicate_list_includes_both_person_names() -> None:
     repository.duplicate_person_names.assert_awaited_once_with(10, {11, 12})
 
 
+@pytest.mark.asyncio
+async def test_validation_list_includes_person_name() -> None:
+    repository = AsyncMock()
+    repository.list_validations.return_value = [
+        SimpleNamespace(
+            id=7,
+            tenant_id=10,
+            pessoa_id=11,
+            motivo="sem_lider",
+            status="pendente",
+            observacao=None,
+            revisado_por=None,
+            revisado_em=None,
+            criado_em=datetime.now(UTC),
+        )
+    ]
+    repository.validation_person_names.return_value = {11: "Maria da Silva"}
+    service = CadastroService(repository)
+
+    result = await service.list_validations(make_actor(), "pendente")
+
+    assert result[0].pessoa_nome == "Maria da Silva"
+    repository.validation_person_names.assert_awaited_once_with(10, {11})
+
+
+@pytest.mark.asyncio
+async def test_duplicate_repository_requires_both_people_to_be_active() -> None:
+    session = AsyncMock(spec=AsyncSession)
+    result = MagicMock()
+    result.all.return_value = []
+    session.scalars.return_value = result
+    repository = CadastroRepository(session)
+
+    assert await repository.list_duplicates(10, "pendente") == []
+
+    statement = str(session.scalars.await_args.args[0])
+    assert statement.count("EXISTS") == 2
+    assert statement.count("cadastro.pessoa.ativo IS true") == 2
+    assert statement.count("cadastro.pessoa.excluido_em IS NULL") == 2
+
+
+@pytest.mark.asyncio
+async def test_duplicate_summary_counts_all_statuses() -> None:
+    repository = AsyncMock()
+    repository.duplicate_summary.return_value = {
+        "pendentes": 1200,
+        "confirmadas": 30,
+        "descartadas": 8,
+        "mescladas": 4,
+    }
+    service = CadastroService(repository)
+
+    result = await service.duplicate_summary(make_actor())
+
+    assert result.pendentes == 1200
+    assert result.confirmadas == 30
+    assert result.descartadas == 8
+    assert result.mescladas == 4
+    repository.duplicate_summary.assert_awaited_once_with(10)
+
+
+@pytest.mark.asyncio
+async def test_duplicate_summary_preserves_terminal_history() -> None:
+    session = AsyncMock(spec=AsyncSession)
+    result = MagicMock()
+    result.all.return_value = [("pendente", 2), ("mesclada", 5)]
+    session.execute.return_value = result
+    repository = CadastroRepository(session)
+
+    summary = await repository.duplicate_summary(10)
+
+    assert summary == {
+        "pendentes": 2,
+        "confirmadas": 0,
+        "descartadas": 0,
+        "mescladas": 5,
+    }
+    statement = str(session.execute.await_args.args[0])
+    assert statement.count(" IN ") == 2
+    assert statement.count("EXISTS") == 2
+
+
 def test_cadastro_router_exposes_required_operational_routes() -> None:
     paths = {route.path for route in router.routes}
     assert {
@@ -261,6 +365,7 @@ def test_cadastro_router_exposes_required_operational_routes() -> None:
         "/cadastro/comunidades",
         "/cadastro/tags",
         "/cadastro/duplicidades",
+        "/cadastro/duplicidades/resumo",
         "/cadastro/duplicidades/{duplicate_id}",
         "/cadastro/duplicidades/{duplicate_id}/merge-preview",
         "/cadastro/duplicidades/{duplicate_id}/merge",

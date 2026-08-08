@@ -1,4 +1,10 @@
-import { ApartmentOutlined, CrownOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import {
+  ApartmentOutlined,
+  CrownOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  PlusOutlined,
+} from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
@@ -31,6 +37,8 @@ import {
   listarLiderancas,
 } from '@/modules/cadastro/pessoas-service';
 import type { Hierarquia, Lideranca, LiderancaInput } from '@/modules/cadastro/types';
+import { getLeadershipTerminologyLabels } from '@/modules/tenants/tenant-preferences';
+import { getTenantConfiguration } from '@/modules/tenants/tenant-service';
 import { normalizeApiError } from '@/services/api/api-error';
 import { useSessionStore } from '@/stores/session-store';
 
@@ -63,9 +71,12 @@ function useDebouncedValue<T>(value: T, delay = 300): T {
 export function LiderancasPage() {
   const queryClient = useQueryClient();
   const profiles = useSessionStore((state) => state.user?.profiles ?? []);
+  const permissions = useSessionStore((state) => state.user?.permissions ?? []);
+  const canEdit = permissions.includes('cadastro.editar');
   const canDelete = profiles.some((profile) => ['gestor', 'gestor_saas'].includes(profile));
   const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [leadershipModalOpen, setLeadershipModalOpen] = useState(false);
+  const [editingLeadership, setEditingLeadership] = useState<Lideranca | null>(null);
   const [leaderFilter, setLeaderFilter] = useState('');
   const [coordinatorFilter, setCoordinatorFilter] = useState<number>();
   const [territoryFilter, setTerritoryFilter] = useState<number>();
@@ -74,6 +85,11 @@ export function LiderancasPage() {
   const [roleFilter, setRoleFilter] = useState<Hierarquia['papel_subordinado']>();
   const [linkForm] = Form.useForm<HierarchyForm>();
   const [leadershipForm] = Form.useForm<LeadershipForm>();
+  const tenantConfigurationQuery = useQuery({
+    queryKey: ['tenant-configuration'],
+    queryFn: getTenantConfiguration,
+  });
+  const leadershipTerms = getLeadershipTerminologyLabels(tenantConfigurationQuery.data);
   const debouncedLeaderFilter = useDebouncedValue(leaderFilter.trim());
   const debouncedLinkedPersonFilter = useDebouncedValue(linkedPersonFilter.trim());
   const leadershipFilters = useMemo(
@@ -154,7 +170,7 @@ export function LiderancasPage() {
     },
     onError: (error) => AppToast.error(normalizeApiError(error).message),
   });
-  const createLeadershipMutation = useMutation({
+  const saveLeadershipMutation = useMutation({
     mutationFn: ({ pessoa_id, ...payload }: LeadershipForm) =>
       definirLideranca(pessoa_id, {
         ...payload,
@@ -162,8 +178,9 @@ export function LiderancasPage() {
         apelido_campanha: payload.apelido_campanha?.trim() || null,
       }),
     onSuccess: async () => {
-      AppToast.success('Liderança criada.');
+      AppToast.success(editingLeadership ? 'Liderança atualizada.' : 'Liderança criada.');
       setLeadershipModalOpen(false);
+      setEditingLeadership(null);
       leadershipForm.resetFields();
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['cadastro', 'liderancas'] }),
@@ -172,6 +189,36 @@ export function LiderancasPage() {
     },
     onError: (error) => AppToast.error(normalizeApiError(error).message),
   });
+
+  const openCreateLeadership = () => {
+    setEditingLeadership(null);
+    leadershipForm.resetFields();
+    leadershipForm.setFieldsValue({
+      tipo_lideranca: 'coordenador_geral',
+      coordenador_id: null,
+      apelido_campanha: 'Coordenação geral',
+      ativo: true,
+    });
+    setLeadershipModalOpen(true);
+  };
+
+  const openEditLeadership = (leadership: Lideranca) => {
+    setEditingLeadership(leadership);
+    leadershipForm.setFieldsValue({
+      pessoa_id: leadership.pessoa_id,
+      tipo_lideranca: leadership.tipo_lideranca,
+      coordenador_id: leadership.coordenador_id,
+      apelido_campanha: leadership.apelido_campanha,
+      ativo: leadership.ativo,
+    });
+    setLeadershipModalOpen(true);
+  };
+
+  const closeLeadershipModal = () => {
+    setLeadershipModalOpen(false);
+    setEditingLeadership(null);
+    leadershipForm.resetFields();
+  };
   const statusMutation = useMutation({
     mutationFn: ({ id, ativo }: { id: number; ativo: boolean }) =>
       alterarStatusHierarquia(id, ativo),
@@ -203,7 +250,7 @@ export function LiderancasPage() {
 
   const leaderColumns: TableProps<Lideranca>['columns'] = [
     {
-      title: 'Liderança',
+      title: leadershipTerms.columnTitle,
       dataIndex: 'pessoa_id',
       render: (id: number, item) => (
         <div>
@@ -218,7 +265,7 @@ export function LiderancasPage() {
       ),
     },
     {
-      title: 'Coordenador',
+      title: 'Coordenador Líder',
       dataIndex: 'coordenador_id',
       render: (id: number | null, item) =>
         id ? item.coordenador_nome_completo || `Liderança #${id}` : 'Raiz da estrutura',
@@ -250,31 +297,42 @@ export function LiderancasPage() {
         <Tag color={active ? 'success' : 'default'}>{active ? 'Ativa' : 'Inativa'}</Tag>
       ),
     },
-    ...(canDelete
+    ...(canEdit || canDelete
       ? [
           {
-            title: 'Ação',
+            title: 'Ações',
             key: 'action',
-            width: 90,
+            width: 120,
             render: (_: unknown, item: Lideranca) => (
-              <Popconfirm
-                title="Excluir liderança"
-                description="Deseja realmente excluir este registro?"
-                okText="Sim"
-                cancelText="Não"
-                okButtonProps={{ danger: true }}
-                onConfirm={() => deleteLeadershipMutation.mutate(item.id)}
-              >
-                <Button
-                  danger
-                  aria-label="Excluir liderança"
-                  icon={<DeleteOutlined />}
-                  loading={
-                    deleteLeadershipMutation.isPending &&
-                    deleteLeadershipMutation.variables === item.id
-                  }
-                />
-              </Popconfirm>
+              <Space size="small">
+                {canEdit && (
+                  <Button
+                    aria-label="Editar liderança"
+                    icon={<EditOutlined />}
+                    onClick={() => openEditLeadership(item)}
+                  />
+                )}
+                {canDelete && (
+                  <Popconfirm
+                    title="Excluir liderança"
+                    description="Deseja realmente excluir este registro?"
+                    okText="Sim"
+                    cancelText="Não"
+                    okButtonProps={{ danger: true }}
+                    onConfirm={() => deleteLeadershipMutation.mutate(item.id)}
+                  >
+                    <Button
+                      danger
+                      aria-label="Excluir liderança"
+                      icon={<DeleteOutlined />}
+                      loading={
+                        deleteLeadershipMutation.isPending &&
+                        deleteLeadershipMutation.variables === item.id
+                      }
+                    />
+                  </Popconfirm>
+                )}
+              </Space>
             ),
           },
         ]
@@ -356,11 +414,7 @@ export function LiderancasPage() {
         description="Coordenadores, líderes e rede operacional de campo."
         breadcrumbs={[{ label: 'Início', to: '/dashboard' }, { label: 'Lideranças' }]}
         actions={
-          <Button
-            type="primary"
-            icon={<CrownOutlined />}
-            onClick={() => setLeadershipModalOpen(true)}
-          >
+          <Button type="primary" icon={<CrownOutlined />} onClick={openCreateLeadership}>
             Adicionar liderança
           </Button>
         }
@@ -368,7 +422,7 @@ export function LiderancasPage() {
       <Space size={16} wrap style={{ marginBottom: 20 }}>
         <Card>
           <Statistic
-            title="Lideranças ativas"
+            title={leadershipTerms.activeTitle}
             value={leaders.length}
             prefix={<ApartmentOutlined />}
           />
@@ -380,7 +434,7 @@ export function LiderancasPage() {
           />
         </Card>
       </Space>
-      <Card title="Lideranças cadastradas" style={{ marginBottom: 20 }}>
+      <Card title={leadershipTerms.registeredTitle} style={{ marginBottom: 20 }}>
         <Space wrap style={{ marginBottom: 16 }}>
           <Input
             allowClear
@@ -520,13 +574,14 @@ export function LiderancasPage() {
         </Form>
       </Modal>
       <Modal
+        forceRender
         open={leadershipModalOpen}
-        title="Adicionar liderança"
-        okText="Criar liderança"
-        confirmLoading={createLeadershipMutation.isPending}
-        onCancel={() => setLeadershipModalOpen(false)}
+        title={editingLeadership ? 'Editar liderança' : 'Adicionar liderança'}
+        okText={editingLeadership ? 'Salvar alterações' : 'Criar liderança'}
+        confirmLoading={saveLeadershipMutation.isPending}
+        onCancel={closeLeadershipModal}
         onOk={() =>
-          leadershipForm.validateFields().then((values) => createLeadershipMutation.mutate(values))
+          leadershipForm.validateFields().then((values) => saveLeadershipMutation.mutate(values))
         }
       >
         <Form
@@ -540,7 +595,22 @@ export function LiderancasPage() {
           }}
         >
           <Form.Item name="pessoa_id" label="Pessoa" rules={[{ required: true }]}>
-            <RemotePersonSelect excludeIds={leaderPersonIds} />
+            <RemotePersonSelect
+              disabled={Boolean(editingLeadership)}
+              excludeIds={leaderPersonIds}
+              initialOptions={
+                editingLeadership
+                  ? [
+                      {
+                        value: editingLeadership.pessoa_id,
+                        label:
+                          editingLeadership.pessoa_nome_completo ||
+                          `Pessoa #${editingLeadership.pessoa_id}`,
+                      },
+                    ]
+                  : []
+              }
+            />
           </Form.Item>
           <Form.Item name="tipo_lideranca" label="Tipo de liderança" rules={[{ required: true }]}>
             <Select
@@ -559,8 +629,11 @@ export function LiderancasPage() {
               optionFilterProp="label"
               placeholder="Sem coordenador (raiz da estrutura)"
               options={leaders
-                .filter((leader) =>
-                  ['coordenador_geral', 'coordenador_territorial'].includes(leader.tipo_lideranca),
+                .filter(
+                  (leader) =>
+                    ['coordenador_geral', 'coordenador_territorial'].includes(
+                      leader.tipo_lideranca,
+                    ) && leader.id !== editingLeadership?.id,
                 )
                 .map((leader) => {
                   const nome = leader.pessoa_nome_completo || `Liderança #${leader.id}`;

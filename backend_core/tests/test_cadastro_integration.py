@@ -92,6 +92,9 @@ async def _cleanup(engine: AsyncEngine, tenant_ids: list[int]) -> None:
 async def _assert_required_schema(engine: AsyncEngine) -> None:
     required = {
         ("auth", "sessao_usuario", "ultimo_uso_em"): "005 - auth_p2_mfa_sessoes.sql",
+        ("auth", "sessao_usuario", "origem_login"): (
+            "046 - origem_login_sessao_usuario.sql"
+        ),
         ("cadastro", "pessoa_nucleo_familiar", "observacao"): (
             "006 - cadastro_pessoas_constraints.sql"
         ),
@@ -106,6 +109,7 @@ async def _assert_required_schema(engine: AsyncEngine) -> None:
                 "FROM information_schema.columns "
                 "WHERE (table_schema, table_name, column_name) IN "
                 "(('auth','sessao_usuario','ultimo_uso_em'), "
+                " ('auth','sessao_usuario','origem_login'), "
                 " ('cadastro','pessoa_nucleo_familiar','observacao'), "
                 " ('cadastro','comunidade','territorio_id'), "
                 " ('cadastro','tag','ativo'), "
@@ -355,6 +359,24 @@ async def test_cad_048_blocks_strong_and_flags_soft_duplicates() -> None:
             criteria = {item["criterio"] for item in suspicions.json()}
             assert {"telefone", "email", "nome_data_nascimento"} <= criteria
             assert all(item["tenant_id"] == context.id for item in suspicions.json())
+
+            inactive_person_id = soft_duplicate.json()["id"]
+            deactivation = client.delete(
+                f"/api/v1/cadastro/pessoas/{inactive_person_id}", headers=headers
+            )
+            assert deactivation.status_code == 204, deactivation.text
+
+            filtered_suspicions = client.get(
+                "/api/v1/cadastro/duplicidades",
+                headers=headers,
+                params={"status": "pendente"},
+            )
+            assert filtered_suspicions.status_code == 200, filtered_suspicions.text
+            assert all(
+                inactive_person_id
+                not in {item["pessoa_id"], item["pessoa_duplicada_id"]}
+                for item in filtered_suspicions.json()
+            )
     finally:
         await _cleanup(engine, tenant_ids)
         await engine.dispose()

@@ -11,6 +11,7 @@ import {
   Button,
   Card,
   Checkbox,
+  Col,
   Descriptions,
   Drawer,
   Empty,
@@ -18,6 +19,7 @@ import {
   Grid,
   Modal,
   Radio,
+  Row,
   Select,
   Space,
   Spin,
@@ -30,11 +32,13 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { AppToast } from '@/components/feedback/AppToast';
+import { LocalizedStatistic as Statistic } from '@/components/data/LocalizedStatistic';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   listarDuplicidades,
   mesclarDuplicidade,
   obterPreviewMerge,
+  obterResumoDuplicidades,
   resolverDuplicidade,
 } from '@/modules/cadastro/pessoas-service';
 import type {
@@ -279,6 +283,10 @@ export function DuplicidadesPage() {
     queryKey: ['cadastro', 'duplicidades', status],
     queryFn: () => listarDuplicidades(status),
   });
+  const summaryQuery = useQuery({
+    queryKey: ['cadastro', 'duplicidades', 'resumo'],
+    queryFn: obterResumoDuplicidades,
+  });
   const previewQuery = useQuery({
     queryKey: ['cadastro', 'duplicidades', selected?.id, 'preview'],
     queryFn: () => obterPreviewMerge(selected!.id),
@@ -373,6 +381,29 @@ export function DuplicidadesPage() {
         description="Revise cadastros suspeitos, escolha os dados corretos e faça a consolidação com segurança."
         breadcrumbs={[{ label: 'Cadastro', to: '/cadastro' }, { label: 'Duplicidades' }]}
       />
+
+      <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
+        <Col xs={12} lg={6}>
+          <Card loading={summaryQuery.isPending}>
+            <Statistic title="Pendentes para merge" value={summaryQuery.data?.pendentes ?? 0} />
+          </Card>
+        </Col>
+        <Col xs={12} lg={6}>
+          <Card loading={summaryQuery.isPending}>
+            <Statistic title="Confirmadas" value={summaryQuery.data?.confirmadas ?? 0} />
+          </Card>
+        </Col>
+        <Col xs={12} lg={6}>
+          <Card loading={summaryQuery.isPending}>
+            <Statistic title="Descartadas" value={summaryQuery.data?.descartadas ?? 0} />
+          </Card>
+        </Col>
+        <Col xs={12} lg={6}>
+          <Card loading={summaryQuery.isPending}>
+            <Statistic title="Mescladas" value={summaryQuery.data?.mescladas ?? 0} />
+          </Card>
+        </Col>
+      </Row>
 
       <Card>
         <div className={styles.toolbar}>

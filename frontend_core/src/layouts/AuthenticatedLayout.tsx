@@ -29,13 +29,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
-import { canViewNavigationItem, getNavigationLabel, navigationItems } from '@/app/navigation';
+import { canViewNavigationItem, getNavigationItems, getNavigationLabel } from '@/app/navigation';
 import { Brand } from '@/components/brand/Brand';
 import { ToastBridge } from '@/components/feedback/ToastBridge';
 import { AppToast } from '@/components/feedback/AppToast';
 import { logout, switchTenant } from '@/modules/auth/auth-service';
 import { getCurrentCampaign } from '@/modules/eleicoes/eleicoes-service';
-import { listTenants } from '@/modules/tenants/tenant-service';
+import { getTenantConfiguration, listTenants } from '@/modules/tenants/tenant-service';
 import { normalizeApiError } from '@/services/api/api-error';
 import { mapAuthUser, useSessionStore } from '@/stores/session-store';
 
@@ -65,6 +65,10 @@ export function AuthenticatedLayout() {
     queryKey: ['current-campaign'],
     queryFn: getCurrentCampaign,
   });
+  const tenantConfigurationQuery = useQuery({
+    queryKey: ['tenant-configuration'],
+    queryFn: getTenantConfiguration,
+  });
   const tenantsQuery = useQuery({
     queryKey: ['tenants', 'switcher'],
     queryFn: () => listTenants({}),
@@ -93,7 +97,7 @@ export function AuthenticatedLayout() {
       );
     }
   }, [currentCampaignQuery.data, currentCampaignQuery.isSuccess, setCurrentCampaign]);
-  const visibleMenuItems = navigationItems
+  const visibleMenuItems = getNavigationItems(tenantConfigurationQuery.data)
     .filter((item) => canViewNavigationItem(item, user?.permissions ?? [], user?.profiles ?? []))
     .map((item) => ({ ...item }));
 
@@ -234,7 +238,7 @@ export function AuthenticatedLayout() {
                 />
               </div>
               <Typography.Text className={styles.mobileTitle}>
-                {getNavigationLabel(location.pathname)}
+                {getNavigationLabel(location.pathname, tenantConfigurationQuery.data)}
               </Typography.Text>
             </Flex>
 

@@ -4,7 +4,6 @@ import {
   Button,
   Card,
   Col,
-  DatePicker,
   Form,
   Input,
   InputNumber,
@@ -16,7 +15,6 @@ import {
   Tabs,
   Tag,
 } from 'antd';
-import type { Dayjs } from 'dayjs';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -28,17 +26,17 @@ import { TerritorySelect } from '@/components/territorios/TerritorySelect';
 import { listarLiderancas } from '@/modules/cadastro/pessoas-service';
 import {
   criarMeta,
-  criarPeriodo,
   criarTipoMeta,
   listarMetas,
   listarOpcoesAlvo,
-  listarPeriodos,
   listarRanking,
   listarTiposMeta,
   obterResumoMetas,
   recalcularRanking,
 } from '@/modules/metas/metas-service';
 import type { GoalInput, GoalStatus, LeadershipRanking, TargetType } from '@/modules/metas/types';
+import { getCommunityTerminologyLabels } from '@/modules/tenants/tenant-preferences';
+import { getTenantConfiguration } from '@/modules/tenants/tenant-service';
 import { normalizeApiError } from '@/services/api/api-error';
 import { useSessionStore } from '@/stores/session-store';
 import { formatInteger, formatNumber, formatPercent } from '@/utils/number-format';
@@ -46,7 +44,6 @@ import { formatInteger, formatNumber, formatPercent } from '@/utils/number-forma
 interface GoalForm {
   titulo: string;
   tipo_meta_voto_id: number;
-  periodo_meta_id: number;
   quantidade_meta: number;
   coordenador_id?: number;
   tipo_alvo?: TargetType;
@@ -54,27 +51,11 @@ interface GoalForm {
   quantidade_atribuida?: number;
 }
 
-interface PeriodForm {
-  nome: string;
-  datas: [Dayjs, Dayjs];
-  ciclo?: string;
-}
-
 interface GoalFilters {
   territorio_id?: number;
   lideranca_id?: number;
-  periodo_id?: number;
   status?: GoalStatus;
 }
-
-const targetLabels: Record<TargetType, string> = {
-  lideranca: 'Liderança',
-  territorio: 'Território',
-  equipe: 'Equipe',
-  comunidade: 'Comunidade',
-  nucleo_familiar: 'Núcleo familiar',
-  pessoa: 'Pessoa',
-};
 
 export function GoalsPage() {
   const navigate = useNavigate();
@@ -86,12 +67,23 @@ export function GoalsPage() {
   const canAdminTypes = profiles.includes('gestor_saas');
   const [filters, setFilters] = useState<GoalFilters>({});
   const [goalModal, setGoalModal] = useState(false);
-  const [periodModal, setPeriodModal] = useState(false);
   const [typeModal, setTypeModal] = useState(false);
   const [goalForm] = Form.useForm<GoalForm>();
-  const [periodForm] = Form.useForm<PeriodForm>();
   const [typeForm] = Form.useForm<{ codigo: string; nome: string; descricao?: string }>();
   const targetType = Form.useWatch('tipo_alvo', goalForm);
+  const tenantConfiguration = useQuery({
+    queryKey: ['tenant-configuration'],
+    queryFn: getTenantConfiguration,
+  });
+  const communityTerms = getCommunityTerminologyLabels(tenantConfiguration.data);
+  const targetLabels: Record<TargetType, string> = {
+    lideranca: 'Liderança',
+    territorio: 'Território',
+    equipe: 'Equipe',
+    comunidade: communityTerms.singularTitle,
+    nucleo_familiar: 'Núcleo familiar',
+    pessoa: 'Pessoa',
+  };
 
   const goals = useQuery({
     queryKey: ['metas', filters],
@@ -102,10 +94,6 @@ export function GoalsPage() {
     queryFn: () => obterResumoMetas(filters),
   });
   const types = useQuery({ queryKey: ['metas', 'tipos'], queryFn: () => listarTiposMeta() });
-  const periods = useQuery({
-    queryKey: ['metas', 'periodos'],
-    queryFn: () => listarPeriodos(),
-  });
   const leaders = useQuery({
     queryKey: ['cadastro', 'liderancas'],
     queryFn: () => listarLiderancas(),
@@ -126,7 +114,6 @@ export function GoalsPage() {
       const payload: GoalInput = {
         titulo: values.titulo,
         tipo_meta_voto_id: values.tipo_meta_voto_id,
-        periodo_meta_id: values.periodo_meta_id,
         quantidade_meta: values.quantidade_meta,
         coordenador_id: values.coordenador_id,
         alvos:
@@ -148,23 +135,6 @@ export function GoalsPage() {
       goalForm.resetFields();
       await refresh();
       navigate(`/metas/${goal.id}`);
-    },
-    onError: (error) => AppToast.error(normalizeApiError(error).message),
-  });
-
-  const createPeriodMutation = useMutation({
-    mutationFn: (values: PeriodForm) =>
-      criarPeriodo({
-        nome: values.nome,
-        data_inicio: values.datas[0].format('YYYY-MM-DD'),
-        data_fim: values.datas[1].format('YYYY-MM-DD'),
-        ciclo: values.ciclo,
-      }),
-    onSuccess: async () => {
-      AppToast.success('Período criado.');
-      setPeriodModal(false);
-      periodForm.resetFields();
-      await refresh();
     },
     onError: (error) => AppToast.error(normalizeApiError(error).message),
   });
@@ -262,17 +232,6 @@ export function GoalsPage() {
                       }))}
                     />
                   </Form.Item>
-                  <Form.Item name="periodo_id">
-                    <Select
-                      allowClear
-                      placeholder="Período"
-                      style={{ width: 180 }}
-                      options={(periods.data ?? []).map((item) => ({
-                        value: item.id,
-                        label: item.nome,
-                      }))}
-                    />
-                  </Form.Item>
                   <Form.Item name="status">
                     <Select
                       allowClear
@@ -304,7 +263,7 @@ export function GoalsPage() {
                         <Space direction="vertical" size={0}>
                           <strong>{title}</strong>
                           <span>
-                            {item.tipo_nome} · {item.periodo_nome}
+                            {item.tipo_nome} · {item.campanha_nome}
                           </span>
                         </Space>
                       ),
@@ -399,34 +358,6 @@ export function GoalsPage() {
             ),
           },
           {
-            key: 'periods',
-            label: 'Períodos',
-            children: (
-              <Card
-                title="Períodos de meta"
-                extra={
-                  canCreate && (
-                    <Button icon={<PlusOutlined />} onClick={() => setPeriodModal(true)}>
-                      Novo período
-                    </Button>
-                  )
-                }
-              >
-                <Table
-                  rowKey="id"
-                  pagination={false}
-                  dataSource={periods.data ?? []}
-                  columns={[
-                    { title: 'Nome', dataIndex: 'nome' },
-                    { title: 'Início', dataIndex: 'data_inicio' },
-                    { title: 'Fim', dataIndex: 'data_fim' },
-                    { title: 'Ciclo', dataIndex: 'ciclo' },
-                  ]}
-                />
-              </Card>
-            ),
-          },
-          {
             key: 'types',
             label: 'Tipos',
             children: (
@@ -473,28 +404,14 @@ export function GoalsPage() {
           <Form.Item name="titulo" label="Título" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Row gutter={12}>
-            <Col span={12}>
-              <Form.Item name="tipo_meta_voto_id" label="Tipo" rules={[{ required: true }]}>
-                <Select
-                  options={(types.data ?? []).map((item) => ({
-                    value: item.id,
-                    label: item.nome,
-                  }))}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="periodo_meta_id" label="Período" rules={[{ required: true }]}>
-                <Select
-                  options={(periods.data ?? []).map((item) => ({
-                    value: item.id,
-                    label: item.nome,
-                  }))}
-                />
-              </Form.Item>
-            </Col>
-          </Row>
+          <Form.Item name="tipo_meta_voto_id" label="Tipo" rules={[{ required: true }]}>
+            <Select
+              options={(types.data ?? []).map((item) => ({
+                value: item.id,
+                label: item.codigo === 'comunidade' ? `Por ${communityTerms.singular}` : item.nome,
+              }))}
+            />
+          </Form.Item>
           <Form.Item name="quantidade_meta" label="Quantidade da meta" rules={[{ required: true }]}>
             <InputNumber min={1} style={{ width: '100%' }} />
           </Form.Item>
@@ -538,29 +455,6 @@ export function GoalsPage() {
               </Form.Item>
             </Col>
           </Row>
-        </Form>
-      </Modal>
-
-      <Modal
-        open={periodModal}
-        title="Novo período"
-        okText="Criar"
-        confirmLoading={createPeriodMutation.isPending}
-        onCancel={() => setPeriodModal(false)}
-        onOk={() =>
-          periodForm.validateFields().then((values) => createPeriodMutation.mutate(values))
-        }
-      >
-        <Form form={periodForm} layout="vertical">
-          <Form.Item name="nome" label="Nome" rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item name="datas" label="Período" rules={[{ required: true }]}>
-            <DatePicker.RangePicker style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="ciclo" label="Ciclo">
-            <Input placeholder="Mensal, trimestral, campanha..." />
-          </Form.Item>
         </Form>
       </Modal>
 

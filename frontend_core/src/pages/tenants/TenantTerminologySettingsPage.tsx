@@ -12,15 +12,18 @@ import {
 } from '@/modules/tenants/tenant-service';
 import {
   DEFAULT_COMMUNITY_TERMINOLOGY,
+  DEFAULT_LEADERSHIP_TERMINOLOGY,
   getCommunityTerminology,
+  getLeadershipTerminology,
 } from '@/modules/tenants/tenant-preferences';
-import type { CommunityTerminology } from '@/modules/tenants/types';
+import type { CommunityTerminology, LeadershipTerminology } from '@/modules/tenants/types';
 import { normalizeApiError } from '@/services/api/api-error';
 
 import styles from './TenantPages.module.css';
 
 interface TerminologyForm {
   nomenclatura_comunidades: CommunityTerminology;
+  nomenclatura_liderancas: LeadershipTerminology;
 }
 
 export function TenantTerminologySettingsPage() {
@@ -32,10 +35,14 @@ export function TenantTerminologySettingsPage() {
     queryFn: getTenantConfiguration,
   });
   const saveMutation = useMutation({
-    mutationFn: ({ nomenclatura_comunidades }: TerminologyForm) => {
+    mutationFn: ({ nomenclatura_comunidades, nomenclatura_liderancas }: TerminologyForm) => {
       const currentPreferences = configurationQuery.data?.preferencias ?? {};
       return updateTenantConfiguration({
-        preferencias: { ...currentPreferences, nomenclatura_comunidades },
+        preferencias: {
+          ...currentPreferences,
+          nomenclatura_comunidades,
+          nomenclatura_liderancas,
+        },
       });
     },
     onSuccess: (configuration) => {
@@ -50,6 +57,10 @@ export function TenantTerminologySettingsPage() {
     form.setFieldValue(
       'nomenclatura_comunidades',
       getCommunityTerminology(configurationQuery.data),
+    );
+    form.setFieldValue(
+      'nomenclatura_liderancas',
+      getLeadershipTerminology(configurationQuery.data),
     );
   }, [configurationQuery.data, form]);
 
@@ -91,7 +102,10 @@ export function TenantTerminologySettingsPage() {
           <Form<TerminologyForm>
             form={form}
             layout="vertical"
-            initialValues={{ nomenclatura_comunidades: DEFAULT_COMMUNITY_TERMINOLOGY }}
+            initialValues={{
+              nomenclatura_comunidades: DEFAULT_COMMUNITY_TERMINOLOGY,
+              nomenclatura_liderancas: DEFAULT_LEADERSHIP_TERMINOLOGY,
+            }}
             onFinish={(values) => saveMutation.mutate(values)}
           >
             <Form.Item
@@ -108,6 +122,21 @@ export function TenantTerminologySettingsPage() {
             <Typography.Paragraph type="secondary">
               O padrão é “Comunidades”. Ao selecionar “Frentes”, a aba, os botões e os diálogos de
               segmentação passam a usar esse termo para os usuários deste tenant.
+            </Typography.Paragraph>
+            <Form.Item
+              name="nomenclatura_liderancas"
+              label="Como o sistema deve chamar Lideranças?"
+              extra="Esta preferência altera os textos de navegação e da gestão de lideranças, sem modificar os dados ou vínculos existentes."
+              rules={[{ required: true, message: 'Escolha uma nomenclatura.' }]}
+            >
+              <Radio.Group optionType="button" buttonStyle="solid">
+                <Radio.Button value="liderancas">Lideranças</Radio.Button>
+                <Radio.Button value="coordenadores">Coordenadores</Radio.Button>
+              </Radio.Group>
+            </Form.Item>
+            <Typography.Paragraph type="secondary">
+              O padrão é “Lideranças”. Ao selecionar “Coordenadores”, o menu e os títulos da gestão
+              de lideranças passam a usar a nomenclatura escolhida para este tenant.
             </Typography.Paragraph>
             <Button type="primary" htmlType="submit" loading={saveMutation.isPending}>
               Salvar nomenclatura

@@ -17,7 +17,12 @@ from app.models import (
     PessoaEndereco,
     PessoaMerge,
 )
-from app.schemas.cadastro import PessoaCreate, PessoaResponse
+from app.schemas.cadastro import (
+    PessoaContatoCreate,
+    PessoaContatoResponse,
+    PessoaCreate,
+    PessoaResponse,
+)
 from app.tenants.models import Base
 
 
@@ -139,6 +144,29 @@ def test_pessoa_create_accepts_multiple_document_and_contact_types() -> None:
         "titulo_eleitor",
     ]
     assert [contact.tipo_contato for contact in payload.contatos] == ["whatsapp", "email"]
+
+
+def test_contact_input_rejects_legacy_phone_without_area_code() -> None:
+    with pytest.raises(ValidationError):
+        PessoaContatoCreate(tipo_contato="telefone", valor="33189197")
+
+
+def test_contact_response_preserves_legacy_phone_without_failing_serialization() -> None:
+    response = PessoaContatoResponse.model_validate(
+        {
+            "id": 1,
+            "tenant_id": 10,
+            "pessoa_id": 20,
+            "tipo_contato": "telefone",
+            "valor": "33189197",
+            "principal": True,
+            "verificado": False,
+            "observacao": None,
+            "criado_em": datetime.now(UTC),
+        }
+    )
+
+    assert response.valor == "33189197"
 
 
 @pytest.mark.parametrize(

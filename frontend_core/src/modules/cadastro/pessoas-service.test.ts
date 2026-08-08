@@ -28,6 +28,7 @@ import {
   listarReligioes,
   obterGrafoIndicacoes,
   obterPreviewMerge,
+  obterResumoDuplicidades,
   mesclarDuplicidade,
   resolverDuplicidade,
   resolverValidacao,
@@ -102,6 +103,16 @@ describe('serviços de cadastro', () => {
     expect(get).toHaveBeenCalledWith('/api/v1/cadastro/liderancas', {
       params: { tipo_lideranca: 'lider' },
     });
+  });
+
+  it('carrega o resumo das ocorrências de duplicidade', async () => {
+    get.mockResolvedValueOnce({
+      data: { pendentes: 10, confirmadas: 4, descartadas: 3, mescladas: 2 },
+    });
+
+    await obterResumoDuplicidades();
+
+    expect(get).toHaveBeenCalledWith('/api/v1/cadastro/duplicidades/resumo');
   });
 
   it('envia os filtros da hierarquia para a API', async () => {

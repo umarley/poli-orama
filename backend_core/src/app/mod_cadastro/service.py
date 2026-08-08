@@ -33,6 +33,7 @@ from app.schemas.cadastro_operacional import (
     ComunidadeInput,
     ComunidadePessoaResponse,
     ComunidadeResponse,
+    DuplicidadeResumoResponse,
     EstadoCivilResponse,
     HierarquiaInput,
     HierarquiaResponse,
@@ -968,9 +969,15 @@ class CadastroService:
     async def list_validations(
         self, actor: RequestActor, status: str | None
     ) -> list[ValidacaoResponse]:
+        items = await self.repository.list_validations(actor.tenant_id, status)
+        names = await self.repository.validation_person_names(
+            actor.tenant_id, {item.pessoa_id for item in items}
+        )
         return [
-            ValidacaoResponse.model_validate(item)
-            for item in await self.repository.list_validations(actor.tenant_id, status)
+            ValidacaoResponse.model_validate(item).model_copy(
+                update={"pessoa_nome": names.get(item.pessoa_id)}
+            )
+            for item in items
         ]
 
     async def resolve_validation(
@@ -1017,6 +1024,11 @@ class CadastroService:
             )
             for item in items
         ]
+
+    async def duplicate_summary(self, actor: RequestActor) -> DuplicidadeResumoResponse:
+        return DuplicidadeResumoResponse.model_validate(
+            await self.repository.duplicate_summary(actor.tenant_id)
+        )
 
     async def merge_preview(self, actor: RequestActor, duplicate_id: int) -> PessoaMergePreview:
         self._require_merge_manager(actor)
@@ -1293,7 +1305,11 @@ class CadastroService:
     def _scope_mobile_leader_filters(
         actor: RequestActor, filters: PessoaFiltros
     ) -> PessoaFiltros:
-        if not actor.habilitado_app_lider or actor.lideranca_id is None:
+        if (
+            not actor.is_mobile_leader_session
+            or not actor.habilitado_app_lider
+            or actor.lideranca_id is None
+        ):
             return filters
         if (
             filters.cadastrado_por_lideranca_id is None
@@ -1308,7 +1324,11 @@ class CadastroService:
     async def _prepare_mobile_create(
         self, actor: RequestActor, payload: PessoaCadastroCreate
     ) -> tuple[PessoaCadastroCreate, MobileLeaderContext | None]:
-        if not actor.habilitado_app_lider or actor.lideranca_id is None:
+        if (
+            not actor.is_mobile_leader_session
+            or not actor.habilitado_app_lider
+            or actor.lideranca_id is None
+        ):
             return payload, None
 
         data = payload.model_copy(deep=True)
@@ -1342,7 +1362,12 @@ class CadastroService:
     ) -> bool:
         if payload.lideranca_superior_id is not None:
             return True
-        if actor is not None and actor.habilitado_app_lider and actor.lideranca_id is not None:
+        if (
+            actor is not None
+            and actor.is_mobile_leader_session
+            and actor.habilitado_app_lider
+            and actor.lideranca_id is not None
+        ):
             return True
         leadership = payload.lideranca
         return bool(

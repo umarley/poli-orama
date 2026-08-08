@@ -19,6 +19,11 @@ import {
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 
+import {
+  getCommunityTerminologyLabels,
+  getLeadershipTerminologyLabels,
+} from '@/modules/tenants/tenant-preferences';
+
 export interface NavigationItem {
   key: string;
   label: string;
@@ -140,6 +145,20 @@ export const navigationItems: NavigationItem[] = [
 
 export const menuItems: MenuProps['items'] = navigationItems.map((item) => ({ ...item }));
 
+export function getNavigationItems(
+  configuration?: { preferencias?: Record<string, unknown> } | null,
+): NavigationItem[] {
+  const communityTerms = getCommunityTerminologyLabels(configuration);
+  const leadershipTerms = getLeadershipTerminologyLabels(configuration);
+  return navigationItems.map((item) => {
+    if (item.key === '/liderancas') return { ...item, label: leadershipTerms.menu };
+    if (item.key === '/cadastro/segmentacao') {
+      return { ...item, label: `Tags e ${communityTerms.pluralLower}` };
+    }
+    return item;
+  });
+}
+
 export function canViewNavigationItem(
   item: NavigationItem,
   permissions: string[],
@@ -157,9 +176,12 @@ export function getDefaultRoute(permissions: string[], profiles: string[]) {
   );
 }
 
-export function getNavigationLabel(pathname: string) {
+export function getNavigationLabel(
+  pathname: string,
+  configuration?: { preferencias?: Record<string, unknown> } | null,
+) {
   return (
-    [...navigationItems]
+    getNavigationItems(configuration)
       .sort((left, right) => right.key.length - left.key.length)
       .find((item) => pathname.startsWith(item.key))?.label ?? 'Página'
   );

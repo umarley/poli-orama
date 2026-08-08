@@ -264,7 +264,7 @@ class MetaRepository(BaseRepository[object]):
                 " FROM meta.meta_voto m"
                 " JOIN eleicao.campanha_eleicao ce ON ce.id = m.campanha_eleicao_id"
                 " JOIN meta.tipo_meta_voto tm ON tm.id = m.tipo_meta_voto_id"
-                " JOIN meta.periodo_meta pm ON pm.id = m.periodo_meta_id"
+                " LEFT JOIN meta.periodo_meta pm ON pm.id = m.periodo_meta_id"
                 f" WHERE {' AND '.join(clauses)}"
                 f" {self._goal_scope_clause(accessible_ids)}"
                 " ORDER BY m.atualizado_em DESC, m.id DESC"
@@ -287,7 +287,7 @@ class MetaRepository(BaseRepository[object]):
                 " FROM meta.meta_voto m"
                 " JOIN eleicao.campanha_eleicao ce ON ce.id = m.campanha_eleicao_id"
                 " JOIN meta.tipo_meta_voto tm ON tm.id = m.tipo_meta_voto_id"
-                " JOIN meta.periodo_meta pm ON pm.id = m.periodo_meta_id"
+                " LEFT JOIN meta.periodo_meta pm ON pm.id = m.periodo_meta_id"
                 " WHERE m.tenant_id = :tenant_id AND m.id = :id"
                 " AND m.campanha_eleicao_id = :campaign_id"
             ),
@@ -831,10 +831,13 @@ class MetaRepository(BaseRepository[object]):
         term = f"%{query or ''}%"
         queries = {
             "lideranca": (
-                "SELECT l.id, COALESCE(l.apelido_campanha, p.nome_completo) AS nome "
+                "SELECT l.id, p.nome_completo || CASE "
+                "WHEN NULLIF(BTRIM(l.apelido_campanha), '') IS NOT NULL "
+                "THEN ' (' || BTRIM(l.apelido_campanha) || ')' ELSE '' END AS nome "
                 "FROM cadastro.lideranca l JOIN cadastro.pessoa p ON p.id = l.pessoa_id "
                 "WHERE l.tenant_id = :tenant_id AND l.ativo "
-                "AND COALESCE(l.apelido_campanha, p.nome_completo) ILIKE :term"
+                "AND p.ativo AND p.excluido_em IS NULL "
+                "AND (p.nome_completo ILIKE :term OR l.apelido_campanha ILIKE :term)"
             ),
             "territorio": (
                 "SELECT id, nome FROM territorio.territorio "

@@ -6,6 +6,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { AppToast } from '@/components/feedback/AppToast';
+import { LocalizedStatistic as Statistic } from '@/components/data/LocalizedStatistic';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   criarHierarquia,
@@ -14,8 +15,18 @@ import {
   listarValidacoes,
   resolverValidacao,
 } from '@/modules/cadastro/pessoas-service';
-import type { ValidacaoCadastro } from '@/modules/cadastro/types';
+import type { Lideranca, ValidacaoCadastro } from '@/modules/cadastro/types';
 import { normalizeApiError } from '@/services/api/api-error';
+
+function formatLeadershipLabel(
+  leadership: Pick<Lideranca, 'id' | 'pessoa_id' | 'pessoa_nome_completo' | 'apelido_campanha'>,
+  personName?: string,
+): string {
+  const name =
+    leadership.pessoa_nome_completo?.trim() || personName?.trim() || `Liderança #${leadership.id}`;
+  const nickname = leadership.apelido_campanha?.trim();
+  return nickname ? `${name} (${nickname})` : name;
+}
 
 export function ValidacoesPage() {
   const queryClient = useQueryClient();
@@ -90,6 +101,11 @@ export function ValidacoesPage() {
         description="Pendências, cadastros sem liderança e registros que exigem revisão."
         breadcrumbs={[{ label: 'Cadastro', to: '/cadastro' }, { label: 'Validações pendentes' }]}
       />
+      <Space size={16} wrap style={{ marginBottom: 20 }}>
+        <Card loading={validationsQuery.isPending}>
+          <Statistic title="Cadastros para validar" value={validationsQuery.data?.length ?? 0} />
+        </Card>
+      </Space>
       <Card>
         <Table<ValidacaoCadastro>
           rowKey="id"
@@ -100,10 +116,10 @@ export function ValidacoesPage() {
             {
               title: 'Pessoa',
               dataIndex: 'pessoa_id',
-              render: (id: number) => (
+              render: (id: number, item) => (
                 <div>
                   <Link to={`/cadastro/pessoas/${id}`}>
-                    {peopleById.get(id)?.nome_completo || `Pessoa #${id}`}
+                    {item.pessoa_nome || peopleById.get(id)?.nome_completo || `Pessoa #${id}`}
                   </Link>
                   <Typography.Text type="secondary" style={{ display: 'block' }}>
                     Cadastro #{id}
@@ -170,10 +186,7 @@ export function ValidacoesPage() {
               optionFilterProp="label"
               options={(leadersQuery.data ?? []).map((item) => ({
                 value: item.id,
-                label:
-                  item.apelido_campanha ||
-                  peopleById.get(item.pessoa_id)?.nome_completo ||
-                  `Liderança #${item.id}`,
+                label: formatLeadershipLabel(item, peopleById.get(item.pessoa_id)?.nome_completo),
               }))}
             />
           </Form.Item>

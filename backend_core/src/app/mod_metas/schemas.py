@@ -83,7 +83,7 @@ class GoalTargetResponse(GoalTargetInput):
 
 class GoalCreate(MetaSchema):
     tipo_meta_voto_id: int = Field(ge=1)
-    periodo_meta_id: int = Field(ge=1)
+    periodo_meta_id: int | None = Field(default=None, ge=1)
     titulo: str = Field(min_length=2, max_length=150)
     quantidade_meta: int = Field(gt=0)
     coordenador_id: int | None = Field(default=None, ge=1)
@@ -139,8 +139,8 @@ class GoalResponse(MetaSchema):
     tipo_meta_voto_id: int
     tipo_codigo: str
     tipo_nome: str
-    periodo_meta_id: int
-    periodo_nome: str
+    periodo_meta_id: int | None
+    periodo_nome: str | None
     titulo: str
     quantidade_meta: int
     quantidade_atual: int

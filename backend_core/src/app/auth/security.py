@@ -110,6 +110,7 @@ def create_access_token(
     session_id: int,
     profiles: list[str],
     permissions: list[str],
+    login_origin: str = "web",
     expires_at: datetime,
 ) -> str:
     now = datetime.now(UTC)
@@ -119,6 +120,7 @@ def create_access_token(
         "sid": session_id,
         "perfis": profiles,
         "permissoes": permissions,
+        "origem_login": login_origin,
         "type": "access",
         "jti": str(uuid4()),
         "iat": now,
@@ -136,6 +138,7 @@ def create_refresh_token(
     user_id: int,
     tenant_id: int,
     session_id: int,
+    login_origin: str = "web",
     expires_at: datetime,
 ) -> str:
     now = datetime.now(UTC)
@@ -143,6 +146,7 @@ def create_refresh_token(
         "sub": str(user_id),
         "tenant_id": tenant_id,
         "sid": session_id,
+        "origem_login": login_origin,
         "type": "refresh",
         "jti": str(uuid4()),
         "iat": now,
@@ -170,7 +174,17 @@ def _decode_token(token: str, settings: Settings, *, expected_type: str) -> dict
             algorithms=[settings.jwt_algorithm],
             issuer=settings.jwt_issuer,
             audience=settings.jwt_audience,
-            options={"require": ["sub", "tenant_id", "sid", "exp", "iat", "type"]},
+            options={
+                "require": [
+                    "sub",
+                    "tenant_id",
+                    "sid",
+                    "origem_login",
+                    "exp",
+                    "iat",
+                    "type",
+                ]
+            },
         )
     except jwt.PyJWTError as exc:
         raise AuthenticationError("Token invalido ou expirado.") from exc
@@ -182,6 +196,10 @@ def _decode_token(token: str, settings: Settings, *, expected_type: str) -> dict
         payload["sid"] = int(payload["sid"])
     except (TypeError, ValueError) as exc:
         raise AuthenticationError("Claims obrigatorias do token sao invalidas.") from exc
+    login_origin = payload["origem_login"]
+    if login_origin not in {"web", "app_lider"}:
+        raise AuthenticationError("Origem da sessao invalida.")
+    payload["origem_login"] = login_origin
     return payload
 
 

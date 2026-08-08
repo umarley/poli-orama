@@ -144,7 +144,7 @@ export function GoalDetailPage() {
         {item && (
           <Descriptions column={{ xs: 1, md: 2, lg: 3 }}>
             <Descriptions.Item label="Tipo">{item.tipo_nome}</Descriptions.Item>
-            <Descriptions.Item label="Período">{item.periodo_nome}</Descriptions.Item>
+            <Descriptions.Item label="Campanha">{item.campanha_nome}</Descriptions.Item>
             <Descriptions.Item label="Status">{item.status}</Descriptions.Item>
             <Descriptions.Item label="Base vinculada">
               {formatInteger(item.quantidade_eleitores_vinculados)}

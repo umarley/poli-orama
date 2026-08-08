@@ -362,6 +362,7 @@ export interface ValidacaoCadastro {
   id: number;
   tenant_id: number;
   pessoa_id: number;
+  pessoa_nome: string | null;
   motivo: string;
   status: 'pendente' | 'aprovado' | 'rejeitado' | 'em_revisao';
   observacao: string | null;
@@ -379,6 +380,13 @@ export type CriterioDuplicidade =
   | 'fuzzy';
 
 export type StatusDuplicidade = 'pendente' | 'confirmada' | 'descartada' | 'mesclada';
+
+export interface DuplicidadeResumo {
+  pendentes: number;
+  confirmadas: number;
+  descartadas: number;
+  mescladas: number;
+}
 
 export type CampoMergePessoa =
   | 'nome_completo'

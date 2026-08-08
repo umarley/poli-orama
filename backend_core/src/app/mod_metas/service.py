@@ -117,7 +117,7 @@ class MetaService:
         actor: RequestActor,
         *,
         type_id: int,
-        period_id: int,
+        period_id: int | None,
         targets: list[GoalTargetInput],
         accessible_ids: set[int] | None,
         coordinator_id: int | None,
@@ -125,9 +125,10 @@ class MetaService:
         goal_type = await self.repository.get_type(actor.tenant_id, type_id)
         if goal_type is None or not goal_type["ativo"]:
             raise ResourceNotFoundError("Tipo de meta", type_id)
-        period = await self.repository.get_period(actor.tenant_id, period_id)
-        if period is None or not period["ativo"]:
-            raise ResourceNotFoundError("Periodo de meta", period_id)
+        if period_id is not None:
+            period = await self.repository.get_period(actor.tenant_id, period_id)
+            if period is None or not period["ativo"]:
+                raise ResourceNotFoundError("Periodo de meta", period_id)
         if coordinator_id and not await self.repository.coordinator_exists(
             actor.tenant_id, coordinator_id
         ):

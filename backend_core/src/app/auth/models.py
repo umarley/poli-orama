@@ -34,7 +34,9 @@ class User(Base):
     lideranca_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("cadastro.lideranca.id", ondelete="SET NULL")
     )
-    habilitado_app_lider: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    habilitado_app_lider: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
     ultimo_acesso_app_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     nome: Mapped[str] = mapped_column(String(180))
     email: Mapped[str] = mapped_column(String(254))
@@ -125,6 +127,9 @@ class UserSession(Base):
     )
     usuario_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("auth.usuario.id", ondelete="CASCADE")
+    )
+    origem_login: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="web"
     )
     token_hash: Mapped[str] = mapped_column(Text, unique=True)
     refresh_token_hash: Mapped[str | None] = mapped_column(Text)

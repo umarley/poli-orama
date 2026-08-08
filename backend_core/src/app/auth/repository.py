@@ -362,6 +362,7 @@ class AuthRepository(BaseRepository[User]):
         *,
         tenant_id: int,
         user_id: int,
+        login_origin: str,
         expires_at: datetime,
         device: str | None,
         user_agent: str | None,
@@ -370,6 +371,7 @@ class AuthRepository(BaseRepository[User]):
         session = UserSession(
             tenant_id=tenant_id,
             usuario_id=user_id,
+            origem_login=login_origin,
             token_hash=f"pending:{uuid4()}",
             dispositivo=device,
             user_agent=user_agent,

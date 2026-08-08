@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import Select, delete, func, or_, select, text
+from sqlalchemy import Select, and_, delete, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
@@ -1472,10 +1472,47 @@ class CadastroRepository(BaseRepository[Pessoa]):
         result = await self.session.scalars(statement.order_by(ValidacaoCadastro.criado_em.desc()))
         return list(result.all())
 
+    async def validation_person_names(
+        self, tenant_id: int, person_ids: set[int]
+    ) -> dict[int, str]:
+        if not person_ids:
+            return {}
+        result = await self.session.execute(
+            select(Pessoa.id, Pessoa.nome_completo).where(
+                Pessoa.tenant_id == tenant_id,
+                Pessoa.id.in_(person_ids),
+            )
+        )
+        return {int(person_id): str(name) for person_id, name in result.all()}
+
     async def list_duplicates(
         self, tenant_id: int, status: str | None
     ) -> list[SuspeitaDuplicidade]:
-        statement = select(SuspeitaDuplicidade).where(SuspeitaDuplicidade.tenant_id == tenant_id)
+        active_person = (
+            select(Pessoa.id)
+            .where(
+                Pessoa.id == SuspeitaDuplicidade.pessoa_id,
+                Pessoa.tenant_id == tenant_id,
+                Pessoa.ativo.is_(True),
+                Pessoa.excluido_em.is_(None),
+            )
+            .exists()
+        )
+        active_duplicate = (
+            select(Pessoa.id)
+            .where(
+                Pessoa.id == SuspeitaDuplicidade.pessoa_duplicada_id,
+                Pessoa.tenant_id == tenant_id,
+                Pessoa.ativo.is_(True),
+                Pessoa.excluido_em.is_(None),
+            )
+            .exists()
+        )
+        statement = select(SuspeitaDuplicidade).where(
+            SuspeitaDuplicidade.tenant_id == tenant_id,
+            active_person,
+            active_duplicate,
+        )
         if status:
             statement = statement.where(SuspeitaDuplicidade.status == status)
         result = await self.session.scalars(
@@ -1495,6 +1532,51 @@ class CadastroRepository(BaseRepository[Pessoa]):
             )
         )
         return {int(person_id): str(name) for person_id, name in result.all()}
+
+    async def duplicate_summary(self, tenant_id: int) -> dict[str, int]:
+        active_person = (
+            select(Pessoa.id)
+            .where(
+                Pessoa.id == SuspeitaDuplicidade.pessoa_id,
+                Pessoa.tenant_id == tenant_id,
+                Pessoa.ativo.is_(True),
+                Pessoa.excluido_em.is_(None),
+            )
+            .exists()
+        )
+        active_duplicate = (
+            select(Pessoa.id)
+            .where(
+                Pessoa.id == SuspeitaDuplicidade.pessoa_duplicada_id,
+                Pessoa.tenant_id == tenant_id,
+                Pessoa.ativo.is_(True),
+                Pessoa.excluido_em.is_(None),
+            )
+            .exists()
+        )
+        visible_occurrence = or_(
+            SuspeitaDuplicidade.status.in_(("descartada", "mesclada")),
+            and_(
+                SuspeitaDuplicidade.status.in_(("pendente", "confirmada")),
+                active_person,
+                active_duplicate,
+            ),
+        )
+        result = await self.session.execute(
+            select(SuspeitaDuplicidade.status, func.count(SuspeitaDuplicidade.id))
+            .where(
+                SuspeitaDuplicidade.tenant_id == tenant_id,
+                visible_occurrence,
+            )
+            .group_by(SuspeitaDuplicidade.status)
+        )
+        counts = {str(item_status): int(total) for item_status, total in result.all()}
+        return {
+            "pendentes": counts.get("pendente", 0),
+            "confirmadas": counts.get("confirmada", 0),
+            "descartadas": counts.get("descartada", 0),
+            "mescladas": counts.get("mesclada", 0),
+        }
 
     async def duplicate(self, tenant_id: int, duplicate_id: int) -> SuspeitaDuplicidade | None:
         result: SuspeitaDuplicidade | None = await self.session.scalar(

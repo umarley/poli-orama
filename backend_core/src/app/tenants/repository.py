@@ -108,7 +108,7 @@ class TenantRepository(BaseRepository[Tenant]):
             fuso_horario="America/Sao_Paulo",
             percentual_alerta_meta=Decimal("70"),
             integracoes={},
-            preferencias={},
+            preferencias={"nomenclatura_liderancas": "liderancas"},
             criado_em=datetime.now(UTC),
             atualizado_em=datetime.now(UTC),
         )
@@ -323,7 +323,7 @@ class CommercialRepository(BaseRepository[PlanoAssinatura]):
             fuso_horario="America/Sao_Paulo",
             percentual_alerta_meta=Decimal("70"),
             integracoes={},
-            preferencias={},
+            preferencias={"nomenclatura_liderancas": "liderancas"},
             criado_em=now,
             atualizado_em=now,
         )

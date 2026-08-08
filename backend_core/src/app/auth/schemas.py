@@ -250,6 +250,7 @@ class SessionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    origem_login: Literal["web", "app_lider"]
     dispositivo: str | None
     user_agent: str | None
     ip_origem: str | None

@@ -5,6 +5,7 @@ import type {
   BuscaRapidaItem,
   Comunidade,
   ComunidadePessoa,
+  DuplicidadeResumo,
   EstadoCivil,
   Hierarquia,
   IndicacaoGraph,
@@ -416,6 +417,11 @@ export async function listarDuplicidades(status?: StatusDuplicidade) {
   const { data } = await httpClient.get<SuspeitaDuplicidade[]>(`${base}/duplicidades`, {
     params: { status },
   });
+  return data;
+}
+
+export async function obterResumoDuplicidades() {
+  const { data } = await httpClient.get<DuplicidadeResumo>(`${base}/duplicidades/resumo`);
   return data;
 }
 

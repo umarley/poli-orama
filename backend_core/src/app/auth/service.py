@@ -151,6 +151,7 @@ class AuthService:
         user_session = await self.repository.create_session(
             tenant_id=tenant.id,
             user_id=user.id,
+            login_origin="app_lider" if payload.app_lider else "web",
             expires_at=session_expires_at,
             device=payload.dispositivo,
             user_agent=user_agent,
@@ -163,6 +164,7 @@ class AuthService:
             session_id=user_session.id,
             profiles=[profile.codigo for profile in profiles],
             permissions=[permission.codigo for permission in permissions],
+            login_origin=user_session.origem_login,
             expires_at=access_expires_at,
         )
         refresh_token = create_refresh_token(
@@ -170,6 +172,7 @@ class AuthService:
             user_id=user.id,
             tenant_id=tenant.id,
             session_id=user_session.id,
+            login_origin=user_session.origem_login,
             expires_at=session_expires_at,
         )
         user_session.token_hash = token_digest(token)
@@ -202,6 +205,7 @@ class AuthService:
         tenant_id = int(claims["tenant_id"])
         user_id = int(claims["sub"])
         session_id = int(claims["sid"])
+        login_origin = str(claims["origem_login"])
         await self.repository.set_tenant_context(tenant_id)
         tenant = await self.repository.resolve_tenant_for_login_by_id(tenant_id)
         if tenant is None:
@@ -214,6 +218,7 @@ class AuthService:
             or user_session is None
             or user_session.usuario_id != user_id
             or user_session.tenant_id != tenant_id
+            or user_session.origem_login != login_origin
             or user_session.revogada_em is not None
             or user_session.expira_em <= datetime.now(UTC)
             or user_session.refresh_token_hash is None
@@ -240,6 +245,7 @@ class AuthService:
             session_id=session_id,
             profiles=[profile.codigo for profile in profiles],
             permissions=[permission.codigo for permission in permissions],
+            login_origin=user_session.origem_login,
             expires_at=access_expires_at,
         )
         rotated_refresh_token = create_refresh_token(
@@ -247,6 +253,7 @@ class AuthService:
             user_id=user_id,
             tenant_id=tenant_id,
             session_id=session_id,
+            login_origin=user_session.origem_login,
             expires_at=user_session.expira_em,
         )
         await self.repository.rotate_session_tokens(
@@ -362,6 +369,7 @@ class AuthService:
         return [
             SessionResponse(
                 id=session.id,
+                origem_login=session.origem_login,
                 dispositivo=session.dispositivo,
                 user_agent=session.user_agent,
                 ip_origem=str(session.ip_origem) if session.ip_origem else None,
@@ -665,6 +673,7 @@ class AuthService:
         user_session = await self.repository.create_session(
             tenant_id=tenant.id,
             user_id=user.id,
+            login_origin=actor.login_origin,
             expires_at=session_expires_at,
             device=payload.dispositivo,
             user_agent=user_agent,
@@ -677,6 +686,7 @@ class AuthService:
             session_id=user_session.id,
             profiles=[profile.codigo for profile in profiles],
             permissions=[permission.codigo for permission in permissions],
+            login_origin=user_session.origem_login,
             expires_at=access_expires_at,
         )
         refresh_token = create_refresh_token(
@@ -684,6 +694,7 @@ class AuthService:
             user_id=user.id,
             tenant_id=tenant.id,
             session_id=user_session.id,
+            login_origin=user_session.origem_login,
             expires_at=session_expires_at,
         )
         user_session.token_hash = token_digest(token)

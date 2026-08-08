@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from app.auth.access import RequestActor, require_permission
+from app.auth.access import RequestActor, get_territorial_access, require_permission
 from app.auth.repository import AuthRepository
 from app.auth.service import AuthService
 from app.core.config import Settings
@@ -36,6 +36,25 @@ def test_permission_dependency_rejects_missing_permission() -> None:
 
     with pytest.raises(AuthorizationError):
         asyncio.run(dependency(make_actor("usuarios.visualizar")))
+
+
+def test_web_actor_with_multiple_profiles_keeps_unrestricted_access() -> None:
+    actor = RequestActor(
+        tenant_id=2,
+        user_id=8,
+        session_id=30,
+        profiles=("lider", "telefonista", "gestor", "administrativo_rh"),
+        permissions=frozenset({"cadastro.visualizar"}),
+        token="token",
+        habilitado_app_lider=True,
+        lideranca_id=5,
+        login_origin="web",
+    )
+
+    access = asyncio.run(get_territorial_access(actor, None))
+
+    assert access.unrestricted is True
+    assert actor.is_mobile_leader_session is False
 
 
 def saas_actor(*profiles: str) -> RequestActor:

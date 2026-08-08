@@ -98,10 +98,15 @@ class PessoaContatoUpdate(CadastroSchema):
     observacao: str | None = Field(default=None, max_length=255)
 
 
-class PessoaContatoResponse(PessoaContatoBase):
+class PessoaContatoResponse(CadastroSchema):
     id: int
     tenant_id: int
     pessoa_id: int
+    tipo_contato: TipoContato
+    valor: str = Field(min_length=1, max_length=180)
+    principal: bool = False
+    verificado: bool = False
+    observacao: str | None = Field(default=None, max_length=255)
     criado_em: datetime
 
 

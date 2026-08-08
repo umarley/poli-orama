@@ -39,10 +39,15 @@ class RequestActor:
     pessoa_id: int | None = None
     lideranca_id: int | None = None
     habilitado_app_lider: bool = False
+    login_origin: str = "web"
 
     @property
     def role(self) -> str:
         return self.profiles[0] if self.profiles else "usuario"
+
+    @property
+    def is_mobile_leader_session(self) -> bool:
+        return self.login_origin == "app_lider"
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +85,7 @@ async def get_current_user(
     tenant_id = int(claims["tenant_id"])
     user_id = int(claims["sub"])
     session_id = int(claims["sid"])
+    login_origin = str(claims["origem_login"])
 
     await repository.set_tenant_context(tenant_id)
     tenant = await repository.resolve_tenant_for_login_by_id(tenant_id)
@@ -94,6 +100,7 @@ async def get_current_user(
         or user_session is None
         or user_session.usuario_id != user_id
         or user_session.tenant_id != tenant_id
+        or user_session.origem_login != login_origin
         or user_session.revogada_em is not None
         or user_session.expira_em <= now
         or not hmac.compare_digest(user_session.token_hash, token_digest(token))
@@ -132,6 +139,7 @@ async def get_current_user(
         pessoa_id=user.pessoa_id,
         lideranca_id=user.lideranca_id,
         habilitado_app_lider=user.habilitado_app_lider,
+        login_origin=login_origin,
     )
 
 

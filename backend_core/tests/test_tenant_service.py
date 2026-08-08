@@ -1,12 +1,16 @@
 import asyncio
 from datetime import UTC, date, datetime
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ResourceNotFoundError
 from app.core.pagination import ListParams
+from app.tenants.repository import TenantRepository
+from app.tenants.schemas import TenantCreate
 from app.tenants.service import TenantService
 
 
@@ -56,3 +60,17 @@ def test_service_raises_not_found() -> None:
 
     with pytest.raises(ResourceNotFoundError):
         asyncio.run(service.get_by_id(999))
+
+
+@pytest.mark.asyncio
+async def test_new_tenant_defaults_to_leadership_terminology() -> None:
+    session = AsyncMock(spec=AsyncSession)
+    repository = TenantRepository(session)
+
+    tenant = await repository.create(
+        TenantCreate(nome="Campanha Nova", slug="campanha-nova")
+    )
+
+    assert tenant.configuracao.preferencias == {
+        "nomenclatura_liderancas": "liderancas"
+    }

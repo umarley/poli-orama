@@ -7,9 +7,11 @@ export type TenantStatus =
   | 'inadimplente';
 
 export type CommunityTerminology = 'comunidades' | 'frentes';
+export type LeadershipTerminology = 'liderancas' | 'coordenadores';
 
 export interface TenantPreferences extends Record<string, unknown> {
   nomenclatura_comunidades?: CommunityTerminology;
+  nomenclatura_liderancas?: LeadershipTerminology;
 }
 
 export interface Plan {
