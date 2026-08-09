@@ -13,6 +13,7 @@ vi.mock('@/services/api/http-client', () => ({
 }));
 
 import {
+  alterarPapelHierarquia,
   atualizarContato,
   atualizarRedeSocial,
   criarContato,
@@ -130,6 +131,16 @@ describe('serviços de cadastro', () => {
         lideranca_superior_id: 292,
         papel_subordinado: 'apoiador',
       },
+    });
+  });
+
+  it('atualiza o papel do vínculo de hierarquia', async () => {
+    patch.mockResolvedValueOnce({ data: { id: 15, papel_subordinado: 'eleitor' } });
+
+    await alterarPapelHierarquia(15, 'eleitor');
+
+    expect(patch).toHaveBeenCalledWith('/api/v1/cadastro/hierarquia/15/papel', {
+      papel_subordinado: 'eleitor',
     });
   });
 

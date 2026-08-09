@@ -203,7 +203,7 @@ class MetaService:
         engagement = await self.repository.average_person_engagement(
             actor.tenant_id, person_ids
         )
-        percentage = self.percentage(confirmed, payload.quantidade_meta)
+        percentage = self.percentage(base, payload.quantidade_meta)
         threshold = await self.repository.risk_threshold(actor.tenant_id)
         risk_status = self.risk_status(percentage, threshold)
         initial_tracking = GoalTrackingCreate(
@@ -419,7 +419,7 @@ class MetaService:
                 tenant_id, goal["id"], person_ids
             )
         )
-        percentage = self.percentage(current, goal["quantidade_meta"])
+        percentage = self.percentage(base, goal["quantidade_meta"])
         threshold = await self.repository.risk_threshold(tenant_id)
         risk_status = self.risk_status(percentage, threshold)
         score, factors = self.predictive_risk_score(
@@ -432,7 +432,9 @@ class MetaService:
         )
         goal["score_risco"] = score
         goal["fatores_risco"] = factors
-        goal["quantidade_atual"] = current
+        goal["quantidade_atual"] = base
+        goal["quantidade_a_confirmar"] = base - current
+        goal["quantidade_confirmada"] = current
         goal["quantidade_eleitores_vinculados"] = base
         goal["percentual"] = percentage
         goal["situacao_risco"] = risk_status
@@ -452,12 +454,7 @@ class MetaService:
         tracking = await self.repository.list_tracking(actor.tenant_id, goal["id"])
         person_ids = await self.goal_person_ids(actor.tenant_id, goal)
         base = len(person_ids)
-        current = len(
-            await self.repository.confirmed_person_ids(
-                actor.tenant_id, goal["id"], person_ids
-            )
-        )
-        percentage = self.percentage(current, goal["quantidade_meta"])
+        percentage = self.percentage(base, goal["quantidade_meta"])
         threshold = await self.repository.risk_threshold(actor.tenant_id)
         status = self.risk_status(percentage, threshold)
         alert_change = await self.repository.sync_risk_alert(
@@ -499,7 +496,7 @@ class MetaService:
         engagement = await self.repository.average_person_engagement(
             actor.tenant_id, person_ids
         )
-        percentage = self.percentage(confirmed, goal["quantidade_meta"])
+        percentage = self.percentage(base, goal["quantidade_meta"])
         threshold = await self.repository.risk_threshold(actor.tenant_id)
         risk_status = self.risk_status(percentage, threshold)
         tracking = await self.repository.upsert_tracking(
@@ -613,10 +610,13 @@ class MetaService:
             leader_goals = [
                 goal
                 for goal in goals
-                if any(
-                    target["tipo_alvo"] == "lideranca"
-                    and target["alvo_id"] == metric["lideranca_id"]
-                    for target in targets_by_goal[goal.id]
+                if (
+                    goal.coordenador_id == metric["lideranca_id"]
+                    or any(
+                        target["tipo_alvo"] == "lideranca"
+                        and target["alvo_id"] == metric["lideranca_id"]
+                        for target in targets_by_goal[goal.id]
+                    )
                 )
             ]
             target = sum(goal.quantidade_meta for goal in leader_goals)

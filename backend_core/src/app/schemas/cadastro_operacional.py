@@ -239,6 +239,10 @@ class HierarquiaStatusInput(CadastroSchema):
     ativo: bool
 
 
+class HierarquiaRoleInput(CadastroSchema):
+    papel_subordinado: PapelSubordinado
+
+
 class HierarquiaResponse(HierarquiaInput):
     id: int
     tenant_id: int

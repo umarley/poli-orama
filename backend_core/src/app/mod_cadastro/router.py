@@ -44,6 +44,7 @@ from app.schemas.cadastro_operacional import (
     EstadoCivilResponse,
     HierarquiaInput,
     HierarquiaResponse,
+    HierarquiaRoleInput,
     HierarquiaStatusInput,
     IndicacaoGraphResponse,
     IndicacaoPessoaInput,
@@ -524,6 +525,16 @@ async def set_hierarchy_status(
     hierarchy_id: int = Path(ge=1),
 ) -> HierarquiaResponse:
     return await service.set_hierarchy_status(actor, hierarchy_id, payload)
+
+
+@router.patch("/hierarquia/{hierarchy_id}/papel", response_model=HierarquiaResponse)
+async def set_hierarchy_role(
+    payload: HierarquiaRoleInput,
+    actor: Annotated[RequestActor, Depends(require_permission("cadastro", "editar"))],
+    service: Annotated[CadastroService, Depends(get_cadastro_service)],
+    hierarchy_id: int = Path(ge=1),
+) -> HierarquiaResponse:
+    return await service.set_hierarchy_role(actor, hierarchy_id, payload)
 
 
 @router.delete("/hierarquia/{hierarchy_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -38,6 +38,7 @@ from app.schemas.cadastro_operacional import (
     HierarquiaInput,
     HierarquiaResponse,
     HierarquiaResumo,
+    HierarquiaRoleInput,
     HierarquiaStatusInput,
     IndicacaoGraphEdge,
     IndicacaoGraphNode,
@@ -624,6 +625,26 @@ class CadastroService:
                 "ativo": item.ativo,
                 "data_fim": item.data_fim.isoformat() if item.data_fim else None,
             },
+        )
+        await self.repository.commit()
+        return HierarquiaResponse.model_validate(item)
+
+    async def set_hierarchy_role(
+        self, actor: RequestActor, hierarchy_id: int, payload: HierarquiaRoleInput
+    ) -> HierarquiaResponse:
+        item = await self.repository.hierarchy(actor.tenant_id, hierarchy_id)
+        if item is None:
+            raise ResourceNotFoundError("Vinculo de lideranca", hierarchy_id)
+        previous_role = item.papel_subordinado
+        item = await self.repository.set_hierarchy_role(item, payload.papel_subordinado)
+        await self.repository.audit(
+            tenant_id=actor.tenant_id,
+            user_id=actor.user_id,
+            action="editar",
+            table_name="hierarquia_lideranca",
+            record_id=item.id,
+            before={"papel_subordinado": previous_role},
+            after={"papel_subordinado": item.papel_subordinado},
         )
         await self.repository.commit()
         return HierarquiaResponse.model_validate(item)

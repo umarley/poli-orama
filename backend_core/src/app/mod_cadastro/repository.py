@@ -58,6 +58,7 @@ from app.schemas.cadastro_operacional import (
     HierarquiaInput,
     IndicacaoInput,
     NucleoFamiliarInput,
+    PapelSubordinado,
     PessoaCadastroCreate,
     PessoaFiltros,
     PessoaRedeSocialInput,
@@ -1014,6 +1015,13 @@ class CadastroRepository(BaseRepository[Pessoa]):
         item.data_fim = None if active else date.today()
         if active:
             item.campanha_eleicao_id = await self._active_campaign_id(item.tenant_id)
+        await self.session.flush()
+        return item
+
+    async def set_hierarchy_role(
+        self, item: HierarquiaLideranca, role: PapelSubordinado
+    ) -> HierarquiaLideranca:
+        item.papel_subordinado = role
         await self.session.flush()
         return item
 

@@ -203,7 +203,8 @@ class MetaRepository(BaseRepository[object]):
                      AND own_target.tipo_alvo = 'lideranca'
                     WHERE scope_user.id = :user_id
                       AND scope_user.tenant_id = m.tenant_id
-                      AND (m.lideranca_id = own_leader.id
+                      AND (m.coordenador_id = own_leader.id
+                           OR m.lideranca_id = own_leader.id
                            OR own_target.alvo_id = own_leader.id)
                 )
             )
@@ -242,7 +243,8 @@ class MetaRepository(BaseRepository[object]):
             values["territory_id"] = territory_id
         if leader_id:
             clauses.append(
-                "(m.lideranca_id = :leader_id OR EXISTS ("
+                "(m.coordenador_id = :leader_id OR m.lideranca_id = :leader_id "
+                "OR EXISTS ("
                 "SELECT 1 FROM meta.meta_voto_alvo fla WHERE fla.meta_voto_id = m.id "
                 "AND fla.tipo_alvo = 'lideranca' AND fla.alvo_id = :leader_id))"
             )
@@ -527,9 +529,11 @@ class MetaRepository(BaseRepository[object]):
     ) -> set[int]:
         queries = {
             "lideranca": (
-                "SELECT pessoa_id FROM eleicao.campanha_liderado "
+                "SELECT pessoa_subordinada_id AS pessoa_id "
+                "FROM cadastro.hierarquia_lideranca "
                 "WHERE tenant_id = :tenant_id AND campanha_eleicao_id = :campaign_id "
-                "AND lideranca_id = :id AND ativo"
+                "AND lideranca_superior_id = :id AND ativo "
+                "AND (data_fim IS NULL OR data_fim >= CURRENT_DATE)"
             ),
             "territorio": (
                 "WITH RECURSIVE tree AS (SELECT CAST(:id AS bigint) AS id UNION ALL "
@@ -558,13 +562,14 @@ class MetaRepository(BaseRepository[object]):
         }
         result = await self.session.scalars(
             text(
-                "SELECT candidate.pessoa_id FROM ("
+                "SELECT DISTINCT candidate.pessoa_id FROM ("
                 + queries[target_type]
                 + ") candidate WHERE EXISTS ("
-                "SELECT 1 FROM eleicao.campanha_liderado cl "
-                "WHERE cl.tenant_id = :tenant_id "
-                "AND cl.campanha_eleicao_id = :campaign_id "
-                "AND cl.pessoa_id = candidate.pessoa_id AND cl.ativo)"
+                "SELECT 1 FROM cadastro.hierarquia_lideranca h "
+                "WHERE h.tenant_id = :tenant_id "
+                "AND h.campanha_eleicao_id = :campaign_id "
+                "AND h.pessoa_subordinada_id = candidate.pessoa_id AND h.ativo "
+                "AND (h.data_fim IS NULL OR h.data_fim >= CURRENT_DATE))"
             ),
             {
                 "tenant_id": tenant_id,
@@ -579,9 +584,11 @@ class MetaRepository(BaseRepository[object]):
     ) -> set[int]:
         result = await self.session.scalars(
             text(
-                "SELECT DISTINCT pessoa_id FROM eleicao.campanha_liderado "
+                "SELECT DISTINCT pessoa_subordinada_id "
+                "FROM cadastro.hierarquia_lideranca "
                 "WHERE tenant_id = :tenant_id "
-                "AND campanha_eleicao_id = :campaign_id AND ativo"
+                "AND campanha_eleicao_id = :campaign_id AND ativo "
+                "AND (data_fim IS NULL OR data_fim >= CURRENT_DATE)"
             ),
             {"tenant_id": tenant_id, "campaign_id": campaign_id},
         )
@@ -949,18 +956,17 @@ class MetaRepository(BaseRepository[object]):
                 " p.nome_completo AS nome_lideranca,"
                 " count(DISTINCT hl.pessoa_subordinada_id)::int AS total_cadastros,"
                 " COALESCE(avg(subordinate.nivel_engajamento), 0)::numeric AS engajamento,"
-                " count(DISTINCT el.evento_id)::int AS total_eventos,"
+                " count(DISTINCT ev.id)::int AS total_eventos,"
                 " count(DISTINCT d.id)::int AS total_demandas"
                 " FROM cadastro.lideranca l"
                 " JOIN cadastro.pessoa p ON p.id = l.pessoa_id"
-                " JOIN eleicao.campanha_lideranca cl"
-                " ON cl.lideranca_id = l.id AND cl.tenant_id = l.tenant_id"
-                " AND cl.campanha_eleicao_id = :campaign_id AND cl.ativo"
-                " LEFT JOIN eleicao.campanha_liderado hl"
-                " ON hl.lideranca_id = l.id AND hl.tenant_id = l.tenant_id"
+                " LEFT JOIN cadastro.hierarquia_lideranca hl"
+                " ON hl.lideranca_superior_id = l.id AND hl.tenant_id = l.tenant_id"
                 " AND hl.campanha_eleicao_id = :campaign_id AND hl.ativo"
+                " AND (hl.data_fim IS NULL OR hl.data_fim >= CURRENT_DATE)"
                 " LEFT JOIN cadastro.pessoa subordinate"
                 " ON subordinate.id = hl.pessoa_subordinada_id"
+                " AND subordinate.tenant_id = hl.tenant_id"
                 " LEFT JOIN agenda.evento_lideranca el"
                 " ON el.lideranca_id = l.id AND el.tenant_id = l.tenant_id"
                 " LEFT JOIN agenda.evento ev ON ev.id = el.evento_id"

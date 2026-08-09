@@ -1,4 +1,10 @@
-import { AlertOutlined, EditOutlined, StopOutlined } from '@ant-design/icons';
+import {
+  AlertOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  EditOutlined,
+  StopOutlined,
+} from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
@@ -23,6 +29,7 @@ import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import { AppToast } from '@/components/feedback/AppToast';
+import { LocalizedStatistic as Statistic } from '@/components/data/LocalizedStatistic';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { GoalProgress } from '@/components/metas/GoalProgress';
 import { cancelarMeta, obterMeta, registrarAcompanhamento } from '@/modules/metas/metas-service';
@@ -140,6 +147,27 @@ export function GoalDetailPage() {
         </Col>
       </Row>
 
+      <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+        <Col xs={24} md={12}>
+          <Card loading={goal.isPending}>
+            <Statistic
+              title="A confirmar"
+              value={item?.quantidade_a_confirmar ?? 0}
+              prefix={<ClockCircleOutlined />}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} md={12}>
+          <Card loading={goal.isPending}>
+            <Statistic
+              title="Confirmado"
+              value={item?.quantidade_confirmada ?? 0}
+              prefix={<CheckCircleOutlined />}
+            />
+          </Card>
+        </Col>
+      </Row>
+
       <Card title="Dados da meta" style={{ marginTop: 16 }} loading={goal.isPending}>
         {item && (
           <Descriptions column={{ xs: 1, md: 2, lg: 3 }}>
@@ -235,7 +263,7 @@ export function GoalDetailPage() {
             type="info"
             showIcon
             message="Projeção e confirmação são calculadas automaticamente"
-            description="A projeção considera os liderados ativos e a confirmação considera as declarações registradas pelo Call Center."
+            description="O progresso considera os vínculos ativos da liderança. Os votos permanecem a confirmar até o registro da confirmação pelo Call Center."
             style={{ marginBottom: 16 }}
           />
           <Form.Item name="observacao" label="Observação">

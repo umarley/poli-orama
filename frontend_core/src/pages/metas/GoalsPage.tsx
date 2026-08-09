@@ -35,7 +35,10 @@ import {
   recalcularRanking,
 } from '@/modules/metas/metas-service';
 import type { GoalInput, GoalStatus, LeadershipRanking, TargetType } from '@/modules/metas/types';
-import { getCommunityTerminologyLabels } from '@/modules/tenants/tenant-preferences';
+import {
+  getCommunityTerminologyLabels,
+  getLeadershipTerminologyLabels,
+} from '@/modules/tenants/tenant-preferences';
 import { getTenantConfiguration } from '@/modules/tenants/tenant-service';
 import { normalizeApiError } from '@/services/api/api-error';
 import { useSessionStore } from '@/stores/session-store';
@@ -76,6 +79,7 @@ export function GoalsPage() {
     queryFn: getTenantConfiguration,
   });
   const communityTerms = getCommunityTerminologyLabels(tenantConfiguration.data);
+  const leadershipTerms = getLeadershipTerminologyLabels(tenantConfiguration.data);
   const targetLabels: Record<TargetType, string> = {
     lideranca: 'Liderança',
     territorio: 'Território',
@@ -327,7 +331,7 @@ export function GoalsPage() {
                   dataSource={ranking.data ?? []}
                   columns={[
                     { title: '#', dataIndex: 'posicao', width: 60 },
-                    { title: 'Liderança', dataIndex: 'nome_lideranca' },
+                    { title: leadershipTerms.columnTitle, dataIndex: 'nome_lideranca' },
                     {
                       title: 'Cadastros',
                       dataIndex: 'total_cadastros',

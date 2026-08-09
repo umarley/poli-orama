@@ -66,7 +66,7 @@ export function getLeadershipTerminologyLabels(
       value,
       menu: 'Coordenadores',
       registeredTitle: 'Coordenadores cadastrados',
-      columnTitle: 'Coordenadores',
+      columnTitle: 'Coordenador',
       activeTitle: 'Coordenações ativas',
     };
   }

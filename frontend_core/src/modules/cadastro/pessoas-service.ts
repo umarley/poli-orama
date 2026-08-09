@@ -266,6 +266,16 @@ export async function alterarStatusHierarquia(id: number, ativo: boolean) {
   return data;
 }
 
+export async function alterarPapelHierarquia(
+  id: number,
+  papelSubordinado: Hierarquia['papel_subordinado'],
+) {
+  const { data } = await httpClient.patch<Hierarquia>(`${base}/hierarquia/${id}/papel`, {
+    papel_subordinado: papelSubordinado,
+  });
+  return data;
+}
+
 export async function excluirHierarquia(id: number) {
   await httpClient.delete(`${base}/hierarquia/${id}`);
 }

@@ -50,7 +50,7 @@ describe('preferências de nomenclatura do tenant', () => {
     expect(getLeadershipTerminologyLabels(configuration)).toMatchObject({
       menu: 'Coordenadores',
       registeredTitle: 'Coordenadores cadastrados',
-      columnTitle: 'Coordenadores',
+      columnTitle: 'Coordenador',
       activeTitle: 'Coordenações ativas',
     });
   });

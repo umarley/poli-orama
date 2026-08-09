@@ -20,6 +20,7 @@ from app.schemas.cadastro import (
 )
 from app.schemas.cadastro_operacional import (
     HierarquiaInput,
+    HierarquiaRoleInput,
     HierarquiaStatusInput,
     IndicacaoPessoaInput,
     PessoaCadastroCreate,
@@ -243,6 +244,51 @@ async def test_inactive_link_cannot_be_reactivated_when_another_is_active() -> N
 
     assert error.value.code == "person_already_has_active_leadership"
     repository.set_hierarchy_status.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_hierarchy_role_is_updated_and_audited() -> None:
+    item = SimpleNamespace(
+        id=10,
+        tenant_id=10,
+        campanha_eleicao_id=None,
+        lideranca_superior_id=1,
+        lideranca_superior_nome="Lider Superior",
+        pessoa_subordinada_id=2,
+        pessoa_subordinada_nome="Pessoa Vinculada",
+        papel_subordinado="liderado",
+        data_inicio=date.today(),
+        data_fim=None,
+        ativo=True,
+        origem=None,
+        criado_em=datetime.now(UTC),
+    )
+    repository = AsyncMock()
+    repository.hierarchy.return_value = item
+
+    async def update_role(current: SimpleNamespace, role: str) -> SimpleNamespace:
+        current.papel_subordinado = role
+        return current
+
+    repository.set_hierarchy_role.side_effect = update_role
+    service = CadastroService(repository)
+
+    result = await service.set_hierarchy_role(
+        make_actor(), 10, HierarquiaRoleInput(papel_subordinado="eleitor")
+    )
+
+    assert result.papel_subordinado == "eleitor"
+    repository.set_hierarchy_role.assert_awaited_once_with(item, "eleitor")
+    repository.audit.assert_awaited_once_with(
+        tenant_id=10,
+        user_id=20,
+        action="editar",
+        table_name="hierarquia_lideranca",
+        record_id=10,
+        before={"papel_subordinado": "liderado"},
+        after={"papel_subordinado": "eleitor"},
+    )
+    repository.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio

@@ -144,6 +144,8 @@ class GoalResponse(MetaSchema):
     titulo: str
     quantidade_meta: int
     quantidade_atual: int
+    quantidade_a_confirmar: int
+    quantidade_confirmada: int
     quantidade_eleitores_vinculados: int
     percentual: Decimal
     situacao_risco: RiskStatus

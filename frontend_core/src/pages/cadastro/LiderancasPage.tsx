@@ -28,6 +28,7 @@ import { LocalizedStatistic as Statistic } from '@/components/data/LocalizedStat
 import { RemotePersonSelect } from '@/components/forms/RemotePersonSelect';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
+  alterarPapelHierarquia,
   alterarStatusHierarquia,
   criarHierarquia,
   definirLideranca,
@@ -52,6 +53,17 @@ interface LeadershipForm extends LiderancaInput {
   pessoa_id: number;
 }
 
+interface HierarchyRoleForm {
+  papel_subordinado: Hierarquia['papel_subordinado'];
+}
+
+const hierarchyRoleOptions = [
+  { value: 'lider', label: 'Líder' },
+  { value: 'liderado', label: 'Liderado' },
+  { value: 'apoiador', label: 'Apoiador' },
+  { value: 'eleitor', label: 'Eleitor' },
+];
+
 function formatDate(value: string): string {
   const [year, month, day] = value.split('T')[0].split('-');
   return year && month && day ? `${day}/${month}/${year}` : value;
@@ -75,6 +87,7 @@ export function LiderancasPage() {
   const canEdit = permissions.includes('cadastro.editar');
   const canDelete = profiles.some((profile) => ['gestor', 'gestor_saas'].includes(profile));
   const [linkModalOpen, setLinkModalOpen] = useState(false);
+  const [editingHierarchy, setEditingHierarchy] = useState<Hierarquia | null>(null);
   const [leadershipModalOpen, setLeadershipModalOpen] = useState(false);
   const [editingLeadership, setEditingLeadership] = useState<Lideranca | null>(null);
   const [leaderFilter, setLeaderFilter] = useState('');
@@ -84,6 +97,7 @@ export function LiderancasPage() {
   const [linkedPersonFilter, setLinkedPersonFilter] = useState('');
   const [roleFilter, setRoleFilter] = useState<Hierarquia['papel_subordinado']>();
   const [linkForm] = Form.useForm<HierarchyForm>();
+  const [hierarchyRoleForm] = Form.useForm<HierarchyRoleForm>();
   const [leadershipForm] = Form.useForm<LeadershipForm>();
   const tenantConfigurationQuery = useQuery({
     queryKey: ['tenant-configuration'],
@@ -228,6 +242,27 @@ export function LiderancasPage() {
     },
     onError: (error) => AppToast.error(normalizeApiError(error).message),
   });
+  const updateHierarchyRoleMutation = useMutation({
+    mutationFn: ({ id, papel_subordinado }: { id: number } & HierarchyRoleForm) =>
+      alterarPapelHierarquia(id, papel_subordinado),
+    onSuccess: async () => {
+      AppToast.success('Papel do vínculo atualizado.');
+      setEditingHierarchy(null);
+      hierarchyRoleForm.resetFields();
+      await queryClient.invalidateQueries({ queryKey: ['cadastro', 'hierarquia'] });
+    },
+    onError: (error) => AppToast.error(normalizeApiError(error).message),
+  });
+
+  const openEditHierarchyRole = (hierarchy: Hierarquia) => {
+    setEditingHierarchy(hierarchy);
+    hierarchyRoleForm.setFieldsValue({ papel_subordinado: hierarchy.papel_subordinado });
+  };
+
+  const closeHierarchyRoleModal = () => {
+    setEditingHierarchy(null);
+    hierarchyRoleForm.resetFields();
+  };
   const deleteLeadershipMutation = useMutation({
     mutationFn: excluirLideranca,
     onSuccess: async () => {
@@ -376,31 +411,42 @@ export function LiderancasPage() {
         />
       ),
     },
-    ...(canDelete
+    ...(canEdit || canDelete
       ? [
           {
-            title: 'Ação',
+            title: 'Ações',
             key: 'action',
-            width: 90,
+            width: 120,
             render: (_: unknown, item: Hierarquia) => (
-              <Popconfirm
-                title="Excluir vínculo"
-                description="Deseja realmente excluir este registro?"
-                okText="Sim"
-                cancelText="Não"
-                okButtonProps={{ danger: true }}
-                onConfirm={() => deleteHierarchyMutation.mutate(item.id)}
-              >
-                <Button
-                  danger
-                  aria-label="Excluir vínculo"
-                  icon={<DeleteOutlined />}
-                  loading={
-                    deleteHierarchyMutation.isPending &&
-                    deleteHierarchyMutation.variables === item.id
-                  }
-                />
-              </Popconfirm>
+              <Space size="small">
+                {canEdit && (
+                  <Button
+                    aria-label="Editar papel do vínculo"
+                    icon={<EditOutlined />}
+                    onClick={() => openEditHierarchyRole(item)}
+                  />
+                )}
+                {canDelete && (
+                  <Popconfirm
+                    title="Excluir vínculo"
+                    description="Deseja realmente excluir este registro?"
+                    okText="Sim"
+                    cancelText="Não"
+                    okButtonProps={{ danger: true }}
+                    onConfirm={() => deleteHierarchyMutation.mutate(item.id)}
+                  >
+                    <Button
+                      danger
+                      aria-label="Excluir vínculo"
+                      icon={<DeleteOutlined />}
+                      loading={
+                        deleteHierarchyMutation.isPending &&
+                        deleteHierarchyMutation.variables === item.id
+                      }
+                    />
+                  </Popconfirm>
+                )}
+              </Space>
             ),
           },
         ]
@@ -515,12 +561,7 @@ export function LiderancasPage() {
             value={roleFilter}
             onChange={setRoleFilter}
             style={{ width: 200 }}
-            options={[
-              { value: 'lider', label: 'Líder' },
-              { value: 'liderado', label: 'Liderado' },
-              { value: 'apoiador', label: 'Apoiador' },
-              { value: 'eleitor', label: 'Eleitor' },
-            ]}
+            options={hierarchyRoleOptions}
           />
         </Space>
         <Table
@@ -562,14 +603,41 @@ export function LiderancasPage() {
             <RemotePersonSelect excludeIds={activelyLinkedPersonIds} />
           </Form.Item>
           <Form.Item name="papel_subordinado" label="Papel" initialValue="liderado">
-            <Select
-              options={[
-                { value: 'lider', label: 'Líder' },
-                { value: 'liderado', label: 'Liderado' },
-                { value: 'apoiador', label: 'Apoiador' },
-                { value: 'eleitor', label: 'Eleitor' },
-              ]}
-            />
+            <Select options={hierarchyRoleOptions} />
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
+        forceRender
+        open={Boolean(editingHierarchy)}
+        title="Editar papel do vínculo"
+        okText="Salvar alteração"
+        confirmLoading={updateHierarchyRoleMutation.isPending}
+        onCancel={closeHierarchyRoleModal}
+        onOk={() =>
+          hierarchyRoleForm.validateFields().then((values) => {
+            if (editingHierarchy) {
+              updateHierarchyRoleMutation.mutate({ id: editingHierarchy.id, ...values });
+            }
+          })
+        }
+      >
+        {editingHierarchy && (
+          <Typography.Paragraph type="secondary">
+            {editingHierarchy.pessoa_subordinada_nome ||
+              `Pessoa #${editingHierarchy.pessoa_subordinada_id}`}{' '}
+            vinculada a{' '}
+            {editingHierarchy.lideranca_superior_nome ||
+              `Liderança #${editingHierarchy.lideranca_superior_id}`}.
+          </Typography.Paragraph>
+        )}
+        <Form form={hierarchyRoleForm} layout="vertical">
+          <Form.Item
+            name="papel_subordinado"
+            label="Papel"
+            rules={[{ required: true, message: 'Selecione o papel do vínculo.' }]}
+          >
+            <Select options={hierarchyRoleOptions} />
           </Form.Item>
         </Form>
       </Modal>

@@ -78,6 +78,8 @@ export interface Goal {
   titulo: string;
   quantidade_meta: number;
   quantidade_atual: number;
+  quantidade_a_confirmar: number;
+  quantidade_confirmada: number;
   quantidade_eleitores_vinculados: number;
   percentual: string;
   situacao_risco: 'normal' | 'atencao' | 'risco' | 'critico';
