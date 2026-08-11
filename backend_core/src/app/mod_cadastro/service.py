@@ -96,7 +96,7 @@ class CadastroService:
     ) -> Page[PessoaListItem]:
         filters = self._scope_mobile_leader_filters(actor, filters)
         accessible_ids = None
-        if territorial_access is not None:
+        if territorial_access is not None and not self._is_scoped_mobile_leader(actor):
             accessible_ids = await TerritorioRepository(
                 self.repository.session
             ).accessible_ids(actor.tenant_id, territorial_access)
@@ -144,6 +144,12 @@ class CadastroService:
         person_id: int,
         territorial_access: TerritorialAccess,
     ) -> None:
+        if self._is_scoped_mobile_leader(actor):
+            person = await self.repository.get_person(actor.tenant_id, person_id)
+            if person is None:
+                raise ResourceNotFoundError("Pessoa", person_id)
+            if person.cadastrado_por_lideranca_id == actor.lideranca_id:
+                return
         ids = await TerritorioRepository(self.repository.session).accessible_ids(
             actor.tenant_id, territorial_access
         )
@@ -1321,6 +1327,14 @@ class CadastroService:
             await self.repository.leadership(tenant_id, payload.lideranca_superior_id) is None
         ):
             raise ResourceNotFoundError("Lideranca responsavel", payload.lideranca_superior_id)
+
+    @staticmethod
+    def _is_scoped_mobile_leader(actor: RequestActor) -> bool:
+        return (
+            actor.is_mobile_leader_session
+            and actor.habilitado_app_lider
+            and actor.lideranca_id is not None
+        )
 
     @staticmethod
     def _scope_mobile_leader_filters(

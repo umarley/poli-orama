@@ -1,15 +1,16 @@
 import asyncio
 from datetime import UTC, date, datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.access import RequestActor
-from app.core.errors import BusinessRuleError
+from app.auth.access import RequestActor, TerritorialAccess
+from app.core.errors import AuthorizationError, BusinessRuleError
+from app.core.pagination import ListParams
 from app.mod_cadastro.repository import CadastroRepository
 from app.mod_cadastro.router import router
 from app.mod_cadastro.service import CadastroService
@@ -68,6 +69,98 @@ def test_mobile_leader_filter_is_applied_only_to_mobile_session() -> None:
 
     assert web_filters.cadastrado_por_lideranca_id is None
     assert mobile_filters.cadastrado_por_lideranca_id == 5
+
+
+def make_mobile_leader_actor() -> RequestActor:
+    return RequestActor(
+        tenant_id=10,
+        user_id=20,
+        session_id=30,
+        profiles=("lider",),
+        permissions=frozenset({"cadastro.visualizar"}),
+        token="token",
+        habilitado_app_lider=True,
+        lideranca_id=5,
+        login_origin="app_lider",
+    )
+
+
+@pytest.mark.asyncio
+async def test_list_people_skips_territorial_filter_for_mobile_leader() -> None:
+    repository = AsyncMock()
+    repository.list_people.return_value = ([], 0)
+    service = CadastroService(repository)
+    territorial_access = TerritorialAccess(unrestricted=False, scopes=frozenset())
+
+    await service.list_people(
+        make_mobile_leader_actor(),
+        ListParams(),
+        PessoaFiltros(),
+        territorial_access,
+    )
+
+    assert repository.list_people.await_args.args[3] is None
+
+
+@pytest.mark.asyncio
+async def test_list_people_keeps_territorial_filter_for_web_session() -> None:
+    repository = AsyncMock()
+    repository.list_people.return_value = ([], 0)
+    service = CadastroService(repository)
+    territorial_access = TerritorialAccess(
+        unrestricted=False,
+        scopes=frozenset(("territorio", 99, False)),
+    )
+
+    with patch(
+        "app.mod_cadastro.service.TerritorioRepository.accessible_ids",
+        new=AsyncMock(return_value={99}),
+    ) as accessible_ids:
+        await service.list_people(
+            make_actor(),
+            ListParams(),
+            PessoaFiltros(),
+            territorial_access,
+        )
+
+    accessible_ids.assert_awaited_once()
+    assert repository.list_people.await_args.args[3] == {99}
+
+
+@pytest.mark.asyncio
+async def test_mobile_leader_can_access_own_registration_without_territory() -> None:
+    repository = AsyncMock()
+    repository.get_person.return_value = SimpleNamespace(
+        id=42,
+        tenant_id=10,
+        cadastrado_por_lideranca_id=5,
+    )
+    service = CadastroService(repository)
+    territorial_access = TerritorialAccess(unrestricted=False, scopes=frozenset())
+
+    await service.ensure_person_territorial_access(
+        make_mobile_leader_actor(), 42, territorial_access
+    )
+
+    repository.person_in_territories.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_mobile_leader_cannot_access_other_leader_registration() -> None:
+    repository = AsyncMock()
+    repository.get_person.return_value = SimpleNamespace(
+        id=42,
+        tenant_id=10,
+        cadastrado_por_lideranca_id=99,
+    )
+    repository.person_in_territories.return_value = False
+    service = CadastroService(repository)
+    territorial_access = TerritorialAccess(unrestricted=False, scopes=frozenset())
+
+    with pytest.raises(AuthorizationError):
+        await service.ensure_person_territorial_access(
+            make_mobile_leader_actor(), 42, territorial_access
+        )
 
 
 def test_create_tag_translates_duplicate_name_to_business_error() -> None:
