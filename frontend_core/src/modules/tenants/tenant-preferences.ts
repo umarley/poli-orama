@@ -16,6 +16,7 @@ export interface LeadershipTerminologyLabels {
   menu: string;
   registeredTitle: string;
   columnTitle: string;
+  eventColumnTitle: string;
   activeTitle: string;
 }
 
@@ -67,6 +68,7 @@ export function getLeadershipTerminologyLabels(
       menu: 'Coordenadores',
       registeredTitle: 'Coordenadores cadastrados',
       columnTitle: 'Coordenador',
+      eventColumnTitle: 'Coordenação',
       activeTitle: 'Coordenações ativas',
     };
   }
@@ -75,6 +77,7 @@ export function getLeadershipTerminologyLabels(
     menu: 'Lideranças',
     registeredTitle: 'Lideranças cadastradas',
     columnTitle: 'Liderança',
+    eventColumnTitle: 'Liderança',
     activeTitle: 'Lideranças ativas',
   };
 }

@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import Annotated, Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Path, Query, Response, status
 from fastapi.responses import StreamingResponse
@@ -14,6 +15,7 @@ from app.auth.access import (
     get_territorial_access,
     require_permission,
 )
+from app.core.database import get_session
 from app.mod_agenda.repository import AgendaRepository
 from app.mod_agenda.schemas import (
     AgendaItemInput,
@@ -38,6 +40,9 @@ from app.mod_agenda.schemas import (
     LeadershipResponse,
     ParticipantInput,
     ParticipantResponse,
+    PublicAttendanceInput,
+    PublicAttendanceResponse,
+    PublicEventResponse,
 )
 from app.mod_agenda.service import AgendaService
 
@@ -50,20 +55,47 @@ def get_service(
     return AgendaService(AgendaRepository(session))
 
 
+def get_public_service(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> AgendaService:
+    return AgendaService(AgendaRepository(session))
+
+
+@router.get(
+    "/publico/eventos/{public_id}/presenca",
+    response_model=PublicEventResponse,
+    summary="Exibe os dados publicos para confirmacao de presenca",
+)
+async def get_public_attendance_event(
+    service: Annotated[AgendaService, Depends(get_public_service)],
+    public_id: Annotated[UUID, Path()],
+) -> PublicEventResponse:
+    return await service.public_event(public_id)
+
+
+@router.post(
+    "/publico/eventos/{public_id}/presenca",
+    response_model=PublicAttendanceResponse,
+    summary="Registra a presenca informada pelo proprio participante",
+)
+async def confirm_public_attendance(
+    payload: PublicAttendanceInput,
+    service: Annotated[AgendaService, Depends(get_public_service)],
+    public_id: Annotated[UUID, Path()],
+) -> PublicAttendanceResponse:
+    return await service.confirm_public_attendance(public_id, payload)
+
+
 @router.get("/tipos", response_model=list[CatalogResponse])
 async def list_event_types(
     actor: Annotated[RequestActor, Depends(require_permission("agenda", "visualizar"))],
     service: Annotated[AgendaService, Depends(get_service)],
     incluir_inativos: bool = False,
 ) -> list[dict[str, Any]]:
-    return await service.repository.list_catalog(
-        "tipo_evento", actor.tenant_id, incluir_inativos
-    )
+    return await service.repository.list_catalog("tipo_evento", actor.tenant_id, incluir_inativos)
 
 
-@router.post(
-    "/tipos", response_model=CatalogResponse, status_code=status.HTTP_201_CREATED
-)
+@router.post("/tipos", response_model=CatalogResponse, status_code=status.HTTP_201_CREATED)
 async def create_event_type(
     payload: CatalogCreate,
     actor: Annotated[RequestActor, Depends(require_permission("agenda", "administrar"))],
@@ -88,9 +120,7 @@ async def deactivate_event_type(
     service: Annotated[AgendaService, Depends(get_service)],
     item_id: int = Path(ge=1),
 ) -> Response:
-    await service.update_catalog(
-        actor, "tipo_evento", item_id, CatalogUpdate(ativo=False)
-    )
+    await service.update_catalog(actor, "tipo_evento", item_id, CatalogUpdate(ativo=False))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -100,14 +130,10 @@ async def list_event_statuses(
     service: Annotated[AgendaService, Depends(get_service)],
     incluir_inativos: bool = False,
 ) -> list[dict[str, Any]]:
-    return await service.repository.list_catalog(
-        "status_evento", actor.tenant_id, incluir_inativos
-    )
+    return await service.repository.list_catalog("status_evento", actor.tenant_id, incluir_inativos)
 
 
-@router.post(
-    "/status", response_model=CatalogResponse, status_code=status.HTTP_201_CREATED
-)
+@router.post("/status", response_model=CatalogResponse, status_code=status.HTTP_201_CREATED)
 async def create_event_status(
     payload: CatalogCreate,
     actor: Annotated[RequestActor, Depends(require_permission("agenda", "administrar"))],
@@ -132,9 +158,7 @@ async def deactivate_event_status(
     service: Annotated[AgendaService, Depends(get_service)],
     item_id: int = Path(ge=1),
 ) -> Response:
-    await service.update_catalog(
-        actor, "status_evento", item_id, CatalogUpdate(ativo=False)
-    )
+    await service.update_catalog(actor, "status_evento", item_id, CatalogUpdate(ativo=False))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -162,9 +186,7 @@ async def list_events(
     )
 
 
-@router.post(
-    "/eventos", response_model=EventResponse, status_code=status.HTTP_201_CREATED
-)
+@router.post("/eventos", response_model=EventResponse, status_code=status.HTTP_201_CREATED)
 async def create_event(
     payload: EventInput,
     actor: Annotated[RequestActor, Depends(require_permission("agenda", "criar"))],

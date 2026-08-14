@@ -84,6 +84,34 @@ export interface TerritorioTreeNode extends Territorio {
   filhos: TerritorioTreeNode[];
 }
 
+export interface HierarchyOrganizationChange {
+  territorio_id: number;
+  territorio_nome: string;
+  codigo_municipio_ibge: number;
+  territorio_pai_atual_id: number | null;
+  territorio_pai_atual_nome: string | null;
+  territorio_pai_proposto_id: number;
+  territorio_pai_proposto_nome: string;
+}
+
+export interface HierarchyOrganizationPending {
+  territorio_id: number;
+  territorio_nome: string;
+  codigo_municipio_ibge: number | null;
+  motivo: string;
+}
+
+export interface HierarchyOrganizationPreview {
+  hierarquia_atual: TerritorioTreeNode[];
+  hierarquia_proposta: TerritorioTreeNode[];
+  alteracoes: HierarchyOrganizationChange[];
+  pendencias: HierarchyOrganizationPending[];
+}
+
+export interface HierarchyOrganizationResult {
+  atualizados: number;
+}
+
 export interface TerritorioInput {
   tipo_territorio_id: number;
   nome: string;

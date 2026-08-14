@@ -1,7 +1,8 @@
 """Persistencia do dominio de agenda."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,9 +43,7 @@ class AgendaRepository:
         )
         return [dict(row) for row in result.mappings()]
 
-    async def get_catalog(
-        self, table: str, tenant_id: int, item_id: int
-    ) -> dict[str, Any] | None:
+    async def get_catalog(self, table: str, tenant_id: int, item_id: int) -> dict[str, Any] | None:
         self._ensure_catalog(table)
         result = await self.session.execute(
             text(
@@ -140,10 +139,7 @@ class AgendaRepository:
             values["accessible_ids"] = list(accessible_ids)
         result = await self.session.execute(
             text(
-                self._event_select()
-                + " WHERE "
-                + " AND ".join(clauses)
-                + " ORDER BY e.data_inicio"
+                self._event_select() + " WHERE " + " AND ".join(clauses) + " ORDER BY e.data_inicio"
             ),
             values,
         )
@@ -152,8 +148,7 @@ class AgendaRepository:
     async def get_event(self, tenant_id: int, event_id: int) -> dict[str, Any] | None:
         result = await self.session.execute(
             text(
-                self._event_select()
-                + " WHERE e.tenant_id = :tenant_id AND e.id = :id "
+                self._event_select() + " WHERE e.tenant_id = :tenant_id AND e.id = :id "
                 "AND e.excluido_em IS NULL"
             ),
             {"tenant_id": tenant_id, "id": event_id},
@@ -164,7 +159,7 @@ class AgendaRepository:
     @staticmethod
     def _event_select() -> str:
         return (
-            "SELECT e.id, e.tenant_id, e.contexto, e.campanha_eleicao_id, "
+            "SELECT e.id, e.uuid_publico, e.tenant_id, e.contexto, e.campanha_eleicao_id, "
             "e.tipo_evento_id, te.nome AS tipo_evento_nome, "
             "e.status_evento_id, se.codigo AS status_evento_codigo, "
             "se.nome AS status_evento_nome, e.titulo, e.descricao, e.data_inicio, "
@@ -179,9 +174,174 @@ class AgendaRepository:
             "JOIN cadastro.pessoa p ON p.id = e.responsavel_pessoa_id "
         )
 
-    async def create_event(
-        self, tenant_id: int, user_id: int, payload: EventInput
+    async def get_public_event(self, public_id: UUID) -> dict[str, Any] | None:
+        result = await self.session.execute(
+            text("SELECT * FROM agenda.fn_evento_publico(:public_id)"),
+            {"public_id": public_id},
+        )
+        row = result.mappings().first()
+        return dict(row) if row else None
+
+    async def set_tenant_context(self, tenant_id: int) -> None:
+        await self.session.execute(
+            text("SELECT set_config('app.current_tenant_id', :tenant_id, true)"),
+            {"tenant_id": str(tenant_id)},
+        )
+
+    async def lock_public_attendance_identity(
+        self, tenant_id: int, normalized_name: str, phone_digits: str
+    ) -> None:
+        await self.session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:identity_key, 0))"),
+            {"identity_key": f"presenca:{tenant_id}:{normalized_name}:{phone_digits}"},
+        )
+
+    async def find_public_attendance_person(
+        self,
+        tenant_id: int,
+        name: str,
+        phone_digits: str,
+        email: str | None,
+        birth_date: date | None,
+    ) -> int | None:
+        result = await self.session.execute(
+            text(
+                "SELECT p.id FROM cadastro.pessoa p "
+                "WHERE p.tenant_id = :tenant_id AND p.ativo "
+                "AND p.excluido_em IS NULL "
+                "AND unaccent(lower(regexp_replace(btrim(p.nome_completo), "
+                "'\\s+', ' ', 'g'))) = unaccent(lower(:name)) "
+                "AND EXISTS (SELECT 1 FROM cadastro.pessoa_contato pc "
+                "WHERE pc.tenant_id = p.tenant_id AND pc.pessoa_id = p.id "
+                "AND pc.tipo_contato IN ('telefone', 'celular', 'whatsapp') "
+                "AND regexp_replace(pc.valor, '\\D', '', 'g') "
+                "IN (:phone, '55' || :phone)) "
+                "ORDER BY "
+                "CASE WHEN CAST(:email AS TEXT) IS NOT NULL AND EXISTS ("
+                "SELECT 1 FROM cadastro.pessoa_contato pe WHERE pe.pessoa_id = p.id "
+                "AND pe.tenant_id = p.tenant_id AND pe.tipo_contato = 'email' "
+                "AND lower(pe.valor) = CAST(:email AS TEXT)) THEN 1 ELSE 0 END DESC, "
+                "CASE WHEN CAST(:birth_date AS DATE) IS NOT NULL "
+                "AND p.data_nascimento = CAST(:birth_date AS DATE) "
+                "THEN 1 ELSE 0 END DESC, p.id LIMIT 1"
+            ),
+            {
+                "tenant_id": tenant_id,
+                "name": name,
+                "phone": phone_digits,
+                "email": email,
+                "birth_date": birth_date,
+            },
+        )
+        value = result.scalar_one_or_none()
+        return int(value) if value is not None else None
+
+    async def create_public_attendance_person(
+        self,
+        tenant_id: int,
+        name: str,
+        phone_digits: str,
+        email: str | None,
+        birth_date: date | None,
     ) -> int:
+        person_id = int(
+            await self.session.scalar(
+                text(
+                    "INSERT INTO cadastro.pessoa "
+                    "(tenant_id, nome_completo, data_nascimento, origem_cadastro) "
+                    "VALUES (:tenant_id, :name, :birth_date, 'formulario') "
+                    "RETURNING id"
+                ),
+                {"tenant_id": tenant_id, "name": name, "birth_date": birth_date},
+            )
+        )
+        await self.session.execute(
+            text(
+                "INSERT INTO cadastro.pessoa_contato "
+                "(tenant_id, pessoa_id, tipo_contato, valor, principal) "
+                "VALUES (:tenant_id, :person_id, 'whatsapp', :phone, TRUE)"
+            ),
+            {"tenant_id": tenant_id, "person_id": person_id, "phone": phone_digits},
+        )
+        if email:
+            await self.session.execute(
+                text(
+                    "INSERT INTO cadastro.pessoa_contato "
+                    "(tenant_id, pessoa_id, tipo_contato, valor, principal) "
+                    "VALUES (:tenant_id, :person_id, 'email', :email, FALSE)"
+                ),
+                {"tenant_id": tenant_id, "person_id": person_id, "email": email},
+            )
+        return person_id
+
+    async def complement_public_attendance_person(
+        self,
+        tenant_id: int,
+        person_id: int,
+        email: str | None,
+        birth_date: date | None,
+    ) -> None:
+        if birth_date is not None:
+            await self.session.execute(
+                text(
+                    "UPDATE cadastro.pessoa SET data_nascimento = :birth_date, "
+                    "atualizado_em = now() WHERE tenant_id = :tenant_id AND id = :person_id "
+                    "AND data_nascimento IS NULL"
+                ),
+                {
+                    "tenant_id": tenant_id,
+                    "person_id": person_id,
+                    "birth_date": birth_date,
+                },
+            )
+        if email:
+            await self.session.execute(
+                text(
+                    "INSERT INTO cadastro.pessoa_contato "
+                    "(tenant_id, pessoa_id, tipo_contato, valor, principal) "
+                    "SELECT :tenant_id, :person_id, 'email', :email, FALSE "
+                    "WHERE NOT EXISTS (SELECT 1 FROM cadastro.pessoa_contato "
+                    "WHERE tenant_id = :tenant_id AND pessoa_id = :person_id "
+                    "AND tipo_contato = 'email')"
+                ),
+                {"tenant_id": tenant_id, "person_id": person_id, "email": email},
+            )
+
+    async def public_participation(
+        self, tenant_id: int, event_id: int, person_id: int
+    ) -> bool | None:
+        value = await self.session.scalar(
+            text(
+                "SELECT presente FROM agenda.evento_participante "
+                "WHERE tenant_id = :tenant_id AND evento_id = :event_id "
+                "AND pessoa_id = :person_id"
+            ),
+            {"tenant_id": tenant_id, "event_id": event_id, "person_id": person_id},
+        )
+        return bool(value) if value is not None else None
+
+    async def upsert_public_participation(
+        self, tenant_id: int, event_id: int, person_id: int, *, confirmed: bool
+    ) -> None:
+        if confirmed:
+            conflict_action = "DO UPDATE SET presente = TRUE"
+            present_value = "TRUE"
+        else:
+            conflict_action = "DO UPDATE SET presente = NULL"
+            present_value = "NULL"
+        await self.session.execute(
+            text(
+                "INSERT INTO agenda.evento_participante "
+                "(tenant_id, evento_id, pessoa_id, papel, presente, observacao) "
+                "VALUES (:tenant_id, :event_id, :person_id, 'participante', "
+                f"{present_value}, 'Cadastro pelo formulario publico') "
+                "ON CONFLICT (evento_id, pessoa_id) "
+                f"{conflict_action}"
+            ),
+            {"tenant_id": tenant_id, "event_id": event_id, "person_id": person_id},
+        )
+
+    async def create_event(self, tenant_id: int, user_id: int, payload: EventInput) -> int:
         values = payload.model_dump()
         result = await self.session.execute(
             text(
@@ -204,9 +364,7 @@ class AgendaRepository:
         )
         return int(result.scalar_one())
 
-    async def update_event(
-        self, tenant_id: int, event_id: int, payload: EventUpdate
-    ) -> bool:
+    async def update_event(self, tenant_id: int, event_id: int, payload: EventUpdate) -> bool:
         values = payload.model_dump(exclude_unset=True)
         if not values:
             return True
@@ -220,9 +378,7 @@ class AgendaRepository:
         )
         return bool(result.rowcount)  # type: ignore[attr-defined]
 
-    async def cancel_event(
-        self, tenant_id: int, event_id: int, user_id: int, reason: str
-    ) -> bool:
+    async def cancel_event(self, tenant_id: int, event_id: int, user_id: int, reason: str) -> bool:
         result = await self.session.execute(
             text(
                 "UPDATE agenda.evento SET status_evento_id = ("
@@ -272,9 +428,7 @@ class AgendaRepository:
         items = await self.participants(tenant_id, event_id)
         return next(item for item in items if item["pessoa_id"] == payload.pessoa_id)
 
-    async def delete_participant(
-        self, tenant_id: int, event_id: int, person_id: int
-    ) -> None:
+    async def delete_participant(self, tenant_id: int, event_id: int, person_id: int) -> None:
         await self.session.execute(
             text(
                 "DELETE FROM agenda.evento_participante "
@@ -315,9 +469,7 @@ class AgendaRepository:
         items = await self.leaderships(tenant_id, event_id)
         return next(item for item in items if item["lideranca_id"] == payload.lideranca_id)
 
-    async def delete_leadership(
-        self, tenant_id: int, event_id: int, leadership_id: int
-    ) -> None:
+    async def delete_leadership(self, tenant_id: int, event_id: int, leadership_id: int) -> None:
         await self.session.execute(
             text(
                 "DELETE FROM agenda.evento_lideranca "
@@ -510,9 +662,7 @@ class AgendaRepository:
         )
         return [dict(row) for row in result.mappings()]
 
-    async def insights(
-        self, tenant_id: int, event_id: int | None = None
-    ) -> list[dict[str, Any]]:
+    async def insights(self, tenant_id: int, event_id: int | None = None) -> list[dict[str, Any]]:
         clause = "AND (evento_id = :event_id OR evento_id IS NULL)" if event_id else ""
         result = await self.session.execute(
             text(

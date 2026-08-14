@@ -9,9 +9,33 @@ export type TenantStatus =
 export type CommunityTerminology = 'comunidades' | 'frentes';
 export type LeadershipTerminology = 'liderancas' | 'coordenadores';
 
+export interface RegistrationDocumentPreferences {
+  CPF: boolean;
+  RG: boolean;
+  CNH: boolean;
+}
+
+export interface RegistrationContactPreferences {
+  WhatsApp: boolean;
+  Celular: boolean;
+  Telefone: boolean;
+  'E-mail': boolean;
+}
+
+export interface RegistrationFormPreferences {
+  nome_completo: boolean;
+  data_nascimento: boolean;
+  sexo: boolean;
+  estado_civil: boolean;
+  documento: RegistrationDocumentPreferences;
+  canal: RegistrationContactPreferences;
+  titulo_eleitoral: boolean;
+}
+
 export interface TenantPreferences extends Record<string, unknown> {
   nomenclatura_comunidades?: CommunityTerminology;
   nomenclatura_liderancas?: LeadershipTerminology;
+  formulario_cadastro?: RegistrationFormPreferences;
 }
 
 export interface Plan {
@@ -31,7 +55,7 @@ export interface Plan {
 
 export interface TenantConfiguration {
   nome_publico?: string;
-  cor_primaria?: string;
+  cor_primaria?: string | null;
   logo_url?: string;
   fuso_horario: string;
   percentual_alerta_meta: string;

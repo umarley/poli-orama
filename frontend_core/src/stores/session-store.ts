@@ -11,6 +11,7 @@ export interface SessionUser {
   role: string;
   profiles: string[];
   permissions: string[];
+  liderancaId: number | null;
   mustChangePassword: boolean;
   mfaEnabled: boolean;
 }
@@ -83,6 +84,7 @@ export function mapAuthUser(user: AuthUser): SessionUser {
     role: profiles[0] ?? 'usuario',
     profiles,
     permissions: user.permissoes,
+    liderancaId: user.lideranca_id ?? null,
     mustChangePassword: user.deve_alterar_senha,
     mfaEnabled: user.mfa_habilitado,
   };

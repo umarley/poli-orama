@@ -3,10 +3,11 @@ import { httpClient } from '@/services/api/http-client';
 import type {
   Bairro,
   Estado,
+  HierarchyOrganizationPreview,
+  HierarchyOrganizationResult,
   LocalVotacao,
   MapMarker,
   MapPerson,
-  MapMunicipalityShape,
   MapTerritoryMeshType,
   MapTerritoryShape,
   Municipio,
@@ -92,15 +93,32 @@ export async function criarTipoTerritorio(payload: {
   return data;
 }
 
-export async function listarTerritorios(incluirInativos = false) {
+export async function listarTerritorios(incluirInativos = false, query?: string) {
   const { data } = await httpClient.get<Territorio[]>(`${base}/territorios`, {
-    params: { incluir_inativos: incluirInativos },
+    params: { incluir_inativos: incluirInativos, query },
   });
   return data;
 }
 
 export async function listarArvoreTerritorial() {
   const { data } = await httpClient.get<TerritorioTreeNode[]>(`${base}/territorios/arvore`);
+  return data;
+}
+
+export async function obterPreviaOrganizacaoHierarquia() {
+  const { data } = await httpClient.get<HierarchyOrganizationPreview>(
+    `${base}/territorios/hierarquia/organizacao`,
+  );
+  return data;
+}
+
+export async function organizarHierarquia(
+  alteracoes: Array<{ territorio_id: number; territorio_pai_id: number }>,
+) {
+  const { data } = await httpClient.post<HierarchyOrganizationResult>(
+    `${base}/territorios/hierarquia/organizacao`,
+    { alteracoes },
+  );
   return data;
 }
 

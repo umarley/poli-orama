@@ -425,6 +425,50 @@ class CadastroService:
         await self._audit_updated(actor, "pessoa_contato", item.id)
         return PessoaContatoResponse.model_validate(item)
 
+    async def delete_contact(
+        self,
+        actor: RequestActor,
+        person_id: int,
+        contact_id: int,
+    ) -> None:
+        await self._ensure_can_remove_contact(actor, person_id)
+        item = await self.repository.contact(actor.tenant_id, person_id, contact_id)
+        if item is None:
+            raise ResourceNotFoundError("Contato", contact_id)
+        await self.repository.audit(
+            tenant_id=actor.tenant_id,
+            user_id=actor.user_id,
+            action="excluir",
+            table_name="pessoa_contato",
+            record_id=item.id,
+            before={
+                "id": item.id,
+                "pessoa_id": item.pessoa_id,
+                "tipo_contato": item.tipo_contato,
+                "valor": item.valor,
+                "principal": item.principal,
+            },
+            after=None,
+        )
+        await self.repository.delete_contact(item)
+        await self.repository.commit()
+
+    async def _ensure_can_remove_contact(self, actor: RequestActor, person_id: int) -> None:
+        profiles = set(actor.profiles)
+        if {"gestor", "gestor_saas"} & profiles:
+            return
+        if "coordenador_territorial" in profiles:
+            if actor.lideranca_id is None or not await self.repository.person_linked_to_leadership(
+                actor.tenant_id, person_id, actor.lideranca_id
+            ):
+                raise AuthorizationError(
+                    "Apenas contatos de pessoas vinculadas ao coordenador podem ser removidos."
+                )
+            return
+        raise AuthorizationError(
+            "Apenas gestores e coordenadores territoriais vinculados podem remover contatos."
+        )
+
     async def add_address(
         self, actor: RequestActor, person_id: int, payload: PessoaEnderecoCreate
     ) -> PessoaEnderecoResponse:
@@ -1031,9 +1075,12 @@ class CadastroService:
         return ValidacaoResponse.model_validate(item)
 
     async def list_duplicates(
-        self, actor: RequestActor, status: str | None
+        self,
+        actor: RequestActor,
+        status: str | None,
+        nome: str | None = None,
     ) -> list[SuspeitaDuplicidadeResponse]:
-        items = await self.repository.list_duplicates(actor.tenant_id, status)
+        items = await self.repository.list_duplicates(actor.tenant_id, status, nome)
         names = await self.repository.duplicate_person_names(
             actor.tenant_id,
             {

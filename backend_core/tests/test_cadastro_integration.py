@@ -360,6 +360,27 @@ async def test_cad_048_blocks_strong_and_flags_soft_duplicates() -> None:
             assert {"telefone", "email", "nome_data_nascimento"} <= criteria
             assert all(item["tenant_id"] == context.id for item in suspicions.json())
 
+            named = client.get(
+                "/api/v1/cadastro/duplicidades",
+                headers=headers,
+                params={"status": "pendente", "nome": "Duplicada"},
+            )
+            assert named.status_code == 200, named.text
+            assert named.json()
+            assert all(
+                "Duplicada"
+                in f"{item.get('pessoa_nome') or ''} {item.get('pessoa_duplicada_nome') or ''}"
+                for item in named.json()
+            )
+
+            unmatched = client.get(
+                "/api/v1/cadastro/duplicidades",
+                headers=headers,
+                params={"status": "pendente", "nome": "NomeInexistenteXYZ"},
+            )
+            assert unmatched.status_code == 200, unmatched.text
+            assert unmatched.json() == []
+
             inactive_person_id = soft_duplicate.json()["id"]
             deactivation = client.delete(
                 f"/api/v1/cadastro/pessoas/{inactive_person_id}", headers=headers

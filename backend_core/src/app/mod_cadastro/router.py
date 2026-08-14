@@ -366,6 +366,23 @@ async def update_contact(
     return await service.update_contact(actor, person_id, contact_id, payload)
 
 
+@router.delete(
+    "/pessoas/{person_id}/contatos/{contact_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove um contato da pessoa",
+)
+async def delete_contact(
+    actor: Annotated[RequestActor, Depends(require_permission("cadastro", "editar"))],
+    territorial_access: Annotated[TerritorialAccess, Depends(get_territorial_access)],
+    service: Annotated[CadastroService, Depends(get_cadastro_service)],
+    person_id: int = Path(ge=1),
+    contact_id: int = Path(ge=1),
+) -> Response:
+    await service.ensure_person_territorial_access(actor, person_id, territorial_access)
+    await service.delete_contact(actor, person_id, contact_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post(
     "/pessoas/{person_id}/redes-sociais",
     response_model=PessoaRedeSocialResponse,
@@ -465,7 +482,7 @@ async def set_leadership(
 async def list_leaderships(
     actor: Annotated[RequestActor, Depends(require_permission("cadastro", "visualizar"))],
     service: Annotated[CadastroService, Depends(get_cadastro_service)],
-    query: Annotated[str | None, Query(min_length=3, max_length=120)] = None,
+    query: Annotated[str | None, Query(min_length=1, max_length=120)] = None,
     coordenador_id: Annotated[int | None, Query(ge=1)] = None,
     territorio_id: Annotated[int | None, Query(ge=1)] = None,
     tipo_lideranca: Annotated[
@@ -876,8 +893,9 @@ async def list_duplicates(
         alias="status",
         pattern=r"^(pendente|confirmada|descartada|mesclada)$",
     ),
+    nome: str | None = Query(default=None, max_length=180),
 ) -> list[SuspeitaDuplicidadeResponse]:
-    return await service.list_duplicates(actor, duplicate_status)
+    return await service.list_duplicates(actor, duplicate_status, nome)
 
 
 @router.get("/duplicidades/resumo", response_model=DuplicidadeResumoResponse)

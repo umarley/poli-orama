@@ -1,4 +1,11 @@
-import { CloseOutlined, EditOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
+import {
+  CloseOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  PlusOutlined,
+  QrcodeOutlined,
+  SaveOutlined,
+} from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
@@ -6,12 +13,14 @@ import {
   Card,
   Checkbox,
   Col,
+  DatePicker,
   Descriptions,
   Form,
   Input,
   InputNumber,
   List,
   Modal,
+  Popconfirm,
   Row,
   Select,
   Space,
@@ -25,7 +34,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 
 import { AttachmentsPanel } from '@/components/arquivos/AttachmentsPanel';
 import { AppToast } from '@/components/feedback/AppToast';
+import { RemoteLeadershipSelect } from '@/components/forms/RemoteLeadershipSelect';
 import { RemotePersonSelect } from '@/components/forms/RemotePersonSelect';
+import { RemoteTerritorySelect } from '@/components/forms/RemoteTerritorySelect';
 import { PageHeader } from '@/components/layout/PageHeader';
 import {
   addAgendaItem,
@@ -36,10 +47,14 @@ import {
   createDemand,
   getEvent,
   recordAttendance,
+  removeParticipant,
   updateEvent,
 } from '@/modules/agenda/agenda-service';
-import { listarLiderancas } from '@/modules/cadastro/pessoas-service';
+import { generateAttendanceLinkPdf } from '@/modules/agenda/attendance-link-pdf';
+import type { EventParticipant } from '@/modules/agenda/types';
 import { listDemandCatalog } from '@/modules/demandas/demandas-service';
+import { getLeadershipTerminologyLabels } from '@/modules/tenants/tenant-preferences';
+import { getTenantConfiguration } from '@/modules/tenants/tenant-service';
 import { listarTerritorios } from '@/modules/territorios/territorios-service';
 import { normalizeApiError } from '@/services/api/api-error';
 import { useSessionStore } from '@/stores/session-store';
@@ -52,16 +67,18 @@ export function EventDetailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const permissions = useSessionStore((state) => state.user?.permissions ?? []);
+  const profiles = useSessionStore((state) => state.user?.profiles ?? []);
+  const canEditAgenda = permissions.includes('agenda.editar');
+  const canEditEventSchedule = profiles.some((profile) =>
+    ['gestor', 'gestor_saas'].includes(profile),
+  );
   const [modal, setModal] = useState<ModalKind | null>(null);
+  const [editingParticipant, setEditingParticipant] = useState<EventParticipant | null>(null);
   const [form] = Form.useForm();
   const event = useQuery({
     queryKey: ['agenda', 'evento', eventId],
     queryFn: () => getEvent(eventId),
     enabled: eventId > 0,
-  });
-  const leaderships = useQuery({
-    queryKey: ['cadastro', 'liderancas', 'event-detail'],
-    queryFn: () => listarLiderancas(),
   });
   const territories = useQuery({
     queryKey: ['territorios', 'event-detail'],
@@ -75,16 +92,39 @@ export function EventDetailPage() {
     queryKey: ['demandas', 'catalogo', 'prioridades'],
     queryFn: () => listDemandCatalog('prioridades'),
   });
+  const tenantConfiguration = useQuery({
+    queryKey: ['tenant-configuration'],
+    queryFn: getTenantConfiguration,
+  });
+  const leadershipTerms = getLeadershipTerminologyLabels(tenantConfiguration.data);
   const refresh = async () => queryClient.invalidateQueries({ queryKey: ['agenda'] });
   const closeModal = () => {
     setModal(null);
+    setEditingParticipant(null);
     form.resetFields();
   };
   const action = useMutation({
     mutationFn: async (values: Record<string, unknown>) => {
-      if (modal === 'edit') return updateEvent(eventId, values);
+      if (modal === 'edit') {
+        const { periodo, ...payload } = values;
+        if (canEditEventSchedule && Array.isArray(periodo)) {
+          const [start, end] = periodo;
+          return updateEvent(eventId, {
+            ...payload,
+            data_inicio: dayjs(start).toISOString(),
+            data_fim: end ? dayjs(end).toISOString() : undefined,
+          });
+        }
+        return updateEvent(eventId, payload);
+      }
       if (modal === 'participant') {
-        return addParticipant(eventId, values as { pessoa_id: number; papel?: string });
+        return addParticipant(eventId, {
+          pessoa_id: values.pessoa_id as number,
+          papel: (values.papel as string) || undefined,
+          presente:
+            values.presente === 'presente' ? true : values.presente === 'ausente' ? false : null,
+          observacao: (values.observacao as string) || null,
+        });
       }
       if (modal === 'leadership') {
         return addLeadership(eventId, values as { lideranca_id: number; papel?: string });
@@ -134,6 +174,22 @@ export function EventDetailPage() {
     },
     onError: (error) => AppToast.error(normalizeApiError(error).message),
   });
+  const participantRemoval = useMutation({
+    mutationFn: (personId: number) => removeParticipant(eventId, personId),
+    onSuccess: async () => {
+      AppToast.success('Participante removido.');
+      await refresh();
+    },
+    onError: (error) => AppToast.error(normalizeApiError(error).message),
+  });
+  const attendanceLinkPdf = useMutation({
+    mutationFn: async () => {
+      if (!event.data) throw new Error('Evento ainda não foi carregado.');
+      return generateAttendanceLinkPdf(event.data, tenantConfiguration.data?.cor_primaria);
+    },
+    onSuccess: () => AppToast.success('PDF com o link de presença gerado.'),
+    onError: (error) => AppToast.error(normalizeApiError(error).message),
+  });
   const attendance = useMutation({
     mutationFn: (values: Record<string, unknown>) =>
       recordAttendance(eventId, {
@@ -156,13 +212,40 @@ export function EventDetailPage() {
   }
   const item = event.data;
   const openEdit = () => {
+    form.resetFields();
     form.setFieldsValue({
       titulo: item?.titulo,
       descricao: item?.descricao,
       local_nome: item?.local_nome,
       territorio_id: item?.territorio_id,
+      periodo:
+        canEditEventSchedule && item
+          ? [dayjs(item.data_inicio), item.data_fim ? dayjs(item.data_fim) : null]
+          : undefined,
     });
     setModal('edit');
+  };
+  const openNewParticipant = () => {
+    setEditingParticipant(null);
+    form.resetFields();
+    form.setFieldsValue({ presente: 'nao_informado' });
+    setModal('participant');
+  };
+  const openParticipantEdit = (participant: EventParticipant) => {
+    setEditingParticipant(participant);
+    form.resetFields();
+    form.setFieldsValue({
+      pessoa_id: participant.pessoa_id,
+      papel: participant.papel,
+      presente:
+        participant.presente == null
+          ? 'nao_informado'
+          : participant.presente
+            ? 'presente'
+            : 'ausente',
+      observacao: participant.observacao,
+    });
+    setModal('participant');
   };
   return (
     <div>
@@ -259,9 +342,20 @@ export function EventDetailPage() {
             children: (
               <Card
                 extra={
-                  <Button icon={<PlusOutlined />} onClick={() => setModal('participant')}>
-                    Adicionar
-                  </Button>
+                  canEditAgenda && (
+                    <Space wrap>
+                      <Button icon={<PlusOutlined />} onClick={openNewParticipant}>
+                        Adicionar presente
+                      </Button>
+                      <Button
+                        icon={<QrcodeOutlined />}
+                        loading={attendanceLinkPdf.isPending || tenantConfiguration.isPending}
+                        onClick={() => attendanceLinkPdf.mutate()}
+                      >
+                        Gerar link de presença
+                      </Button>
+                    </Space>
+                  )
                 }
               >
                 <Table
@@ -276,6 +370,44 @@ export function EventDetailPage() {
                       render: (value) => (value == null ? 'Não informado' : value ? 'Sim' : 'Não'),
                     },
                     { title: 'Observação', dataIndex: 'observacao' },
+                    ...(canEditAgenda
+                      ? [
+                          {
+                            title: 'Ações',
+                            key: 'actions',
+                            render: (_: unknown, participant: EventParticipant) => (
+                              <Space>
+                                <Button
+                                  type="link"
+                                  icon={<EditOutlined />}
+                                  onClick={() => openParticipantEdit(participant)}
+                                >
+                                  Editar
+                                </Button>
+                                <Popconfirm
+                                  title="Remover participante?"
+                                  description={`${participant.nome} será removido deste evento.`}
+                                  okText="Remover"
+                                  cancelText="Cancelar"
+                                  onConfirm={() => participantRemoval.mutate(participant.pessoa_id)}
+                                >
+                                  <Button
+                                    type="link"
+                                    danger
+                                    icon={<DeleteOutlined />}
+                                    loading={
+                                      participantRemoval.isPending &&
+                                      participantRemoval.variables === participant.pessoa_id
+                                    }
+                                  >
+                                    Remover
+                                  </Button>
+                                </Popconfirm>
+                              </Space>
+                            ),
+                          },
+                        ]
+                      : []),
                   ]}
                 />
               </Card>
@@ -283,7 +415,7 @@ export function EventDetailPage() {
           },
           {
             key: 'leaderships',
-            label: `Lideranças (${item?.liderancas.length ?? 0})`,
+            label: `${leadershipTerms.menu} (${item?.liderancas.length ?? 0})`,
             children: (
               <Card
                 extra={
@@ -296,7 +428,7 @@ export function EventDetailPage() {
                   rowKey="lideranca_id"
                   dataSource={item?.liderancas ?? []}
                   columns={[
-                    { title: 'Liderança', dataIndex: 'nome' },
+                    { title: leadershipTerms.eventColumnTitle, dataIndex: 'nome' },
                     { title: 'Tipo', dataIndex: 'tipo_lideranca' },
                     { title: 'Papel no evento', dataIndex: 'papel' },
                   ]}
@@ -470,7 +602,9 @@ export function EventDetailPage() {
       />
       <Modal
         open={modal !== null}
-        title={modalTitle(modal)}
+        title={
+          editingParticipant && modal === 'participant' ? 'Editar participante' : modalTitle(modal)
+        }
         okText="Salvar"
         confirmLoading={action.isPending}
         onCancel={closeModal}
@@ -489,21 +623,69 @@ export function EventDetailPage() {
                 <Input />
               </Form.Item>
               <Form.Item name="territorio_id" label="Território">
-                <Select
-                  allowClear
-                  options={(territories.data ?? []).map((territory) => ({
-                    value: territory.id,
-                    label: territory.nome,
-                  }))}
+                <RemoteTerritorySelect
+                  initialOptions={
+                    item?.territorio_id && item.territorio_nome
+                      ? [{ value: item.territorio_id, label: item.territorio_nome }]
+                      : []
+                  }
                 />
               </Form.Item>
+              {canEditEventSchedule && (
+                <Form.Item
+                  name="periodo"
+                  label="Data e horário"
+                  rules={[
+                    {
+                      validator: async (_, value) => {
+                        if (!value?.[0]) {
+                          throw new Error('Informe a data e o horário de início.');
+                        }
+                        if (value[1] && value[1].isBefore(value[0])) {
+                          throw new Error('O término deve ser posterior ao início.');
+                        }
+                      },
+                    },
+                  ]}
+                >
+                  <DatePicker.RangePicker
+                    allowEmpty={[false, true]}
+                    format="DD/MM/YYYY HH:mm"
+                    showTime={{ format: 'HH:mm' }}
+                    style={{ width: '100%' }}
+                  />
+                </Form.Item>
+              )}
             </>
           )}
           {modal === 'participant' && (
             <>
-              <PersonSelect name="pessoa_id" />
+              <Form.Item name="pessoa_id" label="Pessoa" rules={[{ required: true }]}>
+                <RemotePersonSelect
+                  disabled={editingParticipant !== null}
+                  excludeIds={
+                    editingParticipant
+                      ? undefined
+                      : item?.participantes.map(({ pessoa_id }) => pessoa_id)
+                  }
+                  initialOptions={
+                    editingParticipant
+                      ? [{ value: editingParticipant.pessoa_id, label: editingParticipant.nome }]
+                      : []
+                  }
+                />
+              </Form.Item>
               <Form.Item name="papel" label="Papel">
                 <Input />
+              </Form.Item>
+              <Form.Item name="presente" label="Presença individual">
+                <Select
+                  options={[
+                    { value: 'nao_informado', label: 'Não informado' },
+                    { value: 'presente', label: 'Presente' },
+                    { value: 'ausente', label: 'Ausente' },
+                  ]}
+                />
               </Form.Item>
               <Form.Item name="observacao" label="Observação">
                 <Input.TextArea />
@@ -513,12 +695,7 @@ export function EventDetailPage() {
           {modal === 'leadership' && (
             <>
               <Form.Item name="lideranca_id" label="Liderança" rules={[{ required: true }]}>
-                <Select
-                  options={(leaderships.data ?? []).map((leader) => ({
-                    value: leader.id,
-                    label: leader.apelido_campanha || `Liderança #${leader.id}`,
-                  }))}
-                />
+                <RemoteLeadershipSelect />
               </Form.Item>
               <Form.Item name="papel" label="Papel no evento">
                 <Input />

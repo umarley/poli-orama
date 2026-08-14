@@ -3,8 +3,9 @@
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class AgendaSchema(BaseModel):
@@ -83,6 +84,7 @@ class EventCancel(AgendaSchema):
 
 class EventResponse(AgendaSchema):
     id: int
+    uuid_publico: UUID
     tenant_id: int
     contexto: Literal["campanha", "gabinete", "institucional"]
     campanha_eleicao_id: int | None
@@ -110,6 +112,50 @@ class EventResponse(AgendaSchema):
     cancelado_em: datetime | None
     criado_em: datetime
     atualizado_em: datetime
+
+
+class PublicEventResponse(AgendaSchema):
+    uuid_publico: UUID
+    titulo: str
+    data_inicio: datetime
+    data_fim: datetime | None
+    local_nome: str | None
+    confirmacao_aberta: bool
+
+
+class PublicAttendanceInput(AgendaSchema):
+    nome_completo: str = Field(min_length=3, max_length=180)
+    celular: str = Field(min_length=10, max_length=30)
+    email: str | None = Field(default=None, max_length=180)
+    data_nascimento: date | None = None
+
+    @field_validator("nome_completo")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        return " ".join(value.split())
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        normalized = value.strip().lower()
+        local, separator, domain = normalized.partition("@")
+        if not separator or not local or "." not in domain:
+            raise ValueError("Informe um e-mail valido.")
+        return normalized
+
+    @field_validator("data_nascimento")
+    @classmethod
+    def validate_birth_date(cls, value: date | None) -> date | None:
+        if value is not None and value > date.today():
+            raise ValueError("A data de nascimento nao pode estar no futuro.")
+        return value
+
+
+class PublicAttendanceResponse(AgendaSchema):
+    status: Literal["confirmada", "ja_confirmada", "fora_do_periodo"]
+    message: str
 
 
 class ParticipantInput(AgendaSchema):

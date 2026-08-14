@@ -12,6 +12,7 @@ import { MyProfilePage } from '@/pages/auth/MyProfilePage';
 import { RequiredPasswordChangePage } from '@/pages/auth/RequiredPasswordChangePage';
 import { AgendaPage } from '@/pages/agenda/AgendaPage';
 import { EventDetailPage } from '@/pages/agenda/EventDetailPage';
+import { PublicAttendancePage } from '@/pages/agenda/PublicAttendancePage';
 import { CadastroPage } from '@/pages/cadastro/CadastroPage';
 import { DuplicidadesPage } from '@/pages/cadastro/DuplicidadesPage';
 import { IndicacoesGraphPage } from '@/pages/cadastro/IndicacoesGraphPage';
@@ -34,6 +35,7 @@ import { NotFoundPage } from '@/pages/shared/NotFoundPage';
 import { AdminTenantsPage } from '@/pages/tenants/AdminTenantsPage';
 import { SubscriptionPage } from '@/pages/tenants/SubscriptionPage';
 import { TenantSettingsPage } from '@/pages/tenants/TenantSettingsPage';
+import { TenantCadastroSettingsPage } from '@/pages/tenants/TenantCadastroSettingsPage';
 import { TenantTerminologySettingsPage } from '@/pages/tenants/TenantTerminologySettingsPage';
 import { TerritoriosPage } from '@/pages/territorios/TerritoriosPage';
 import { TerritorioDetailPage } from '@/pages/territorios/TerritorioDetailPage';
@@ -45,6 +47,7 @@ const withPermission = (permission: string, element: React.ReactNode) => (
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
+  { path: '/presenca/:uuid', element: <PublicAttendancePage /> },
   {
     path: '/minha-conta/alterar-senha',
     element: (
@@ -178,6 +181,14 @@ export const router = createBrowserRouter([
         element: (
           <ProfileRoute profiles={['gestor', 'gestor_saas']}>
             <TenantTerminologySettingsPage />
+          </ProfileRoute>
+        ),
+      },
+      {
+        path: 'configuracoes/cadastros',
+        element: (
+          <ProfileRoute profiles={['gestor', 'gestor_saas']}>
+            <TenantCadastroSettingsPage />
           </ProfileRoute>
         ),
       },

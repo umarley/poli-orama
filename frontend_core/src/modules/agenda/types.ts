@@ -9,6 +9,7 @@ export interface AgendaCatalog {
 
 export interface AgendaEvent {
   id: number;
+  uuid_publico: string;
   tenant_id: number;
   contexto: 'campanha' | 'gabinete' | 'institucional';
   campanha_eleicao_id: number | null;
@@ -36,6 +37,27 @@ export interface AgendaEvent {
   cancelado_em: string | null;
   criado_em: string;
   atualizado_em: string;
+}
+
+export interface PublicAttendanceEvent {
+  uuid_publico: string;
+  titulo: string;
+  data_inicio: string;
+  data_fim: string | null;
+  local_nome: string | null;
+  confirmacao_aberta: boolean;
+}
+
+export interface PublicAttendanceInput {
+  nome_completo: string;
+  celular: string;
+  email?: string;
+  data_nascimento?: string;
+}
+
+export interface PublicAttendanceResult {
+  status: 'confirmada' | 'ja_confirmada' | 'fora_do_periodo';
+  message: string;
 }
 
 export interface EventParticipant {

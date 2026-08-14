@@ -81,6 +81,25 @@
   text-align: center;
 }
 
+.fieldGroup {
+  margin-bottom: 20px;
+  padding: 16px;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+}
+
+.fieldGroup h5 {
+  margin: 0 0 4px;
+}
+
+.switchRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 40px;
+}
+
 .usage {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

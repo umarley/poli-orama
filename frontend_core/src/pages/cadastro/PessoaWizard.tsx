@@ -15,11 +15,21 @@ import {
   Typography,
 } from 'antd';
 import type { Dayjs } from 'dayjs';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { ElectoralLocationFields } from '@/components/territorios/ElectoralLocationFields';
 import { buscarPessoas, criarPessoa } from '@/modules/cadastro/pessoas-service';
+import {
+  getRegistrationFormPreferences,
+  initialContactRows,
+  initialDocumentRows,
+  isRequiredContactType,
+  isRequiredDocumentType,
+  missingRequiredContactLabel,
+  missingRequiredDocumentLabel,
+} from '@/modules/tenants/registration-form-preferences';
+import { getTenantConfiguration } from '@/modules/tenants/tenant-service';
 import { listarEstados, listarMunicipios } from '@/modules/territorios/territorios-service';
 import type {
   BuscaRapidaItem,
@@ -194,6 +204,14 @@ export function PessoaWizard({
   const [saving, setSaving] = useState(false);
   const [addressLookupLoading, setAddressLookupLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const configurationQuery = useQuery({
+    queryKey: ['tenant-configuration'],
+    queryFn: getTenantConfiguration,
+  });
+  const requiredFields = useMemo(
+    () => getRegistrationFormPreferences(configurationQuery.data),
+    [configurationQuery.data],
+  );
   const statesQuery = useQuery({
     queryKey: ['global', 'estados'],
     queryFn: listarEstados,
@@ -210,13 +228,12 @@ export function PessoaWizard({
   });
 
   useEffect(() => {
-    if (open) {
-      form.setFieldsValue({
-        documentos: [{ tipo_documento: 'cpf' }],
-        contatos: [{ tipo_contato: 'whatsapp' }],
-      });
-    }
-  }, [form, open]);
+    if (!open || configurationQuery.isPending) return;
+    form.setFieldsValue({
+      documentos: initialDocumentRows(requiredFields),
+      contatos: initialContactRows(requiredFields),
+    });
+  }, [configurationQuery.isPending, form, open, requiredFields]);
 
   const close = () => {
     form.resetFields();
@@ -285,7 +302,11 @@ export function PessoaWizard({
   };
 
   const next = async () => {
-    await form.validateFields(stepFields[step]);
+    try {
+      await form.validateFields(stepFields[step]);
+    } catch {
+      return;
+    }
     if (step <= 1) await checkDuplicates();
     if (step === 2) {
       form.setFieldsValue({
@@ -300,7 +321,12 @@ export function PessoaWizard({
   };
 
   const submit = async () => {
-    const values = await form.validateFields();
+    let values: WizardValues;
+    try {
+      values = await form.validateFields();
+    } catch {
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -437,7 +463,6 @@ export function PessoaWizard({
       <Form
         form={form}
         layout="vertical"
-        requiredMark={false}
         initialValues={{
           documentos: [{ tipo_documento: 'cpf' }],
           contatos: [{ tipo_contato: 'whatsapp' }],
@@ -463,7 +488,16 @@ export function PessoaWizard({
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item name="data_nascimento" label="Nascimento">
+              <Form.Item
+                name="data_nascimento"
+                label="Nascimento"
+                required={requiredFields.data_nascimento}
+                rules={
+                  requiredFields.data_nascimento
+                    ? [{ required: true, message: 'Informe a data de nascimento.' }]
+                    : undefined
+                }
+              >
                 <DatePicker
                   format={{ format: 'DD/MM/YYYY', type: 'mask' }}
                   placeholder="DD/MM/AAAA"
@@ -472,7 +506,14 @@ export function PessoaWizard({
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item name="sexo" label="Sexo">
+              <Form.Item
+                name="sexo"
+                label="Sexo"
+                required={requiredFields.sexo}
+                rules={
+                  requiredFields.sexo ? [{ required: true, message: 'Selecione o sexo.' }] : undefined
+                }
+              >
                 <Select
                   allowClear
                   options={[
@@ -485,7 +526,16 @@ export function PessoaWizard({
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item name="estado_civil" label="Estado civil">
+              <Form.Item
+                name="estado_civil"
+                label="Estado civil"
+                required={requiredFields.estado_civil}
+                rules={
+                  requiredFields.estado_civil
+                    ? [{ required: true, message: 'Selecione o estado civil.' }]
+                    : undefined
+                }
+              >
                 <Select
                   allowClear
                   showSearch
@@ -513,6 +563,10 @@ export function PessoaWizard({
                   ) {
                     throw new Error('Informe apenas um documento de cada tipo.');
                   }
+                  const missing = missingRequiredDocumentLabel(documents, requiredFields);
+                  if (missing) {
+                    throw new Error(`Informe o ${missing}.`);
+                  }
                 },
               },
             ]}
@@ -533,6 +587,7 @@ export function PessoaWizard({
                       'tipo_documento',
                     ]) as TipoDocumento | undefined;
                     const isCpfDocument = currentType === 'cpf';
+                    const documentRequired = isRequiredDocumentType(currentType, requiredFields);
 
                     return (
                       <Row gutter={12} key={field.key} align="top">
@@ -544,6 +599,7 @@ export function PessoaWizard({
                             rules={[{ required: true, message: 'Selecione o tipo.' }]}
                           >
                             <Select
+                              disabled={documentRequired}
                               options={documentTypeOptions.map((option) => ({
                                 ...option,
                                 disabled:
@@ -557,8 +613,14 @@ export function PessoaWizard({
                           <Form.Item
                             name={[field.name, 'numero']}
                             label={field.name === 0 ? 'Número' : ' '}
+                            required={documentRequired}
                             normalize={(value: string) =>
                               isCpfDocument ? formatCpfDocument(value) : value
+                            }
+                            rules={
+                              documentRequired
+                                ? [{ required: true, message: 'Informe o número do documento.' }]
+                                : undefined
                             }
                           >
                             <Input
@@ -573,7 +635,7 @@ export function PessoaWizard({
                           <Form.Item label={field.name === 0 ? ' ' : undefined}>
                             <Button
                               aria-label="Remover documento"
-                              disabled={fields.length === 1}
+                              disabled={fields.length === 1 || documentRequired}
                               icon={<DeleteOutlined />}
                               onClick={() => remove(field.name)}
                             />
@@ -608,6 +670,10 @@ export function PessoaWizard({
                   ) {
                     throw new Error('Informe apenas um contato de cada canal.');
                   }
+                  const missing = missingRequiredContactLabel(contacts, requiredFields);
+                  if (missing) {
+                    throw new Error(`Informe o ${missing}.`);
+                  }
                 },
               },
             ]}
@@ -630,6 +696,7 @@ export function PessoaWizard({
                       'tipo_contato',
                     ]) as TipoContato | undefined;
                     const isPhoneContact = currentType ? phoneContactTypes.has(currentType) : true;
+                    const contactRequired = isRequiredContactType(currentType, requiredFields);
 
                     return (
                       <Row gutter={12} key={field.key} align="top">
@@ -641,6 +708,7 @@ export function PessoaWizard({
                             rules={[{ required: true, message: 'Selecione o canal.' }]}
                           >
                             <Select
+                              disabled={contactRequired}
                               options={contactTypeOptions.map((option) => ({
                                 ...option,
                                 disabled:
@@ -654,10 +722,14 @@ export function PessoaWizard({
                           <Form.Item
                             name={[field.name, 'valor']}
                             label={field.name === 0 ? 'Contato' : ' '}
+                            required={contactRequired}
                             normalize={(value: string) =>
                               isPhoneContact ? formatPhoneContact(value) : value
                             }
                             rules={[
+                              ...(contactRequired
+                                ? [{ required: true, message: 'Informe o contato.' }]
+                                : []),
                               {
                                 validator: (_, value?: string) => {
                                   if (!value) return Promise.resolve();
@@ -691,7 +763,7 @@ export function PessoaWizard({
                           <Form.Item label={field.name === 0 ? ' ' : undefined}>
                             <Button
                               aria-label="Remover contato"
-                              disabled={fields.length === 1}
+                              disabled={fields.length === 1 || contactRequired}
                               icon={<DeleteOutlined />}
                               onClick={() => remove(field.name)}
                             />
@@ -806,7 +878,16 @@ export function PessoaWizard({
           </Form.Item>
           <Row gutter={12}>
             <Col xs={24} md={12}>
-              <Form.Item name="titulo_eleitor" label="Título eleitoral">
+              <Form.Item
+                name="titulo_eleitor"
+                label="Título eleitoral"
+                required={requiredFields.titulo_eleitoral}
+                rules={
+                  requiredFields.titulo_eleitoral
+                    ? [{ required: true, message: 'Informe o título eleitoral.' }]
+                    : undefined
+                }
+              >
                 <Input />
               </Form.Item>
             </Col>

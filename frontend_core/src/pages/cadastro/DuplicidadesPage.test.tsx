@@ -5,18 +5,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { PessoaDetalhe } from '@/modules/cadastro/types';
 
-const { listDuplicates, getMergePreview, mergeDuplicate, resolveDuplicate } = vi.hoisted(() => ({
-  listDuplicates: vi.fn(),
-  getMergePreview: vi.fn(),
-  mergeDuplicate: vi.fn(),
-  resolveDuplicate: vi.fn(),
-}));
+const { listDuplicates, getMergePreview, mergeDuplicate, resolveDuplicate, getSummary } =
+  vi.hoisted(() => ({
+    listDuplicates: vi.fn(),
+    getMergePreview: vi.fn(),
+    mergeDuplicate: vi.fn(),
+    resolveDuplicate: vi.fn(),
+    getSummary: vi.fn(),
+  }));
 
 vi.mock('@/modules/cadastro/pessoas-service', () => ({
   listarDuplicidades: listDuplicates,
   obterPreviewMerge: getMergePreview,
   mesclarDuplicidade: mergeDuplicate,
   resolverDuplicidade: resolveDuplicate,
+  obterResumoDuplicidades: getSummary,
 }));
 
 vi.mock('@/components/feedback/AppToast', () => ({
@@ -96,6 +99,12 @@ describe('DuplicidadesPage', () => {
       pessoa_origem_id: 20,
       resumo_operacao: {},
     });
+    getSummary.mockResolvedValue({
+      pendentes: 1,
+      confirmadas: 0,
+      descartadas: 0,
+      mescladas: 0,
+    });
   });
 
   it('abre a comparação e envia o merge confirmado', async () => {
@@ -123,4 +132,22 @@ describe('DuplicidadesPage', () => {
       }),
     );
   }, 15_000);
+
+  it('busca ocorrências pelo nome da pessoa', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <DuplicidadesPage />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Maria Principal')).toBeInTheDocument();
+    const search = screen.getByLabelText(/buscar duplicidade pelo nome da pessoa/i);
+    fireEvent.change(search, { target: { value: 'Maria' } });
+    fireEvent.keyDown(search, { key: 'Enter', code: 'Enter' });
+
+    await waitFor(() => expect(listDuplicates).toHaveBeenCalledWith('pendente', 'Maria'));
+  });
 });

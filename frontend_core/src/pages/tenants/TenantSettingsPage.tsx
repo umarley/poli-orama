@@ -3,6 +3,7 @@ import {
   BankOutlined,
   CreditCardOutlined,
   FlagOutlined,
+  FormOutlined,
   RightOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
@@ -141,6 +142,14 @@ export function TenantSettingsPage() {
           description: 'Escolha os termos exibidos na interface para este tenant.',
           icon: <ApartmentOutlined />,
           path: '/configuracoes/nomenclaturas',
+        }
+      : null,
+    tenantManager
+      ? {
+          title: 'Cadastros',
+          description: 'Campos obrigatórios no cadastro manual de pessoas.',
+          icon: <FormOutlined />,
+          path: '/configuracoes/cadastros',
         }
       : null,
     campaignManager

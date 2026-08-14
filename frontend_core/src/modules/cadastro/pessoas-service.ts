@@ -196,6 +196,10 @@ export async function criarContato(
   return data;
 }
 
+export async function excluirContato(pessoaId: number, contatoId: number) {
+  await httpClient.delete(`${base}/pessoas/${pessoaId}/contatos/${contatoId}`);
+}
+
 export async function definirEleitor(
   pessoaId: number,
   payload: {
@@ -423,9 +427,9 @@ export async function resolverValidacao(
   return data;
 }
 
-export async function listarDuplicidades(status?: StatusDuplicidade) {
+export async function listarDuplicidades(status?: StatusDuplicidade, nome?: string) {
   const { data } = await httpClient.get<SuspeitaDuplicidade[]>(`${base}/duplicidades`, {
-    params: { status },
+    params: { status, nome: nome?.trim() || undefined },
   });
   return data;
 }

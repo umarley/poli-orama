@@ -1,12 +1,15 @@
 import {
   ApartmentOutlined,
   DeleteOutlined,
+  DownOutlined,
   EditOutlined,
   PlusOutlined,
+  RightOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  Alert,
   AutoComplete,
   Button,
   Card,
@@ -49,8 +52,10 @@ import {
   listarTerritorios,
   listarTiposTerritorio,
   obterMarcadores,
+  obterPreviaOrganizacaoHierarquia,
   obterShapesMalhas,
   obterTerritorio,
+  organizarHierarquia,
   vincularLideranca,
 } from '@/modules/territorios/territorios-service';
 import { TerritoryMeshEditor } from '@/modules/territorios/TerritoryMeshEditor';
@@ -118,8 +123,7 @@ function resolveDefaultMapLayer(tipoCodigo: string): MapTerritoryMeshType | null
 
 const initialTerritoryFilters: TerritoryFilters = { name: '' };
 
-const territoryTabKeys = ['list', 'tree', 'map', 'types'] as const;
-type TerritoryTabKey = (typeof territoryTabKeys)[number];
+type TerritoryTabKey = 'list' | 'tree' | 'map' | 'types';
 
 function resolveTerritoryTab(aba: string | null): TerritoryTabKey {
   switch (aba) {
@@ -273,7 +277,13 @@ function TerritoryMapShapes({
           pathLayer.on('mouseover', () => pathLayer.setStyle({ weight: 3, fillOpacity: 0.35 }));
           pathLayer.on('mouseout', () => {
             const color = String(feature?.properties?.cor ?? '#1677FF');
-            pathLayer.setStyle({ color, fillColor: color, fillOpacity: 0.2, opacity: 0.9, weight: 2 });
+            pathLayer.setStyle({
+              color,
+              fillColor: color,
+              fillOpacity: 0.2,
+              opacity: 0.9,
+              weight: 2,
+            });
           });
           const pathElement = pathLayer.getElement();
           if (pathElement instanceof HTMLElement || pathElement instanceof SVGElement) {
@@ -346,6 +356,8 @@ export function TerritoriosPage() {
   const [meshEditorReady, setMeshEditorReady] = useState(false);
   const [typeModalOpen, setTypeModalOpen] = useState(false);
   const [leadershipModalOpen, setLeadershipModalOpen] = useState(false);
+  const [hierarchyOrganizationModalOpen, setHierarchyOrganizationModalOpen] = useState(false);
+  const [hierarchyComparisonExpanded, setHierarchyComparisonExpanded] = useState(false);
   const [selectedTerritory, setSelectedTerritory] = useState<Territorio | null>(null);
   const [mapTerritoryFilter, setMapTerritoryFilter] = useState<'all' | number>('all');
   const [mapLayerMode, setMapLayerMode] = useState<MapLayerMode>('municipio');
@@ -366,8 +378,7 @@ export function TerritoriosPage() {
     queryKey: ['territorios'],
     queryFn: () => listarTerritorios(true),
   });
-  const selectedMapTerritoryId =
-    mapTerritoryFilter === 'all' ? undefined : mapTerritoryFilter;
+  const selectedMapTerritoryId = mapTerritoryFilter === 'all' ? undefined : mapTerritoryFilter;
   const territoryShapes = useQuery({
     queryKey: ['territorios', 'mapa', 'malhas', mapLayerMode, selectedMapTerritoryId],
     queryFn: () => {
@@ -419,6 +430,11 @@ export function TerritoriosPage() {
   const tree = useQuery({
     queryKey: ['territorios', 'arvore'],
     queryFn: listarArvoreTerritorial,
+  });
+  const hierarchyOrganizationPreview = useQuery({
+    queryKey: ['territorios', 'hierarquia', 'organizacao'],
+    queryFn: obterPreviaOrganizacaoHierarquia,
+    enabled: hierarchyOrganizationModalOpen,
   });
   const leaders = useQuery({
     queryKey: ['cadastro', 'liderancas'],
@@ -533,6 +549,22 @@ export function TerritoriosPage() {
     onError: (error) => AppToast.error(normalizeApiError(error).message),
   });
 
+  const organizeHierarchy = useMutation({
+    mutationFn: () =>
+      organizarHierarquia(
+        (hierarchyOrganizationPreview.data?.alteracoes ?? []).map((change) => ({
+          territorio_id: change.territorio_id,
+          territorio_pai_id: change.territorio_pai_proposto_id,
+        })),
+      ),
+    onSuccess: async (result) => {
+      AppToast.success(`${result.atualizados} território(s) organizado(s).`);
+      setHierarchyOrganizationModalOpen(false);
+      await refresh();
+    },
+    onError: (error) => AppToast.error(normalizeApiError(error).message),
+  });
+
   const treeData = useMemo(() => toTreeData(tree.data ?? []), [tree.data]);
   const activeTerritories = (territories.data ?? []).filter((item) => item.ativo);
 
@@ -581,9 +613,13 @@ export function TerritoriosPage() {
     territoryFilters.parentId,
     territoryFilters.status,
   ].join('-');
-  const mapCenter: [number, number] = markers.data?.length
-    ? [Number(markers.data[0].latitude), Number(markers.data[0].longitude)]
-    : [-15.78, -47.93];
+  const mapCenter = useMemo<[number, number]>(
+    () =>
+      markers.data?.length
+        ? [Number(markers.data[0].latitude), Number(markers.data[0].longitude)]
+        : [-15.78, -47.93],
+    [markers.data],
+  );
   const meshMapCenter = useMemo((): [number, number] => {
     const city = [...(meshCities.data ?? []), ...(cities.data ?? [])].find(
       (item) => item.codigo_ibge === meshContextMunicipioIbge,
@@ -800,6 +836,18 @@ export function TerritoriosPage() {
                     Árvore territorial
                   </Space>
                 }
+                extra={
+                  canEdit ? (
+                    <Button
+                      onClick={() => {
+                        setHierarchyComparisonExpanded(false);
+                        setHierarchyOrganizationModalOpen(true);
+                      }}
+                    >
+                      Organizar hierarquia
+                    </Button>
+                  ) : undefined
+                }
               >
                 {treeData.length ? (
                   <Tree
@@ -934,6 +982,151 @@ export function TerritoriosPage() {
           },
         ]}
       />
+
+      <Modal
+        open={hierarchyOrganizationModalOpen}
+        title="Organizar hierarquia"
+        okText="Organizar hierarquia"
+        cancelText="Cancelar"
+        width={1100}
+        styles={{
+          body: {
+            maxHeight: 'calc(100vh - 230px)',
+            overflowY: 'auto',
+            paddingBottom: 8,
+          },
+          footer: {
+            background: '#fff',
+            marginTop: 16,
+          },
+        }}
+        confirmLoading={organizeHierarchy.isPending}
+        okButtonProps={{
+          disabled:
+            hierarchyOrganizationPreview.isPending ||
+            Boolean(hierarchyOrganizationPreview.error) ||
+            !hierarchyOrganizationPreview.data?.alteracoes.length,
+        }}
+        onCancel={() => {
+          setHierarchyOrganizationModalOpen(false);
+          setHierarchyComparisonExpanded(false);
+        }}
+        onOk={() => organizeHierarchy.mutate()}
+      >
+        {hierarchyOrganizationPreview.error ? (
+          <Alert
+            showIcon
+            type="error"
+            message="Não foi possível gerar a prévia"
+            description={normalizeApiError(hierarchyOrganizationPreview.error).message}
+          />
+        ) : hierarchyOrganizationPreview.isPending ? (
+          <Typography.Text type="secondary">Gerando prévia da organização...</Typography.Text>
+        ) : hierarchyOrganizationPreview.data ? (
+          <Space direction="vertical" size="large" style={{ width: '100%' }}>
+            <Alert
+              showIcon
+              type={hierarchyOrganizationPreview.data.alteracoes.length ? 'info' : 'success'}
+              message={
+                hierarchyOrganizationPreview.data.alteracoes.length
+                  ? `${hierarchyOrganizationPreview.data.alteracoes.length} bairro(s) terão o território pai alterado.`
+                  : 'A hierarquia dos bairros já está organizada.'
+              }
+            />
+            <Card
+              size="small"
+              title="Comparação da hierarquia"
+              styles={{ body: { display: hierarchyComparisonExpanded ? 'block' : 'none' } }}
+              extra={
+                <Button
+                  type="text"
+                  icon={hierarchyComparisonExpanded ? <DownOutlined /> : <RightOutlined />}
+                  aria-expanded={hierarchyComparisonExpanded}
+                  onClick={() => setHierarchyComparisonExpanded((expanded) => !expanded)}
+                >
+                  {hierarchyComparisonExpanded ? 'Recolher' : 'Expandir'}
+                </Button>
+              }
+            >
+              {hierarchyComparisonExpanded && (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+                    gap: 16,
+                  }}
+                >
+                  <Card size="small" title="Hierarquia atual">
+                    <Tree
+                      defaultExpandAll
+                      showLine
+                      treeData={toTreeData(hierarchyOrganizationPreview.data.hierarquia_atual)}
+                    />
+                  </Card>
+                  <Card size="small" title="Hierarquia proposta">
+                    <Tree
+                      defaultExpandAll
+                      showLine
+                      treeData={toTreeData(hierarchyOrganizationPreview.data.hierarquia_proposta)}
+                    />
+                  </Card>
+                </div>
+              )}
+            </Card>
+            <Card size="small" title="Territórios que serão alterados">
+              <Table
+                rowKey="territorio_id"
+                size="small"
+                pagination={false}
+                dataSource={hierarchyOrganizationPreview.data.alteracoes}
+                locale={{ emptyText: 'Nenhuma alteração necessária.' }}
+                columns={[
+                  { title: 'Bairro', dataIndex: 'territorio_nome' },
+                  {
+                    title: 'Território pai atual',
+                    dataIndex: 'territorio_pai_atual_nome',
+                    render: (value: string | null) => value || 'Sem território pai',
+                  },
+                  { title: 'Novo território pai', dataIndex: 'territorio_pai_proposto_nome' },
+                ]}
+              />
+            </Card>
+            {hierarchyOrganizationPreview.data.pendencias.length > 0 && (
+              <Card
+                size="small"
+                title={
+                  <Typography.Text type="warning">
+                    Pendências ({hierarchyOrganizationPreview.data.pendencias.length})
+                  </Typography.Text>
+                }
+              >
+                <Alert
+                  showIcon
+                  type="warning"
+                  message="Estes bairros não serão alterados automaticamente."
+                  style={{ marginBottom: 12 }}
+                />
+                <List
+                  size="small"
+                  dataSource={hierarchyOrganizationPreview.data.pendencias}
+                  renderItem={(pending) => (
+                    <List.Item>
+                      <List.Item.Meta
+                        title={pending.territorio_nome}
+                        description={`${pending.motivo}${
+                          pending.codigo_municipio_ibge
+                            ? ` Código IBGE: ${pending.codigo_municipio_ibge}.`
+                            : ''
+                        }`}
+                      />
+                    </List.Item>
+                  )}
+                />
+              </Card>
+            )}
+          </Space>
+        ) : null}
+      </Modal>
 
       <Modal
         open={selectedMarker !== null}

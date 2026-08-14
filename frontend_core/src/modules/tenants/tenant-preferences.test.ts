@@ -37,6 +37,7 @@ describe('preferências de nomenclatura do tenant', () => {
       menu: 'Lideranças',
       registeredTitle: 'Lideranças cadastradas',
       columnTitle: 'Liderança',
+      eventColumnTitle: 'Liderança',
       activeTitle: 'Lideranças ativas',
     });
   });
@@ -51,6 +52,7 @@ describe('preferências de nomenclatura do tenant', () => {
       menu: 'Coordenadores',
       registeredTitle: 'Coordenadores cadastrados',
       columnTitle: 'Coordenador',
+      eventColumnTitle: 'Coordenação',
       activeTitle: 'Coordenações ativas',
     });
   });

@@ -19,6 +19,9 @@ from app.mod_territorio.schemas import (
     EstadoResponse,
     GeocodificacaoInput,
     GeocodificacaoResponse,
+    HierarchyOrganizationApply,
+    HierarchyOrganizationPreview,
+    HierarchyOrganizationResult,
     LiderancaTerritorioInput,
     LiderancaTerritorioResponse,
     LocalVotacaoResponse,
@@ -121,9 +124,7 @@ async def list_electoral_zones(
     if codigo_municipio_ibge:
         clauses.append("codigo_municipio_ibge = :codigo_municipio_ibge")
         values["codigo_municipio_ibge"] = codigo_municipio_ibge
-    return await service.repository.global_list(
-        "zona_eleitoral", " AND ".join(clauses), values
-    )
+    return await service.repository.global_list("zona_eleitoral", " AND ".join(clauses), values)
 
 
 @router.get("/global/locais-votacao", response_model=list[LocalVotacaoResponse])
@@ -148,9 +149,7 @@ async def list_polling_places(
     if nome:
         clauses.append("nome ILIKE :nome")
         values["nome"] = f"%{nome}%"
-    return await service.repository.global_list(
-        "local_votacao", " AND ".join(clauses), values
-    )
+    return await service.repository.global_list("local_votacao", " AND ".join(clauses), values)
 
 
 @router.get("/global/secoes-eleitorais", response_model=list[SecaoEleitoralResponse])
@@ -209,6 +208,31 @@ async def territory_tree(
     return await service.tree(actor, access)
 
 
+@router.get(
+    "/territorios/hierarquia/organizacao",
+    response_model=HierarchyOrganizationPreview,
+)
+async def preview_hierarchy_organization(
+    actor: Annotated[RequestActor, Depends(require_permission("territorio", "visualizar"))],
+    access: Annotated[TerritorialAccess, Depends(get_territorial_access)],
+    service: Annotated[TerritorioService, Depends(get_service)],
+) -> HierarchyOrganizationPreview:
+    return await service.hierarchy_organization_preview(actor, access)
+
+
+@router.post(
+    "/territorios/hierarquia/organizacao",
+    response_model=HierarchyOrganizationResult,
+)
+async def organize_hierarchy(
+    payload: HierarchyOrganizationApply,
+    actor: Annotated[RequestActor, Depends(require_permission("territorio", "editar"))],
+    access: Annotated[TerritorialAccess, Depends(get_territorial_access)],
+    service: Annotated[TerritorioService, Depends(get_service)],
+) -> HierarchyOrganizationResult:
+    return await service.organize_hierarchy(actor, access, payload)
+
+
 @router.get("/territorios/mapa/marcadores", response_model=list[MapMarker])
 async def map_markers(
     actor: Annotated[RequestActor, Depends(require_permission("territorio", "visualizar"))],
@@ -236,9 +260,7 @@ async def map_municipality_shapes(
     ids = await service.accessible_ids(actor, access)
     if territorio_id:
         await service.ensure_access(actor, access, territorio_id, administer=False)
-    return await service.repository.map_municipality_shapes(
-        actor.tenant_id, ids, territorio_id
-    )
+    return await service.repository.map_municipality_shapes(actor.tenant_id, ids, territorio_id)
 
 
 @router.get(
@@ -257,9 +279,7 @@ async def map_territory_shapes(
     ids = await service.accessible_ids(actor, access)
     if territorio_id:
         await service.ensure_access(actor, access, territorio_id, administer=False)
-    return await service.repository.map_territory_shapes(
-        actor.tenant_id, tipo, ids, territorio_id
-    )
+    return await service.repository.map_territory_shapes(actor.tenant_id, tipo, ids, territorio_id)
 
 
 @router.get("/territorios/mapa/pessoas", response_model=list[MapPerson])
@@ -348,9 +368,7 @@ async def deactivate_territory(
     service: Annotated[TerritorioService, Depends(get_service)],
     territory_id: int = Path(ge=1),
 ) -> Response:
-    await service.update_territory(
-        actor, access, territory_id, TerritorioUpdate(ativo=False)
-    )
+    await service.update_territory(actor, access, territory_id, TerritorioUpdate(ativo=False))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -382,9 +400,7 @@ async def list_person_links(
     return await service.list_person_links(actor, access, person_id)
 
 
-@router.delete(
-    "/territorios/pessoas-vinculos/{link_id}", status_code=status.HTTP_204_NO_CONTENT
-)
+@router.delete("/territorios/pessoas-vinculos/{link_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def unlink_person(
     actor: Annotated[RequestActor, Depends(require_permission("territorio", "editar"))],
     access: Annotated[TerritorialAccess, Depends(get_territorial_access)],
@@ -410,9 +426,7 @@ async def link_leadership(
     return await service.link_leadership(actor, access, territory_id, payload)
 
 
-@router.delete(
-    "/territorios/liderancas-vinculos/{link_id}", status_code=status.HTTP_204_NO_CONTENT
-)
+@router.delete("/territorios/liderancas-vinculos/{link_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def unlink_leadership(
     actor: Annotated[RequestActor, Depends(require_permission("territorio", "editar"))],
     service: Annotated[TerritorioService, Depends(get_service)],

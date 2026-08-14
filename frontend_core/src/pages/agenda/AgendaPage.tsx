@@ -28,6 +28,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { AppToast } from '@/components/feedback/AppToast';
 import { RemotePersonSelect } from '@/components/forms/RemotePersonSelect';
+import { RemoteTerritorySelect } from '@/components/forms/RemoteTerritorySelect';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { listarLiderancas } from '@/modules/cadastro/pessoas-service';
 import {
@@ -340,13 +341,7 @@ export function AgendaPage() {
             </Col>
             <Col span={12}>
               <Form.Item name="territorio_id" label="Território">
-                <Select
-                  allowClear
-                  options={(territories.data ?? []).map((item) => ({
-                    value: item.id,
-                    label: item.nome,
-                  }))}
-                />
+                <RemoteTerritorySelect />
               </Form.Item>
             </Col>
           </Row>

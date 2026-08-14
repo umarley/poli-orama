@@ -43,6 +43,7 @@ import {
   ElectoralLocationFields,
   ElectoralSectionField,
 } from '@/components/territorios/ElectoralLocationFields';
+import { canRemovePersonContact } from '@/modules/cadastro/contact-permissions';
 import {
   atualizarContato,
   atualizarDocumento,
@@ -55,6 +56,7 @@ import {
   criarIndicacao,
   criarRedeSocial,
   definirEleitor,
+  excluirContato,
   listarEstadosCivis,
   listarReligioes,
   listarTags,
@@ -330,6 +332,8 @@ export function PessoaDetailPage() {
   const params = useParams();
   const personId = Number(params.id);
   const permissions = useSessionStore((state) => state.user?.permissions ?? []);
+  const profiles = useSessionStore((state) => state.user?.profiles ?? []);
+  const liderancaId = useSessionStore((state) => state.user?.liderancaId ?? null);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [addressLookupLoading, setAddressLookupLoading] = useState(false);
   const [printing, setPrinting] = useState(false);
@@ -610,6 +614,14 @@ export function PessoaDetailPage() {
     },
     onError: (error) => AppToast.error(normalizeApiError(error).message),
   });
+  const removeContactMutation = useMutation({
+    mutationFn: (contactId: number) => excluirContato(personId, contactId),
+    onSuccess: async () => {
+      AppToast.success('Contato removido.');
+      await queryClient.invalidateQueries({ queryKey: ['cadastro', 'pessoa', personId] });
+    },
+    onError: (error) => AppToast.error(normalizeApiError(error).message),
+  });
 
   const openEditor = (next: Editor) => {
     const person = personQuery.data;
@@ -760,6 +772,7 @@ export function PessoaDetailPage() {
     );
   }
   const person = personQuery.data;
+  const canRemoveContact = canRemovePersonContact(profiles, liderancaId, person);
   const documentOptionsForNewDocument = documentTypeOptions.map((option) => ({
     ...option,
     disabled: person.documentos.some((document) => document.tipo_documento === option.value),
@@ -990,6 +1003,31 @@ export function PessoaDetailPage() {
                           >
                             Editar
                           </Button>,
+                          ...(canRemoveContact
+                            ? [
+                                <Popconfirm
+                                  key="remove"
+                                  title="Remover contato?"
+                                  description={`O contato ${formatContactValue(item.tipo_contato, item.valor)} será excluído deste cadastro.`}
+                                  okText="Remover"
+                                  cancelText="Cancelar"
+                                  okButtonProps={{ danger: true }}
+                                  onConfirm={() => removeContactMutation.mutateAsync(item.id)}
+                                >
+                                  <Button
+                                    type="link"
+                                    danger
+                                    icon={<DeleteOutlined />}
+                                    loading={
+                                      removeContactMutation.isPending &&
+                                      removeContactMutation.variables === item.id
+                                    }
+                                  >
+                                    Remover
+                                  </Button>
+                                </Popconfirm>,
+                              ]
+                            : []),
                         ]}
                       >
                         <List.Item.Meta

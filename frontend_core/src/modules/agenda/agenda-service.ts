@@ -57,13 +57,22 @@ export async function cancelEvent(id: number, motivo: string) {
 
 export async function addParticipant(
   id: number,
-  payload: { pessoa_id: number; papel?: string; presente?: boolean; observacao?: string },
+  payload: {
+    pessoa_id: number;
+    papel?: string;
+    presente?: boolean | null;
+    observacao?: string | null;
+  },
 ) {
   const { data } = await httpClient.post<EventParticipant>(
     `${base}/eventos/${id}/participantes`,
     payload,
   );
   return data;
+}
+
+export async function removeParticipant(id: number, personId: number) {
+  await httpClient.delete(`${base}/eventos/${id}/participantes/${personId}`);
 }
 
 export async function addLeadership(id: number, payload: { lideranca_id: number; papel?: string }) {

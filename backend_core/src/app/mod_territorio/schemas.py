@@ -168,6 +168,43 @@ class TerritorioTreeNode(TerritorioResponse):
     filhos: list[TerritorioTreeNode] = Field(default_factory=list)
 
 
+class HierarchyOrganizationChange(TerritorySchema):
+    territorio_id: int
+    territorio_nome: str
+    codigo_municipio_ibge: int
+    territorio_pai_atual_id: int | None = None
+    territorio_pai_atual_nome: str | None = None
+    territorio_pai_proposto_id: int
+    territorio_pai_proposto_nome: str
+
+
+class HierarchyOrganizationPending(TerritorySchema):
+    territorio_id: int
+    territorio_nome: str
+    codigo_municipio_ibge: int | None = None
+    motivo: str
+
+
+class HierarchyOrganizationPreview(TerritorySchema):
+    hierarquia_atual: list[TerritorioTreeNode]
+    hierarquia_proposta: list[TerritorioTreeNode]
+    alteracoes: list[HierarchyOrganizationChange]
+    pendencias: list[HierarchyOrganizationPending]
+
+
+class HierarchyOrganizationApplyItem(TerritorySchema):
+    territorio_id: int = Field(ge=1)
+    territorio_pai_id: int = Field(ge=1)
+
+
+class HierarchyOrganizationApply(TerritorySchema):
+    alteracoes: list[HierarchyOrganizationApplyItem]
+
+
+class HierarchyOrganizationResult(TerritorySchema):
+    atualizados: int
+
+
 VinculoPessoa = Literal["moradia", "atuacao", "votacao", "responsabilidade"]
 ResponsabilidadeLideranca = Literal["principal", "apoio", "compartilhada"]
 

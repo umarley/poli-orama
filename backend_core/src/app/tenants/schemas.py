@@ -82,6 +82,21 @@ class TenantConfiguracaoUpdate(BaseModel):
     percentual_alerta_meta: Decimal | None = Field(default=None, ge=0, le=100)
     preferencias: dict[str, Any] | None = None
 
+    @field_validator("preferencias")
+    @classmethod
+    def force_nome_completo_obrigatorio(
+        cls, value: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        if not isinstance(value, dict):
+            return value
+        formulario = value.get("formulario_cadastro")
+        if not isinstance(formulario, dict):
+            return value
+        return {
+            **value,
+            "formulario_cadastro": {**formulario, "nome_completo": True},
+        }
+
 
 class UtmSource(BaseModel):
     utm_source: str | None = Field(default=None, max_length=120)

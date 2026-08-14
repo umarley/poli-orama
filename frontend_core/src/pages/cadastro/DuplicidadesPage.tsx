@@ -17,6 +17,7 @@ import {
   Empty,
   Flex,
   Grid,
+  Input,
   Modal,
   Radio,
   Row,
@@ -274,14 +275,15 @@ export function DuplicidadesPage() {
   const queryClient = useQueryClient();
   const screens = Grid.useBreakpoint();
   const [status, setStatus] = useState<StatusDuplicidade>('pendente');
+  const [nome, setNome] = useState('');
   const [selected, setSelected] = useState<SuspeitaDuplicidade | null>(null);
   const [principalId, setPrincipalId] = useState<number | null>(null);
   const [choices, setChoices] = useState<Partial<Record<CampoMergePessoa, number>>>({});
   const [confirmed, setConfirmed] = useState(false);
 
   const duplicatesQuery = useQuery({
-    queryKey: ['cadastro', 'duplicidades', status],
-    queryFn: () => listarDuplicidades(status),
+    queryKey: ['cadastro', 'duplicidades', status, nome],
+    queryFn: () => listarDuplicidades(status, nome),
   });
   const summaryQuery = useQuery({
     queryKey: ['cadastro', 'duplicidades', 'resumo'],
@@ -407,16 +409,30 @@ export function DuplicidadesPage() {
 
       <Card>
         <div className={styles.toolbar}>
-          <Select<StatusDuplicidade>
-            aria-label="Filtrar por situação"
-            value={status}
-            onChange={setStatus}
-            style={{ minWidth: 220 }}
-            options={Object.entries(statusConfig).map(([value, config]) => ({
-              value: value as StatusDuplicidade,
-              label: config.label,
-            }))}
-          />
+          <Space wrap>
+            <Input.Search
+              allowClear
+              aria-label="Buscar duplicidade pelo nome da pessoa"
+              placeholder="Buscar por nome da pessoa"
+              onSearch={(value) => setNome(value.trim())}
+              onChange={(event) => {
+                if (event.target.value === '') {
+                  setNome('');
+                }
+              }}
+              style={{ minWidth: 260, maxWidth: 360 }}
+            />
+            <Select<StatusDuplicidade>
+              aria-label="Filtrar por situação"
+              value={status}
+              onChange={setStatus}
+              style={{ minWidth: 220 }}
+              options={Object.entries(statusConfig).map(([value, config]) => ({
+                value: value as StatusDuplicidade,
+                label: config.label,
+              }))}
+            />
+          </Space>
           <Space>
             <Typography.Text type="secondary">{counts.visible} ocorrência(s)</Typography.Text>
             <Button

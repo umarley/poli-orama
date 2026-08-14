@@ -404,10 +404,11 @@ async def test_duplicate_list_includes_both_person_names() -> None:
     repository.duplicate_person_names.return_value = {11: "Maria A", 12: "Maria B"}
     service = CadastroService(repository)
 
-    result = await service.list_duplicates(make_actor(), "pendente")
+    result = await service.list_duplicates(make_actor(), "pendente", "Maria")
 
     assert result[0].pessoa_nome == "Maria A"
     assert result[0].pessoa_duplicada_nome == "Maria B"
+    repository.list_duplicates.assert_awaited_once_with(10, "pendente", "Maria")
     repository.duplicate_person_names.assert_awaited_once_with(10, {11, 12})
 
 
@@ -450,6 +451,27 @@ async def test_duplicate_repository_requires_both_people_to_be_active() -> None:
     assert statement.count("EXISTS") == 2
     assert statement.count("cadastro.pessoa.ativo IS true") == 2
     assert statement.count("cadastro.pessoa.excluido_em IS NULL") == 2
+    assert "like lower" not in statement.lower()
+
+
+@pytest.mark.asyncio
+async def test_duplicate_repository_filters_by_either_person_name() -> None:
+    session = AsyncMock(spec=AsyncSession)
+    result = MagicMock()
+    result.all.return_value = []
+    session.scalars.return_value = result
+    repository = CadastroRepository(session)
+
+    assert await repository.list_duplicates(10, "pendente", " Maria ") == []
+
+    statement = str(session.scalars.await_args.args[0]).lower()
+    assert statement.count("exists") == 4
+    assert statement.count("like lower") == 6
+    assert "pessoa_id" in statement
+    assert "pessoa_duplicada_id" in statement
+    assert "nome_completo" in statement
+    assert "nome_social" in statement
+    assert "apelido" in statement
 
 
 @pytest.mark.asyncio
@@ -619,3 +641,102 @@ async def test_person_can_only_be_indicated_once() -> None:
 
     assert error.value.code == "person_already_indicated"
     repository.add_indication.assert_not_awaited()
+
+
+def make_profile_actor(*profiles: str, lideranca_id: int | None = None) -> RequestActor:
+    return RequestActor(
+        tenant_id=10,
+        user_id=20,
+        session_id=30,
+        profiles=profiles,
+        permissions=frozenset({"cadastro.visualizar", "cadastro.editar"}),
+        token="token",
+        lideranca_id=lideranca_id,
+    )
+
+
+def _contact() -> SimpleNamespace:
+    return SimpleNamespace(
+        id=20,
+        pessoa_id=10,
+        tipo_contato="whatsapp",
+        valor="11999999999",
+        principal=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_gestor_can_delete_person_contact() -> None:
+    repository = AsyncMock()
+    repository.contact.return_value = _contact()
+    service = CadastroService(repository)
+
+    await service.delete_contact(make_actor(), 10, 20)
+
+    repository.delete_contact.assert_awaited_once()
+    repository.commit.assert_awaited_once()
+    repository.person_linked_to_leadership.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_gestor_saas_can_delete_person_contact() -> None:
+    repository = AsyncMock()
+    repository.contact.return_value = _contact()
+    service = CadastroService(repository)
+
+    await service.delete_contact(make_profile_actor("gestor_saas"), 10, 20)
+
+    repository.delete_contact.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_leader_cannot_delete_person_contact() -> None:
+    repository = AsyncMock()
+    service = CadastroService(repository)
+
+    with pytest.raises(AuthorizationError):
+        await service.delete_contact(make_profile_actor("lider", lideranca_id=5), 10, 20)
+
+    repository.person_linked_to_leadership.assert_not_awaited()
+    repository.delete_contact.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_coordinator_can_delete_contact_when_person_is_linked() -> None:
+    repository = AsyncMock()
+    repository.contact.return_value = _contact()
+    repository.person_linked_to_leadership.return_value = True
+    service = CadastroService(repository)
+
+    await service.delete_contact(
+        make_profile_actor("coordenador_territorial", lideranca_id=5), 10, 20
+    )
+
+    repository.person_linked_to_leadership.assert_awaited_once_with(10, 10, 5)
+    repository.delete_contact.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_coordinator_cannot_delete_contact_when_person_is_not_linked() -> None:
+    repository = AsyncMock()
+    repository.person_linked_to_leadership.return_value = False
+    service = CadastroService(repository)
+
+    with pytest.raises(AuthorizationError):
+        await service.delete_contact(
+            make_profile_actor("coordenador_territorial", lideranca_id=5), 10, 20
+        )
+
+    repository.delete_contact.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_coordinator_without_leadership_cannot_delete_contact() -> None:
+    repository = AsyncMock()
+    service = CadastroService(repository)
+
+    with pytest.raises(AuthorizationError):
+        await service.delete_contact(make_profile_actor("coordenador_territorial"), 10, 20)
+
+    repository.person_linked_to_leadership.assert_not_awaited()
+    repository.delete_contact.assert_not_awaited()

@@ -22,6 +22,7 @@ import {
   criarRedeSocial,
   definirEleitor,
   definirLideranca,
+  excluirContato,
   listarHierarquia,
   listarDuplicidades,
   listarLiderancas,
@@ -184,6 +185,14 @@ describe('serviços de cadastro', () => {
     expect(post).toHaveBeenCalledWith('/api/v1/cadastro/pessoas/10/contatos', payload);
   });
 
+  it('usa a rota de exclusao de contato da pessoa', async () => {
+    remove.mockResolvedValueOnce({ data: undefined });
+
+    await excluirContato(10, 20);
+
+    expect(remove).toHaveBeenCalledWith('/api/v1/cadastro/pessoas/10/contatos/20');
+  });
+
   it('usa a rota de criacao de documento da pessoa', async () => {
     const payload = {
       tipo_documento: 'rg' as const,
@@ -258,6 +267,16 @@ describe('serviços de cadastro', () => {
 
     expect(get).toHaveBeenCalledWith('/api/v1/cadastro/duplicidades', {
       params: { status: 'pendente' },
+    });
+  });
+
+  it('lista suspeitas de duplicidade filtrando pelo nome da pessoa', async () => {
+    get.mockResolvedValueOnce({ data: [] });
+
+    await listarDuplicidades('pendente', ' Maria ');
+
+    expect(get).toHaveBeenCalledWith('/api/v1/cadastro/duplicidades', {
+      params: { status: 'pendente', nome: 'Maria' },
     });
   });
 

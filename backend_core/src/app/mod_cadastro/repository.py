@@ -516,6 +516,44 @@ class CadastroRepository(BaseRepository[Pessoa]):
         )
         return result
 
+    async def delete_contact(self, item: PessoaContato) -> None:
+        await self.session.delete(item)
+        await self.session.flush()
+
+    async def person_linked_to_leadership(
+        self, tenant_id: int, person_id: int, leadership_id: int
+    ) -> bool:
+        registered_or_own = await self.session.scalar(
+            select(Pessoa.id)
+            .outerjoin(
+                Lideranca,
+                (Lideranca.pessoa_id == Pessoa.id) & (Lideranca.tenant_id == Pessoa.tenant_id),
+            )
+            .where(
+                Pessoa.tenant_id == tenant_id,
+                Pessoa.id == person_id,
+                or_(
+                    Pessoa.cadastrado_por_lideranca_id == leadership_id,
+                    Lideranca.id == leadership_id,
+                    Lideranca.coordenador_id == leadership_id,
+                ),
+            )
+            .limit(1)
+        )
+        if registered_or_own is not None:
+            return True
+        hierarchy = await self.session.scalar(
+            select(HierarquiaLideranca.id)
+            .where(
+                HierarquiaLideranca.tenant_id == tenant_id,
+                HierarquiaLideranca.pessoa_subordinada_id == person_id,
+                HierarquiaLideranca.lideranca_superior_id == leadership_id,
+                HierarquiaLideranca.ativo.is_(True),
+            )
+            .limit(1)
+        )
+        return hierarchy is not None
+
     async def update_contact(
         self, tenant_id: int, item: PessoaContato, payload: PessoaContatoUpdate
     ) -> PessoaContato:
@@ -1494,7 +1532,7 @@ class CadastroRepository(BaseRepository[Pessoa]):
         return {int(person_id): str(name) for person_id, name in result.all()}
 
     async def list_duplicates(
-        self, tenant_id: int, status: str | None
+        self, tenant_id: int, status: str | None, nome: str | None = None
     ) -> list[SuspeitaDuplicidade]:
         active_person = (
             select(Pessoa.id)
@@ -1523,6 +1561,33 @@ class CadastroRepository(BaseRepository[Pessoa]):
         )
         if status:
             statement = statement.where(SuspeitaDuplicidade.status == status)
+        name_term = nome.strip() if nome else ""
+        if name_term:
+            pattern = f"%{name_term}%"
+            name_match = or_(
+                Pessoa.nome_completo.ilike(pattern),
+                Pessoa.nome_social.ilike(pattern),
+                Pessoa.apelido.ilike(pattern),
+            )
+            principal_name = (
+                select(Pessoa.id)
+                .where(
+                    Pessoa.id == SuspeitaDuplicidade.pessoa_id,
+                    Pessoa.tenant_id == tenant_id,
+                    name_match,
+                )
+                .exists()
+            )
+            compared_name = (
+                select(Pessoa.id)
+                .where(
+                    Pessoa.id == SuspeitaDuplicidade.pessoa_duplicada_id,
+                    Pessoa.tenant_id == tenant_id,
+                    name_match,
+                )
+                .exists()
+            )
+            statement = statement.where(or_(principal_name, compared_name))
         result = await self.session.scalars(
             statement.order_by(SuspeitaDuplicidade.criado_em.desc())
         )

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import ResourceNotFoundError
 from app.core.pagination import ListParams
 from app.tenants.repository import TenantRepository
-from app.tenants.schemas import TenantCreate
+from app.tenants.schemas import TenantConfiguracaoUpdate, TenantCreate
 from app.tenants.service import TenantService
 
 
@@ -74,3 +74,21 @@ async def test_new_tenant_defaults_to_leadership_terminology() -> None:
     assert tenant.configuracao.preferencias == {
         "nomenclatura_liderancas": "liderancas"
     }
+
+
+def test_configuration_update_keeps_full_name_required() -> None:
+    payload = TenantConfiguracaoUpdate(
+        preferencias={
+            "nomenclatura_liderancas": "liderancas",
+            "formulario_cadastro": {
+                "nome_completo": False,
+                "data_nascimento": True,
+                "documento": {"CPF": True, "RG": False, "CNH": False},
+            },
+        }
+    )
+
+    assert payload.preferencias is not None
+    assert payload.preferencias["formulario_cadastro"]["nome_completo"] is True
+    assert payload.preferencias["formulario_cadastro"]["data_nascimento"] is True
+    assert payload.preferencias["nomenclatura_liderancas"] == "liderancas"

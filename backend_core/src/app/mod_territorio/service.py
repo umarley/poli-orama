@@ -10,6 +10,11 @@ from app.mod_territorio.repository import MESH_TERRITORY_TYPES, TerritorioReposi
 from app.mod_territorio.schemas import (
     BairroCreate,
     GeocodificacaoInput,
+    HierarchyOrganizationApply,
+    HierarchyOrganizationChange,
+    HierarchyOrganizationPending,
+    HierarchyOrganizationPreview,
+    HierarchyOrganizationResult,
     LiderancaTerritorioInput,
     PessoaTerritorioInput,
     TerritorioCreate,
@@ -30,9 +35,7 @@ class TerritorioService:
         return await self.repository.accessible_ids(actor.tenant_id, access)
 
     async def create_neighborhood(self, payload: BairroCreate) -> dict[str, Any]:
-        if not await self.repository.reference_exists(
-            "municipio", payload.codigo_municipio_ibge
-        ):
+        if not await self.repository.reference_exists("municipio", payload.codigo_municipio_ibge):
             raise ResourceNotFoundError("Municipio", payload.codigo_municipio_ibge)
         item = await self.repository.create_neighborhood(payload)
         await self.repository.commit()
@@ -110,9 +113,7 @@ class TerritorioService:
         if administer and not access.unrestricted:
             administrative_access = TerritorialAccess(
                 unrestricted=False,
-                scopes=frozenset(
-                    scope for scope in access.scopes if scope[2]
-                ),
+                scopes=frozenset(scope for scope in access.scopes if scope[2]),
             )
             administrative_ids = await self.repository.accessible_ids(
                 actor.tenant_id, administrative_access
@@ -149,11 +150,7 @@ class TerritorioService:
         if not is_update and payload.malha_geom is None:
             return
 
-        malha_geom = (
-            payload.malha_geom.model_dump()
-            if payload.malha_geom is not None
-            else None
-        )
+        malha_geom = payload.malha_geom.model_dump() if payload.malha_geom is not None else None
         await self.repository.save_territory_mesh(
             tenant_id,
             territory["id"],
@@ -172,15 +169,11 @@ class TerritorioService:
     ) -> dict[str, Any]:
         await self.validate_payload_references(actor, payload)
         if payload.territorio_pai_id:
-            await self.ensure_access(
-                actor, access, payload.territorio_pai_id, administer=True
-            )
+            await self.ensure_access(actor, access, payload.territorio_pai_id, administer=True)
         elif not access.unrestricted:
             raise AuthorizationError("Apenas gestores podem criar territorios raiz.")
         item = await self.repository.create_territory(actor.tenant_id, payload)
-        await self._persist_territory_mesh(
-            actor.tenant_id, item, payload, is_update=False
-        )
+        await self._persist_territory_mesh(actor.tenant_id, item, payload, is_update=False)
         await self.repository.commit()
         refreshed = await self.repository.get_territory(actor.tenant_id, item["id"])
         assert refreshed is not None
@@ -196,9 +189,7 @@ class TerritorioService:
         await self.ensure_access(actor, access, territory_id, administer=True)
         await self.validate_payload_references(actor, payload)
         if payload.territorio_pai_id is not None:
-            await self.ensure_access(
-                actor, access, payload.territorio_pai_id, administer=True
-            )
+            await self.ensure_access(actor, access, payload.territorio_pai_id, administer=True)
             if await self.repository.would_create_cycle(
                 actor.tenant_id, territory_id, payload.territorio_pai_id
             ):
@@ -206,14 +197,10 @@ class TerritorioService:
                     "A hierarquia territorial nao pode conter ciclos.",
                     code="territory_hierarchy_cycle",
                 )
-        item = await self.repository.update_territory(
-            actor.tenant_id, territory_id, payload
-        )
+        item = await self.repository.update_territory(actor.tenant_id, territory_id, payload)
         if item is None:
             raise ResourceNotFoundError("Territorio", territory_id)
-        await self._persist_territory_mesh(
-            actor.tenant_id, item, payload, is_update=True
-        )
+        await self._persist_territory_mesh(actor.tenant_id, item, payload, is_update=True)
         await self.repository.commit()
         refreshed = await self.repository.get_territory(actor.tenant_id, territory_id)
         assert refreshed is not None
@@ -223,6 +210,12 @@ class TerritorioService:
         self, actor: RequestActor, access: TerritorialAccess
     ) -> list[TerritorioTreeNode]:
         rows = await self.list_territories(actor, access, include_inactive=False)
+        return self._build_tree(rows)
+
+    @staticmethod
+    def _build_tree(
+        rows: list[dict[str, Any]], parent_overrides: dict[int, int] | None = None
+    ) -> list[TerritorioTreeNode]:
         allowed_fields = set(TerritorioTreeNode.model_fields)
         nodes = {
             row["id"]: TerritorioTreeNode.model_validate(
@@ -236,12 +229,109 @@ class TerritorioService:
         roots: list[TerritorioTreeNode] = []
         for row in rows:
             node = nodes[row["id"]]
-            parent = nodes.get(row["territorio_pai_id"])
+            parent_id = (parent_overrides or {}).get(row["id"], row["territorio_pai_id"])
+            parent = nodes.get(parent_id)
             if parent:
                 parent.filhos.append(node)
             else:
                 roots.append(node)
         return roots
+
+    async def hierarchy_organization_preview(
+        self, actor: RequestActor, access: TerritorialAccess
+    ) -> HierarchyOrganizationPreview:
+        rows = await self.list_territories(actor, access, include_inactive=False)
+        by_id = {int(row["id"]): row for row in rows}
+        municipalities_by_code: dict[int, list[dict[str, Any]]] = {}
+        for row in rows:
+            code = row.get("codigo_municipio_ibge")
+            if row["tipo_codigo"] == "municipio" and code is not None:
+                municipalities_by_code.setdefault(int(code), []).append(row)
+
+        changes: list[HierarchyOrganizationChange] = []
+        pending: list[HierarchyOrganizationPending] = []
+        proposed_parents: dict[int, int] = {}
+        neighborhoods = sorted(
+            (row for row in rows if row["tipo_codigo"] == "bairro"),
+            key=lambda row: str(row["nome"]),
+        )
+        for neighborhood in neighborhoods:
+            municipality_code = neighborhood.get("codigo_municipio_ibge")
+            if municipality_code is None:
+                pending.append(
+                    HierarchyOrganizationPending(
+                        territorio_id=neighborhood["id"],
+                        territorio_nome=neighborhood["nome"],
+                        motivo="Município não informado no cadastro do bairro.",
+                    )
+                )
+                continue
+            matches = municipalities_by_code.get(int(municipality_code), [])
+            if len(matches) != 1:
+                reason = (
+                    "Território do tipo Município não localizado."
+                    if not matches
+                    else "Mais de um território do tipo Município corresponde ao cadastro."
+                )
+                pending.append(
+                    HierarchyOrganizationPending(
+                        territorio_id=neighborhood["id"],
+                        territorio_nome=neighborhood["nome"],
+                        codigo_municipio_ibge=municipality_code,
+                        motivo=reason,
+                    )
+                )
+                continue
+            municipality = matches[0]
+            municipality_id = int(municipality["id"])
+            proposed_parents[int(neighborhood["id"])] = municipality_id
+            if neighborhood["territorio_pai_id"] == municipality_id:
+                continue
+            current_parent = by_id.get(neighborhood["territorio_pai_id"])
+            changes.append(
+                HierarchyOrganizationChange(
+                    territorio_id=neighborhood["id"],
+                    territorio_nome=neighborhood["nome"],
+                    codigo_municipio_ibge=municipality_code,
+                    territorio_pai_atual_id=neighborhood["territorio_pai_id"],
+                    territorio_pai_atual_nome=(
+                        str(current_parent["nome"]) if current_parent else None
+                    ),
+                    territorio_pai_proposto_id=municipality_id,
+                    territorio_pai_proposto_nome=municipality["nome"],
+                )
+            )
+
+        return HierarchyOrganizationPreview(
+            hierarquia_atual=self._build_tree(rows),
+            hierarquia_proposta=self._build_tree(rows, proposed_parents),
+            alteracoes=changes,
+            pendencias=pending,
+        )
+
+    async def organize_hierarchy(
+        self,
+        actor: RequestActor,
+        access: TerritorialAccess,
+        payload: HierarchyOrganizationApply,
+    ) -> HierarchyOrganizationResult:
+        preview = await self.hierarchy_organization_preview(actor, access)
+        expected = {
+            (change.territorio_id, change.territorio_pai_proposto_id)
+            for change in preview.alteracoes
+        }
+        requested = {
+            (change.territorio_id, change.territorio_pai_id) for change in payload.alteracoes
+        }
+        if len(requested) != len(payload.alteracoes) or requested != expected:
+            raise BusinessRuleError(
+                "A prévia da hierarquia está desatualizada. Gere uma nova prévia.",
+                code="territory_hierarchy_preview_outdated",
+            )
+        for territory_id, parent_id in requested:
+            await self.repository.set_parent(actor.tenant_id, territory_id, parent_id)
+        await self.repository.commit()
+        return HierarchyOrganizationResult(atualizados=len(requested))
 
     async def link_person(
         self,

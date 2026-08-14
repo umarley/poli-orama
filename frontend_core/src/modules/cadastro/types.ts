@@ -165,6 +165,7 @@ export interface PessoaDetalhe {
   score_confiabilidade: string | null;
   completude_cadastral: string | null;
   ativo: boolean;
+  cadastrado_por_lideranca_id?: number | null;
   criado_por: number | null;
   atualizado_por: number | null;
   criado_em: string;
