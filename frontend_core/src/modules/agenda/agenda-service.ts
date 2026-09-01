@@ -5,6 +5,9 @@ import type {
   AgendaEvent,
   AgendaEventDetail,
   AgendaFilters,
+  CampaignCalendar,
+  CampaignCalendarInput,
+  CalendarMember,
   EventAgendaItem,
   EventAttendance,
   EventDemand,
@@ -12,9 +15,92 @@ import type {
   EventInvitation,
   EventLeadership,
   EventParticipant,
+  GoogleCalendarLink,
+  GoogleCalendarOption,
 } from './types';
 
 const base = '/api/v1/agenda';
+
+export async function listCalendars() {
+  const { data } = await httpClient.get<CampaignCalendar[]>(`${base}/agendas`);
+  return data;
+}
+
+export async function createCalendar(payload: CampaignCalendarInput) {
+  const { data } = await httpClient.post<CampaignCalendar>(`${base}/agendas`, payload);
+  return data;
+}
+
+export async function updateCalendar(id: number, payload: Partial<CampaignCalendarInput>) {
+  const { data } = await httpClient.patch<CampaignCalendar>(`${base}/agendas/${id}`, payload);
+  return data;
+}
+
+export async function deleteCalendar(id: number) {
+  await httpClient.delete(`${base}/agendas/${id}`);
+}
+
+export async function startGoogleOAuth() {
+  const { data } = await httpClient.post<{ authorization_url: string }>(
+    `${base}/google/oauth/iniciar`,
+  );
+  return data;
+}
+
+export async function listGoogleCalendars() {
+  const { data } = await httpClient.get<GoogleCalendarOption[]>(`${base}/google/calendarios`);
+  return data;
+}
+
+export async function linkGoogleCalendar(
+  id: number,
+  payload: {
+    google_calendar_id: string;
+    google_calendar_nome: string;
+    direcao: GoogleCalendarLink['direcao'];
+  },
+) {
+  const { data } = await httpClient.put<GoogleCalendarLink>(
+    `${base}/agendas/${id}/google`,
+    payload,
+  );
+  return data;
+}
+
+export async function unlinkGoogleCalendar(id: number) {
+  await httpClient.delete(`${base}/agendas/${id}/google`);
+}
+
+export async function syncGoogleCalendar(id: number) {
+  const { data } = await httpClient.post<{
+    enviados: number;
+    importados: number;
+    atualizados: number;
+    removidos: number;
+    erros: string[];
+  }>(`${base}/agendas/${id}/google/sincronizar`);
+  return data;
+}
+
+export async function listCalendarMembers(id: number) {
+  const { data } = await httpClient.get<CalendarMember[]>(`${base}/agendas/${id}/usuarios`);
+  return data;
+}
+
+export async function saveCalendarMember(
+  id: number,
+  payload: Omit<CalendarMember, 'nome' | 'email'>,
+) {
+  const { data } = await httpClient.put<CalendarMember[]>(
+    `${base}/agendas/${id}/usuarios`,
+    payload,
+  );
+  return data;
+}
+
+export async function removeCalendarMember(id: number, userId: number) {
+  await httpClient.delete(`${base}/agendas/${id}/usuarios/${userId}`);
+}
 
 export async function listEventTypes() {
   const { data } = await httpClient.get<AgendaCatalog[]>(`${base}/tipos`);
@@ -33,8 +119,10 @@ export async function listEvents(filters: AgendaFilters) {
   return data;
 }
 
-export async function getEvent(id: number) {
-  const { data } = await httpClient.get<AgendaEventDetail>(`${base}/eventos/${id}`);
+export async function getEvent(id: number | string) {
+  const { data } = await httpClient.get<AgendaEventDetail>(
+    `${base}/eventos/${encodeURIComponent(id)}`,
+  );
   return data;
 }
 
@@ -53,6 +141,10 @@ export async function cancelEvent(id: number, motivo: string) {
     motivo,
   });
   return data;
+}
+
+export async function deleteEvent(id: number) {
+  await httpClient.delete(`${base}/eventos/${id}`);
 }
 
 export async function addParticipant(

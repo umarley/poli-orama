@@ -19,6 +19,7 @@ ENTITY_TABLES: dict[str, tuple[str, str]] = {
     "lideranca": ("cadastro.lideranca", "ativo"),
     "convite": ("agenda.convite", "TRUE"),
     "tenant": ("public.tenant", "excluido_em IS NULL"),
+    "contrato": ("contrato.contrato", "excluido_em IS NULL"),
 }
 
 

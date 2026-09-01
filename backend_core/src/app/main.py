@@ -17,6 +17,7 @@ from app.mod_arquivos.router import router as arquivos_router
 from app.mod_cadastro.router import router as cadastro_router
 from app.mod_callcenter.router import router as callcenter_router
 from app.mod_comunicacao.router import router as comunicacao_router
+from app.mod_contrato.router import router as contrato_router
 from app.mod_dashboard.router import router as dashboard_router
 from app.mod_demandas.router import router as demandas_router
 from app.mod_eleicoes.router import router as eleicoes_router
@@ -53,6 +54,7 @@ api_app.include_router(tenants_router, prefix=settings.api_v1_prefix)
 api_app.include_router(cadastro_router, prefix=settings.api_v1_prefix)
 api_app.include_router(callcenter_router, prefix=settings.api_v1_prefix)
 api_app.include_router(comunicacao_router, prefix=settings.api_v1_prefix)
+api_app.include_router(contrato_router, prefix=settings.api_v1_prefix)
 api_app.include_router(territorio_router, prefix=settings.api_v1_prefix)
 api_app.include_router(metas_router, prefix=settings.api_v1_prefix)
 api_app.include_router(agenda_router, prefix=settings.api_v1_prefix)

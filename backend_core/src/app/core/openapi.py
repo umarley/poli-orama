@@ -12,5 +12,6 @@ OPENAPI_TAGS = [
     {"name": "Agenda", "description": "Agenda e eventos."},
     {"name": "Demandas", "description": "Demandas e atendimentos."},
     {"name": "Comunicacao", "description": "Interacoes, canais e relacionamento."},
+    {"name": "Contratos", "description": "Gestao restrita de contratos da campanha."},
     {"name": "Dashboard", "description": "Dashboards e relatorios."},
 ]

@@ -82,6 +82,9 @@ class DashboardService:
         cached = DashboardCache.get(key)
         if cached is not None:
             return cached
+        agenda_territory_ids = (
+            {filters.territorio_id} if filters.territorio_id is not None else None
+        )
         value = {
             "filtros": filters.model_dump(),
             "cadastros": await self.repository.cadastros(
@@ -94,7 +97,13 @@ class DashboardService:
             "demandas": await self.repository.demandas(
                 actor.tenant_id, filters, territory_ids
             ),
-            "eventos": await self.repository.eventos(actor.tenant_id, filters, territory_ids),
+            "eventos": await self.repository.eventos(
+                actor.tenant_id,
+                filters,
+                agenda_territory_ids,
+                actor.user_id,
+                "agenda.administrar" in actor.permissions,
+            ),
             "gerado_em": datetime.now(UTC),
         }
         DashboardCache.set(key, value)
@@ -143,6 +152,17 @@ class DashboardService:
             "cadastros": self.repository.registrations_evolution,
             "lideres": self.repository.leader_ranking,
         }
+        if report_type == "agenda":
+            agenda_territory_ids = (
+                {filters.territorio_id} if filters.territorio_id is not None else None
+            )
+            return await self.repository.agenda_report(
+                actor.tenant_id,
+                filters,
+                agenda_territory_ids,
+                actor.user_id,
+                "agenda.administrar" in actor.permissions,
+            )
         return await methods[report_type](actor.tenant_id, filters, territory_ids)
 
     async def export(

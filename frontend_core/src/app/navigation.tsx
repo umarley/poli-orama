@@ -8,6 +8,7 @@ import {
   ImportOutlined,
   MergeCellsOutlined,
   FileTextOutlined,
+  FileProtectOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
   ShareAltOutlined,
@@ -105,6 +106,12 @@ export const navigationItems: NavigationItem[] = [
     label: 'Demandas',
     icon: <UnorderedListOutlined />,
     permission: 'demandas.visualizar',
+  },
+  {
+    key: '/contratos',
+    label: 'Contratos',
+    icon: <FileProtectOutlined />,
+    profiles: ['tesoureiro'],
   },
   {
     key: '/usuarios',

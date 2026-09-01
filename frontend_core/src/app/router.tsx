@@ -14,6 +14,7 @@ import { AgendaPage } from '@/pages/agenda/AgendaPage';
 import { EventDetailPage } from '@/pages/agenda/EventDetailPage';
 import { PublicAttendancePage } from '@/pages/agenda/PublicAttendancePage';
 import { CadastroPage } from '@/pages/cadastro/CadastroPage';
+import { ContractsPage } from '@/pages/contratos/ContractsPage';
 import { DuplicidadesPage } from '@/pages/cadastro/DuplicidadesPage';
 import { IndicacoesGraphPage } from '@/pages/cadastro/IndicacoesGraphPage';
 import { LiderancasPage } from '@/pages/cadastro/LiderancasPage';
@@ -144,6 +145,14 @@ export const router = createBrowserRouter([
       {
         path: 'demandas/:id',
         element: withPermission('demandas.visualizar', <DemandDetailPage />),
+      },
+      {
+        path: 'contratos',
+        element: (
+          <ProfileRoute profiles={['tesoureiro']}>
+            <ContractsPage />
+          </ProfileRoute>
+        ),
       },
       /* legacy placeholder retained only for modules not implemented
           <ModulePlaceholderPage

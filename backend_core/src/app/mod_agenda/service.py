@@ -18,6 +18,10 @@ from app.mod_agenda.schemas import (
     AgendaItemInput,
     AgendaSummary,
     AttendanceInput,
+    CalendarInput,
+    CalendarMemberInput,
+    CalendarResponse,
+    CalendarUpdate,
     CatalogCreate,
     CatalogUpdate,
     DemandFromEventInput,
@@ -160,6 +164,135 @@ class AgendaService:
         await self.repository.commit()
         return item
 
+    async def list_calendars(self, actor: RequestActor) -> list[CalendarResponse]:
+        administrator = "agenda.administrar" in actor.permissions
+        items = await self.repository.list_calendars(
+            actor.tenant_id, actor.user_id, administrator=administrator
+        )
+        if administrator:
+            for item in items:
+                item["permissoes"] = [
+                    "visualizar",
+                    "criar",
+                    "editar",
+                    "alterar_classificacao",
+                    "excluir",
+                    "administrar_usuarios",
+                    "administrar_agenda",
+                ]
+        else:
+            for item in items:
+                if item["visibilidade"] == "publica":
+                    inherited = {
+                        code.removeprefix("agenda.")
+                        for code in actor.permissions
+                        if code.startswith("agenda.")
+                    }
+                    item["permissoes"] = sorted(set(item["permissoes"]) | inherited)
+        return [CalendarResponse.model_validate(item) for item in items]
+
+    async def create_calendar(
+        self, actor: RequestActor, payload: CalendarInput
+    ) -> CalendarResponse:
+        calendar_id = await self.repository.create_calendar(actor.tenant_id, actor.user_id, payload)
+        await self.repository.upsert_calendar_member(
+            actor.tenant_id,
+            calendar_id,
+            actor.user_id,
+            CalendarMemberInput(
+                usuario_id=actor.user_id,
+                pode_visualizar=True,
+                pode_criar=True,
+                pode_editar=True,
+                pode_alterar_classificacao=True,
+                pode_excluir=True,
+                pode_administrar_usuarios=True,
+                pode_administrar_agenda=True,
+            ),
+        )
+        item = await self.repository.get_calendar(actor.tenant_id, calendar_id)
+        assert item is not None
+        await self._audit(actor, "criar", "agenda", calendar_id, None, item)
+        response = next(item for item in await self.list_calendars(actor) if item.id == calendar_id)
+        await self.repository.commit()
+        return response
+
+    async def update_calendar(
+        self, actor: RequestActor, calendar_id: int, payload: CalendarUpdate
+    ) -> CalendarResponse:
+        current = await self.ensure_calendar(actor, calendar_id, "administrar_agenda")
+        classification_fields = {
+            "natureza_candidato",
+            "frente_comunidade",
+            "tipo_agenda",
+            "visibilidade",
+            "cor",
+        }
+        if classification_fields & payload.model_fields_set:
+            await self.ensure_calendar(actor, calendar_id, "alterar_classificacao")
+        await self.repository.update_calendar(actor.tenant_id, calendar_id, payload)
+        updated = await self.repository.get_calendar(actor.tenant_id, calendar_id)
+        assert updated is not None
+        await self._audit(actor, "editar", "agenda", calendar_id, current, updated)
+        response = next(item for item in await self.list_calendars(actor) if item.id == calendar_id)
+        await self.repository.commit()
+        return response
+
+    async def delete_calendar(self, actor: RequestActor, calendar_id: int) -> None:
+        current = await self.ensure_calendar(actor, calendar_id, "excluir")
+        if current["padrao"]:
+            raise BusinessRuleError("A agenda padrao nao pode ser excluida.")
+        if not await self.repository.delete_calendar(actor.tenant_id, calendar_id):
+            raise BusinessRuleError(
+                "Remova ou transfira os compromissos antes de excluir a agenda."
+            )
+        await self._audit(actor, "excluir", "agenda", calendar_id, current, None)
+        await self.repository.commit()
+
+    async def calendar_members(self, actor: RequestActor, calendar_id: int) -> list[dict[str, Any]]:
+        await self.ensure_calendar(actor, calendar_id, "administrar_usuarios")
+        return await self.repository.calendar_members(actor.tenant_id, calendar_id)
+
+    async def save_calendar_member(
+        self, actor: RequestActor, calendar_id: int, payload: CalendarMemberInput
+    ) -> list[dict[str, Any]]:
+        await self.ensure_calendar(actor, calendar_id, "administrar_usuarios")
+        await self._require_reference(actor, "usuario", payload.usuario_id)
+        await self.repository.upsert_calendar_member(
+            actor.tenant_id, calendar_id, actor.user_id, payload
+        )
+        await self._audit(
+            actor, "editar", "agenda_usuario", calendar_id, None, payload.model_dump()
+        )
+        members = await self.repository.calendar_members(actor.tenant_id, calendar_id)
+        await self.repository.commit()
+        return members
+
+    async def remove_calendar_member(
+        self, actor: RequestActor, calendar_id: int, user_id: int
+    ) -> None:
+        await self.ensure_calendar(actor, calendar_id, "administrar_usuarios")
+        await self.repository.delete_calendar_member(actor.tenant_id, calendar_id, user_id)
+        await self.repository.commit()
+
+    async def ensure_calendar(
+        self, actor: RequestActor, calendar_id: int, action: str = "visualizar"
+    ) -> dict[str, Any]:
+        item = await self.repository.get_calendar(actor.tenant_id, calendar_id)
+        if item is None:
+            raise ResourceNotFoundError("Agenda", calendar_id)
+        if "agenda.administrar" in actor.permissions:
+            return item
+        permissions = await self.repository.calendar_permissions(
+            actor.tenant_id, calendar_id, actor.user_id
+        )
+        if "administrar_agenda" in permissions or action in permissions:
+            return item
+        if item["visibilidade"] == "publica":
+            if action == "visualizar" or f"agenda.{action}" in actor.permissions:
+                return item
+        raise AuthorizationError("Usuario nao possui permissao nesta agenda.")
+
     async def update_catalog(
         self,
         actor: RequestActor,
@@ -184,8 +317,12 @@ class AgendaService:
         access: TerritorialAccess,
         **filters: Any,
     ) -> list[dict[str, Any]]:
-        ids = await self.accessible_ids(actor, access)
-        return await self.repository.list_events(actor.tenant_id, accessible_ids=ids, **filters)
+        return await self.repository.list_events(
+            actor.tenant_id,
+            user_id=actor.user_id,
+            calendar_administrator="agenda.administrar" in actor.permissions,
+            **filters,
+        )
 
     async def create_event(
         self,
@@ -193,6 +330,13 @@ class AgendaService:
         access: TerritorialAccess,
         payload: EventInput,
     ) -> EventResponse:
+        calendar_id = payload.agenda_id or await self.repository.default_calendar_id(
+            actor.tenant_id
+        )
+        if calendar_id is None:
+            raise BusinessRuleError("Cadastre uma agenda antes de criar compromissos.")
+        await self.ensure_calendar(actor, calendar_id, "criar")
+        payload = payload.model_copy(update={"agenda_id": calendar_id})
         await self._validate_event_references(actor, access, payload, administer=True)
         event_id = await self.repository.create_event(actor.tenant_id, actor.user_id, payload)
         item = await self.repository.get_event(actor.tenant_id, event_id)
@@ -209,6 +353,8 @@ class AgendaService:
         payload: EventUpdate,
     ) -> EventResponse:
         current = await self.ensure_event(actor, access, event_id, administer=True)
+        if payload.agenda_id is not None and payload.agenda_id != current["agenda_id"]:
+            await self.ensure_calendar(actor, payload.agenda_id, "criar")
         schedule_fields = {"data_inicio", "data_fim"}
         if schedule_fields & payload.model_fields_set and not {
             "gestor",
@@ -248,6 +394,15 @@ class AgendaService:
         await self.repository.commit()
         return EventResponse.model_validate(item)
 
+    async def delete_event(
+        self, actor: RequestActor, access: TerritorialAccess, event_id: int
+    ) -> None:
+        current = await self.ensure_event(actor, access, event_id)
+        await self.ensure_calendar(actor, int(current["agenda_id"]), "excluir")
+        await self.repository.delete_event(actor.tenant_id, event_id)
+        await self._audit(actor, "excluir", "evento", event_id, current, None)
+        await self.repository.commit()
+
     async def detail(
         self,
         actor: RequestActor,
@@ -268,6 +423,17 @@ class AgendaService:
                 "insights": await self.repository.insights(actor.tenant_id, event_id),
             }
         )
+
+    async def detail_by_uuid(
+        self,
+        actor: RequestActor,
+        access: TerritorialAccess,
+        event_uuid: UUID,
+    ) -> EventDetailResponse:
+        item = await self.repository.get_event_by_uuid(actor.tenant_id, event_uuid)
+        if item is None:
+            raise ResourceNotFoundError("Evento", event_uuid)
+        return await self.detail(actor, access, int(item["id"]))
 
     async def add_participant(
         self,
@@ -448,9 +614,21 @@ class AgendaService:
     ) -> AgendaSummary:
         if end <= start:
             raise BusinessRuleError("Periodo final deve ser posterior ao inicial.")
-        ids = await self.accessible_ids(actor, access)
         return AgendaSummary.model_validate(
-            await self.repository.summary(actor.tenant_id, start, end, ids)
+            await self.repository.summary(
+                actor.tenant_id,
+                start,
+                end,
+                actor.user_id,
+                "agenda.administrar" in actor.permissions,
+            )
+        )
+
+    async def list_insights(self, actor: RequestActor) -> list[dict[str, Any]]:
+        return await self.repository.insights(
+            actor.tenant_id,
+            user_id=actor.user_id,
+            calendar_administrator="agenda.administrar" in actor.permissions,
         )
 
     async def export_csv(
@@ -468,6 +646,11 @@ class AgendaService:
                 "data_inicio",
                 "data_fim",
                 "titulo",
+                "agenda",
+                "natureza_candidato",
+                "frente_comunidade",
+                "tipo_agenda",
+                "visibilidade",
                 "tipo",
                 "status",
                 "local",
@@ -482,6 +665,11 @@ class AgendaService:
                     event["data_inicio"].isoformat(),
                     event["data_fim"].isoformat() if event["data_fim"] else "",
                     event["titulo"],
+                    event["agenda_nome"],
+                    event["natureza_candidato"],
+                    event["frente_comunidade"],
+                    event["tipo_agenda"],
+                    event["visibilidade"],
                     event["tipo_evento_nome"] or "",
                     event["status_evento_nome"] or "",
                     event["local_nome"] or "",
@@ -511,12 +699,16 @@ class AgendaService:
         item = await self.repository.get_event(actor.tenant_id, event_id)
         if item is None:
             raise ResourceNotFoundError("Evento", event_id)
+        await self.ensure_calendar(
+            actor, int(item["agenda_id"]), "editar" if administer else "visualizar"
+        )
         territory_id = item["territorio_id"]
-        ids = await self.accessible_ids(actor, access)
-        if ids is not None and territory_id not in ids:
-            raise AuthorizationError("Evento fora do escopo territorial permitido.")
-        if administer and territory_id is not None:
-            await self._ensure_territory(actor, access, territory_id, administer=True)
+        if administer:
+            ids = await self.accessible_ids(actor, access)
+            if ids is not None and territory_id not in ids:
+                raise AuthorizationError("Evento fora do escopo territorial permitido.")
+            if territory_id is not None:
+                await self._ensure_territory(actor, access, territory_id, administer=True)
         return item
 
     async def _validate_event_references(

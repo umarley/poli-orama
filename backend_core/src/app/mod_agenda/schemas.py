@@ -32,7 +32,96 @@ class CatalogResponse(CatalogCreate):
     atualizado_em: datetime
 
 
+class CalendarInput(AgendaSchema):
+    nome: str = Field(min_length=2, max_length=120)
+    descricao: str | None = None
+    natureza_candidato: Literal["rede", "recurso", "rua"]
+    frente_comunidade: Literal[
+        "juventude", "sindicalista", "cultura", "engenharia", "saude", "educacao", "dobradas"
+    ]
+    tipo_agenda: Literal["fixa_campanha", "agenda_aberta", "agenda_candidato"]
+    visibilidade: Literal["publica", "restrita"]
+    cor: str = Field(default="#1677ff", pattern=r"^#[0-9A-Fa-f]{6}$")
+
+
+class CalendarUpdate(AgendaSchema):
+    nome: str | None = Field(default=None, min_length=2, max_length=120)
+    descricao: str | None = None
+    natureza_candidato: Literal["rede", "recurso", "rua"] | None = None
+    frente_comunidade: (
+        Literal[
+            "juventude", "sindicalista", "cultura", "engenharia", "saude", "educacao", "dobradas"
+        ]
+        | None
+    ) = None
+    tipo_agenda: Literal["fixa_campanha", "agenda_aberta", "agenda_candidato"] | None = None
+    visibilidade: Literal["publica", "restrita"] | None = None
+    cor: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    ativo: bool | None = None
+
+
+class CalendarResponse(CalendarInput):
+    id: int
+    tenant_id: int
+    padrao: bool
+    ativo: bool
+    criado_em: datetime
+    atualizado_em: datetime
+    permissoes: list[str] = Field(default_factory=list)
+    google_integracao: dict[str, Any] | None = None
+
+
+class CalendarMemberInput(AgendaSchema):
+    usuario_id: int = Field(ge=1)
+    pode_visualizar: bool = True
+    pode_criar: bool = False
+    pode_editar: bool = False
+    pode_alterar_classificacao: bool = False
+    pode_excluir: bool = False
+    pode_administrar_usuarios: bool = False
+    pode_administrar_agenda: bool = False
+
+
+class CalendarMemberResponse(CalendarMemberInput):
+    nome: str
+    email: str
+
+
+class GoogleOAuthStartResponse(AgendaSchema):
+    authorization_url: str
+
+
+class GoogleCalendarItem(AgendaSchema):
+    id: str
+    nome: str
+    principal: bool = False
+    acesso: str
+
+
+class GoogleCalendarLinkInput(AgendaSchema):
+    google_calendar_id: str = Field(min_length=1, max_length=1024)
+    google_calendar_nome: str = Field(min_length=1, max_length=255)
+    direcao: Literal["sistema_google", "google_sistema", "bidirecional"] = "bidirecional"
+
+
+class GoogleCalendarLinkResponse(GoogleCalendarLinkInput):
+    id: int
+    agenda_id: int
+    status: str
+    ultima_sincronizacao_em: datetime | None
+    ultimo_erro: str | None
+
+
+class GoogleSyncResponse(AgendaSchema):
+    enviados: int = 0
+    importados: int = 0
+    atualizados: int = 0
+    removidos: int = 0
+    erros: list[str] = Field(default_factory=list)
+
+
 class EventInput(AgendaSchema):
+    agenda_id: int | None = Field(default=None, ge=1)
     contexto: Literal["campanha", "gabinete", "institucional"] = "institucional"
     campanha_eleicao_id: int | None = Field(default=None, ge=1)
     tipo_evento_id: int | None = Field(default=None, ge=1)
@@ -59,6 +148,7 @@ class EventInput(AgendaSchema):
 
 
 class EventUpdate(AgendaSchema):
+    agenda_id: int | None = Field(default=None, ge=1)
     contexto: Literal["campanha", "gabinete", "institucional"] | None = None
     campanha_eleicao_id: int | None = Field(default=None, ge=1)
     tipo_evento_id: int | None = Field(default=None, ge=1)
@@ -88,6 +178,13 @@ class EventResponse(AgendaSchema):
     tenant_id: int
     contexto: Literal["campanha", "gabinete", "institucional"]
     campanha_eleicao_id: int | None
+    agenda_id: int
+    agenda_nome: str
+    agenda_cor: str
+    natureza_candidato: str
+    frente_comunidade: str
+    tipo_agenda: str
+    visibilidade: str
     tipo_evento_id: int | None
     tipo_evento_nome: str | None
     status_evento_id: int | None

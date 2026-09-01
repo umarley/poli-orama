@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.mod_agenda.access import calendar_view_clause
 from app.mod_dashboard.schemas import DashboardConfigurationUpdate, DashboardFilters
 
 
@@ -174,11 +175,22 @@ class DashboardRepository:
         )
 
     async def eventos(
-        self, tenant_id: int, filters: DashboardFilters, territory_ids: set[int] | None
+        self,
+        tenant_id: int,
+        filters: DashboardFilters,
+        territory_ids: set[int] | None,
+        user_id: int,
+        calendar_administrator: bool,
     ) -> dict[str, Any]:
         values = self._values(tenant_id, filters, territory_ids)
+        values["user_id"] = user_id
         territory = self._territory("e.territorio_id")
         leader_id = self._leader_id()
+        calendar_access = (
+            "TRUE"
+            if calendar_administrator
+            else calendar_view_clause()
+        )
         return await self._one(
             f"""
             SELECT COUNT(DISTINCT e.id)::int total_periodo,
@@ -188,10 +200,12 @@ class DashboardRepository:
                 WHERE e.numero_presentes IS NOT NULL OR pe.evento_id IS NOT NULL
               )::int presencas_registradas
             FROM agenda.evento e
+            JOIN agenda.agenda a ON a.id=e.agenda_id
             LEFT JOIN agenda.status_evento s ON s.id=e.status_evento_id
             LEFT JOIN agenda.presenca_evento pe ON pe.evento_id=e.id
             WHERE e.tenant_id=:tenant_id AND e.excluido_em IS NULL
               AND e.data_inicio::date BETWEEN :inicio AND :fim
+              AND {calendar_access}
               AND {territory}
               AND ({leader_id} IS NULL OR EXISTS (
                 SELECT 1 FROM agenda.evento_lideranca el
@@ -335,11 +349,22 @@ class DashboardRepository:
         )
 
     async def agenda_report(
-        self, tenant_id: int, filters: DashboardFilters, territory_ids: set[int] | None
+        self,
+        tenant_id: int,
+        filters: DashboardFilters,
+        territory_ids: set[int] | None,
+        user_id: int,
+        calendar_administrator: bool,
     ) -> list[dict[str, Any]]:
         values = self._values(tenant_id, filters, territory_ids)
+        values["user_id"] = user_id
         territory = self._territory("e.territorio_id")
         leader_id = self._leader_id()
+        calendar_access = (
+            "TRUE"
+            if calendar_administrator
+            else calendar_view_clause()
+        )
         return await self._all(
             f"""
             SELECT e.id evento_id,e.titulo,e.data_inicio,e.data_fim,
@@ -348,11 +373,13 @@ class DashboardRepository:
               (SELECT COUNT(*) FROM agenda.convite c WHERE c.evento_id=e.id)::int convites,
               (SELECT COUNT(*) FROM agenda.pauta_evento pa WHERE pa.evento_id=e.id)::int pautas
             FROM agenda.evento e
+            JOIN agenda.agenda a ON a.id=e.agenda_id
             LEFT JOIN agenda.status_evento s ON s.id=e.status_evento_id
             LEFT JOIN territorio.territorio t ON t.id=e.territorio_id
             LEFT JOIN cadastro.pessoa p ON p.id=e.responsavel_pessoa_id
             WHERE e.tenant_id=:tenant_id AND e.excluido_em IS NULL
               AND e.data_inicio::date BETWEEN :inicio AND :fim AND {territory}
+              AND {calendar_access}
               AND ({leader_id} IS NULL OR EXISTS (
                 SELECT 1 FROM agenda.evento_lideranca el WHERE el.evento_id=e.id
                   AND el.tenant_id=e.tenant_id AND el.lideranca_id={leader_id}))

@@ -86,3 +86,29 @@ async def test_dashboard_export_is_audited_with_filters_and_purpose() -> None:
     assert logged[0:3] == (10, 20, "metas")
     assert logged[4:] == (1, "csv", "Reuniao da coordenacao")
     repository.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_agenda_report_uses_calendar_access_instead_of_implicit_territorial_scope() -> None:
+    repository = Mock()
+    repository.session = Mock()
+    repository.agenda_report = AsyncMock(return_value=[])
+    service = DashboardService(repository)
+    service.territories.accessible_ids = AsyncMock(return_value={100, 101})  # type: ignore[method-assign]
+
+    await service.report(
+        "agenda",
+        actor("dashboard.visualizar", "agenda.visualizar"),
+        TerritorialAccess(
+            unrestricted=False, scopes=frozenset({("territorio", 100, False)})
+        ),
+        filters(),
+    )
+
+    repository.agenda_report.assert_awaited_once_with(
+        10,
+        filters(),
+        None,
+        20,
+        False,
+    )

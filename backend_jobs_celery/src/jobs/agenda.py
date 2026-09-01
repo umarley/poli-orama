@@ -75,8 +75,9 @@ class AgendaProcessor:
             )
             events = connection.execute(
                 """
-                SELECT e.id, e.titulo, e.data_inicio
+                SELECT e.id, e.titulo, e.data_inicio, e.agenda_id, a.visibilidade
                 FROM agenda.evento e
+                JOIN agenda.agenda a ON a.id = e.agenda_id
                 JOIN agenda.status_evento s ON s.id = e.status_evento_id
                 WHERE e.tenant_id = %s AND e.excluido_em IS NULL
                   AND s.codigo IN ('planejado', 'confirmado', 'remarcado')
@@ -85,20 +86,25 @@ class AgendaProcessor:
                 """,
                 (tenant_id, reference, end),
             ).fetchall()
-            users = connection.execute(
-                """
-                SELECT DISTINCT u.id
-                FROM auth.usuario u
-                JOIN auth.usuario_perfil up
-                  ON up.usuario_id = u.id AND up.tenant_id = u.tenant_id
-                JOIN auth.perfil_permissao pp ON pp.perfil_acesso_id = up.perfil_acesso_id
-                JOIN auth.permissao p ON p.id = pp.permissao_id
-                WHERE u.tenant_id = %s AND u.status = 'ativo'
-                  AND p.codigo = 'agenda.visualizar'
-                """,
-                (tenant_id,),
-            ).fetchall()
             for event in events:
+                users = connection.execute(
+                    """
+                    SELECT DISTINCT u.id
+                    FROM auth.usuario u
+                    JOIN auth.usuario_perfil up
+                      ON up.usuario_id = u.id AND up.tenant_id = u.tenant_id
+                    JOIN auth.perfil_permissao pp ON pp.perfil_acesso_id = up.perfil_acesso_id
+                    JOIN auth.permissao p ON p.id = pp.permissao_id
+                    WHERE u.tenant_id = %s AND u.status = 'ativo'
+                      AND p.codigo = 'agenda.visualizar'
+                      AND (%s = 'publica' OR EXISTS (
+                          SELECT 1 FROM agenda.agenda_usuario au
+                          WHERE au.agenda_id = %s AND au.usuario_id = u.id
+                            AND au.pode_visualizar
+                      ))
+                    """,
+                    (tenant_id, event["visibilidade"], event["agenda_id"]),
+                ).fetchall()
                 scheduled = event["data_inicio"] - timedelta(hours=lead_hours)
                 reminder_type = (
                     "evento_hoje"

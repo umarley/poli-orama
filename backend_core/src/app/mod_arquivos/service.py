@@ -33,6 +33,7 @@ ENTITY_MODULE = {
     "lideranca": "cadastro",
     "convite": "agenda",
     "tenant": "configuracoes",
+    "contrato": "contrato",
 }
 IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
 PREVIEW_EXTENSIONS = IMAGE_EXTENSIONS | {"pdf"}
@@ -60,6 +61,7 @@ class FileService:
             "demandas.visualizar",
             "etl.visualizar",
             "comunicacao.visualizar",
+            "contrato.visualizar",
         )
         return await self.repository.list_types(actor.tenant_id, include_inactive)
 
@@ -109,6 +111,11 @@ class FileService:
         clean_name, extension = self.validate_file(
             filename, content_type, content, photo_only=photo_only
         )
+        if entity_type == "contrato" and extension not in PREVIEW_EXTENSIONS:
+            raise BusinessRuleError(
+                "Documentos contratuais devem ser imagens ou PDF.",
+                code="unsupported_contract_file",
+            )
         stored = await self.storage.save(
             tenant_id=actor.tenant_id,
             filename=clean_name,
@@ -142,7 +149,12 @@ class FileService:
             )
             await self._audit(
                 actor,
-                "upload_sensivel" if attachment_type["codigo"] == "documento_pessoal" else "criar",
+                (
+                    "upload_sensivel"
+                    if entity_type == "contrato"
+                    or attachment_type["codigo"] == "documento_pessoal"
+                    else "criar"
+                ),
                 "anexo",
                 attachment_id,
                 None,
@@ -212,7 +224,13 @@ class FileService:
         allowed = [
             item
             for item in results
-            if f"{ENTITY_MODULE[item['entidade_tipo']]}.visualizar" in actor.permissions
+            if (
+                item["entidade_tipo"] == "contrato" and "tesoureiro" in actor.profiles
+            )
+            or (
+                item["entidade_tipo"] != "contrato"
+                and f"{ENTITY_MODULE[item['entidade_tipo']]}.visualizar" in actor.permissions
+            )
         ]
         return [
             ExtractedDocumentResponse(
@@ -303,6 +321,10 @@ class FileService:
 
     @staticmethod
     def _require_entity(actor: RequestActor, entity_type: EntityType, *, write: bool) -> None:
+        if entity_type == "contrato":
+            if "tesoureiro" not in actor.profiles:
+                raise AuthorizationError("Perfil obrigatorio: tesoureiro.")
+            return
         module = ENTITY_MODULE[entity_type]
         if entity_type == "tenant":
             action = "administrar" if write else "visualizar"

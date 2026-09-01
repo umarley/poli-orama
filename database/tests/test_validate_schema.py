@@ -25,6 +25,15 @@ class ValidateSchemaTests(unittest.TestCase):
             "postgresql://user:pass@db/app",
         )
 
+    def test_agenda_evolution_migration_contains_google_and_access_tables(self) -> None:
+        migration = DEFAULT_MIGRATION.parent / "049 - agendas_classificacao_permissoes_google_calendar.sql"
+        expected = parse_expected_structure(migration.read_text(encoding="utf-8"))
+
+        self.assertIn(("agenda", "agenda"), expected.tables)
+        self.assertIn(("agenda", "agenda_usuario"), expected.tables)
+        self.assertIn(("agenda", "google_integracao_agenda"), expected.tables)
+        self.assertIn(("agenda", "google_evento_vinculo"), expected.tables)
+
     def test_reads_env_without_overwriting_process_environment(self) -> None:
         path = Path(__file__).with_name("fixture.env")
         try:
@@ -32,6 +41,17 @@ class ValidateSchemaTests(unittest.TestCase):
             self.assertEqual(read_env_file(path)["DATABASE_URL"], "postgresql://local/db")
         finally:
             path.unlink(missing_ok=True)
+
+    def test_contract_migration_creates_dedicated_schema_and_tables(self) -> None:
+        migration = DEFAULT_MIGRATION.parent / "050 - gestao_contratos_campanha.sql"
+        expected = parse_expected_structure(migration.read_text(encoding="utf-8"))
+
+        self.assertIn("contrato", expected.schemas)
+        self.assertIn(("contrato", "pessoa_juridica"), expected.tables)
+        self.assertIn(("contrato", "contrato"), expected.tables)
+        sql = migration.read_text(encoding="utf-8")
+        self.assertIn("pa.codigo = 'tesoureiro'", sql)
+        self.assertNotIn("pa.codigo IN ('gestor'", sql)
 
 
 if __name__ == "__main__":

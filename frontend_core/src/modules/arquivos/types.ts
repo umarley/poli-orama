@@ -6,7 +6,8 @@ export type AttachmentEntity =
   | 'importacao'
   | 'comunidade'
   | 'lideranca'
-  | 'convite';
+  | 'convite'
+  | 'contrato';
 
 export interface AttachmentType {
   id: number;

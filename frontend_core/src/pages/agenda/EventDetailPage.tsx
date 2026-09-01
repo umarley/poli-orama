@@ -45,7 +45,9 @@ import {
   addParticipant,
   cancelEvent,
   createDemand,
+  deleteEvent,
   getEvent,
+  listCalendars,
   recordAttendance,
   removeParticipant,
   updateEvent,
@@ -68,7 +70,6 @@ export function EventDetailPage() {
   const queryClient = useQueryClient();
   const permissions = useSessionStore((state) => state.user?.permissions ?? []);
   const profiles = useSessionStore((state) => state.user?.profiles ?? []);
-  const canEditAgenda = permissions.includes('agenda.editar');
   const canEditEventSchedule = profiles.some((profile) =>
     ['gestor', 'gestor_saas'].includes(profile),
   );
@@ -80,6 +81,7 @@ export function EventDetailPage() {
     queryFn: () => getEvent(eventId),
     enabled: eventId > 0,
   });
+  const calendars = useQuery({ queryKey: ['agenda', 'agendas'], queryFn: listCalendars });
   const territories = useQuery({
     queryKey: ['territorios', 'event-detail'],
     queryFn: () => listarTerritorios(),
@@ -211,6 +213,9 @@ export function EventDetailPage() {
     return <Alert type="error" showIcon message={normalizeApiError(event.error).message} />;
   }
   const item = event.data;
+  const currentCalendar = calendars.data?.find((calendar) => calendar.id === item?.agenda_id);
+  const canEditAgenda = currentCalendar?.permissoes.includes('editar') ?? false;
+  const canDeleteEvent = currentCalendar?.permissoes.includes('excluir') ?? false;
   const openEdit = () => {
     form.resetFields();
     form.setFieldsValue({
@@ -218,6 +223,7 @@ export function EventDetailPage() {
       descricao: item?.descricao,
       local_nome: item?.local_nome,
       territorio_id: item?.territorio_id,
+      agenda_id: item?.agenda_id,
       periodo:
         canEditEventSchedule && item
           ? [dayjs(item.data_inicio), item.data_fim ? dayjs(item.data_fim) : null]
@@ -263,37 +269,51 @@ export function EventDetailPage() {
         ]}
         actions={
           <Space>
-            {permissions.includes('agenda.editar') && (
+            {canEditAgenda && (
               <Button icon={<EditOutlined />} onClick={openEdit}>
                 Editar
               </Button>
             )}
-            {permissions.includes('agenda.editar') &&
-              item?.status_evento_codigo !== 'cancelado' && (
-                <Button
-                  danger
-                  icon={<CloseOutlined />}
-                  onClick={() =>
-                    Modal.confirm({
-                      title: 'Cancelar evento',
-                      content: (
-                        <Input.TextArea id="cancel-event-reason" placeholder="Informe o motivo" />
-                      ),
-                      onOk: () => {
-                        const input =
-                          document.querySelector<HTMLTextAreaElement>('#cancel-event-reason');
-                        if (!input?.value.trim()) {
-                          AppToast.error('Informe o motivo.');
-                          return Promise.reject();
-                        }
-                        cancellation.mutate(input.value);
-                      },
-                    })
-                  }
-                >
-                  Cancelar
+            {canEditAgenda && item?.status_evento_codigo !== 'cancelado' && (
+              <Button
+                danger
+                icon={<CloseOutlined />}
+                onClick={() =>
+                  Modal.confirm({
+                    title: 'Cancelar evento',
+                    content: (
+                      <Input.TextArea id="cancel-event-reason" placeholder="Informe o motivo" />
+                    ),
+                    onOk: () => {
+                      const input =
+                        document.querySelector<HTMLTextAreaElement>('#cancel-event-reason');
+                      if (!input?.value.trim()) {
+                        AppToast.error('Informe o motivo.');
+                        return Promise.reject();
+                      }
+                      cancellation.mutate(input.value);
+                    },
+                  })
+                }
+              >
+                Cancelar
+              </Button>
+            )}
+            {canDeleteEvent && (
+              <Popconfirm
+                title="Excluir este compromisso?"
+                description="A exclusão será registrada na auditoria."
+                onConfirm={async () => {
+                  await deleteEvent(eventId);
+                  AppToast.success('Compromisso excluído.');
+                  navigate('/agenda');
+                }}
+              >
+                <Button danger icon={<DeleteOutlined />}>
+                  Excluir
                 </Button>
-              )}
+              </Popconfirm>
+            )}
           </Space>
         }
       />
@@ -313,6 +333,16 @@ export function EventDetailPage() {
             children: (
               <Card>
                 <Descriptions column={{ xs: 1, md: 2 }}>
+                  <Descriptions.Item label="Agenda">
+                    <Tag color={item?.agenda_cor}>{item?.agenda_nome}</Tag>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Visibilidade">{item?.visibilidade}</Descriptions.Item>
+                  <Descriptions.Item label="Agenda do candidato">
+                    {item?.natureza_candidato}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Frente/Comunidade">
+                    {item?.frente_comunidade}
+                  </Descriptions.Item>
                   <Descriptions.Item label="Tipo">{item?.tipo_evento_nome}</Descriptions.Item>
                   <Descriptions.Item label="Status">
                     <Tag>{item?.status_evento_nome}</Tag>
@@ -615,6 +645,13 @@ export function EventDetailPage() {
             <>
               <Form.Item name="titulo" label="Título" rules={[{ required: true }]}>
                 <Input />
+              </Form.Item>
+              <Form.Item name="agenda_id" label="Agenda" rules={[{ required: true }]}>
+                <Select
+                  options={(calendars.data ?? [])
+                    .filter((calendar) => calendar.permissoes.includes('criar'))
+                    .map((calendar) => ({ value: calendar.id, label: calendar.nome }))}
+                />
               </Form.Item>
               <Form.Item name="descricao" label="Descrição">
                 <Input.TextArea />

@@ -5,15 +5,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AgendaEventDetail } from '@/modules/agenda/types';
 
-const { getEvent, getConfiguration, listTerritories, listCatalog } = vi.hoisted(() => ({
-  getEvent: vi.fn(),
-  getConfiguration: vi.fn(),
-  listTerritories: vi.fn(),
-  listCatalog: vi.fn(),
-}));
+const { getEvent, getConfiguration, listTerritories, listCatalog, listCalendars } = vi.hoisted(
+  () => ({
+    getEvent: vi.fn(),
+    getConfiguration: vi.fn(),
+    listTerritories: vi.fn(),
+    listCatalog: vi.fn(),
+    listCalendars: vi.fn(),
+  }),
+);
 
 vi.mock('@/modules/agenda/agenda-service', () => ({
   getEvent,
+  listCalendars,
+  deleteEvent: vi.fn(),
   addAgendaItem: vi.fn(),
   addInvitation: vi.fn(),
   addLeadership: vi.fn(),
@@ -62,6 +67,13 @@ function eventDetail(): AgendaEventDetail {
     tenant_id: 1,
     contexto: 'campanha',
     campanha_eleicao_id: null,
+    agenda_id: 3,
+    agenda_nome: 'Agenda geral',
+    agenda_cor: '#1677ff',
+    natureza_candidato: 'rede',
+    frente_comunidade: 'juventude',
+    tipo_agenda: 'agenda_candidato',
+    visibilidade: 'publica',
     tipo_evento_id: null,
     tipo_evento_nome: null,
     status_evento_id: null,
@@ -122,6 +134,12 @@ describe('EventDetailPage nomenclatura de lideranças', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     getEvent.mockResolvedValue(eventDetail());
+    listCalendars.mockResolvedValue([
+      {
+        id: 3,
+        permissoes: ['visualizar', 'editar', 'excluir'],
+      },
+    ]);
     listTerritories.mockResolvedValue([]);
     listCatalog.mockResolvedValue([]);
   });

@@ -38,9 +38,7 @@ class Settings(BaseSettings):
     storage_use_ssl: bool = True
     storage_max_file_mb: int = Field(default=25, ge=1, le=250)
     photo_max_file_mb: int = Field(default=8, ge=1, le=50)
-    storage_allowed_extensions: str = (
-        "jpg,jpeg,png,webp,pdf,csv,xlsx,xls,doc,docx,odt,txt"
-    )
+    storage_allowed_extensions: str = "jpg,jpeg,png,webp,pdf,csv,xlsx,xls,doc,docx,odt,txt"
     seaweed_filer_url: str = ""
     seaweed_project_name: str = ""
     seaweed_username: str = ""
@@ -71,6 +69,14 @@ class Settings(BaseSettings):
         default="local-mfa-encryption-key-change-me-32-bytes",
         min_length=32,
     )
+    google_calendar_client_id: str = ""
+    google_calendar_client_secret: str = ""
+    google_calendar_redirect_uri: str = "http://localhost:8000/api/v1/agenda/google/oauth/callback"
+    google_calendar_frontend_url: str = "http://localhost:5173/agenda"
+    google_calendar_encryption_key: str = Field(
+        default="local-google-calendar-key-change-me-32-bytes",
+        min_length=32,
+    )
 
     @model_validator(mode="after")
     def validate_security_settings(self) -> "Settings":
@@ -82,6 +88,12 @@ class Settings(BaseSettings):
             raise ValueError("JWT_SECRET seguro e exclusivo e obrigatorio neste ambiente.")
         if self.environment in {"staging", "production"} and "change-me" in self.mfa_encryption_key:
             raise ValueError("MFA_ENCRYPTION_KEY segura e exclusiva e obrigatoria.")
+        if (
+            self.environment in {"staging", "production"}
+            and self.google_calendar_client_id
+            and "change-me" in self.google_calendar_encryption_key
+        ):
+            raise ValueError("GOOGLE_CALENDAR_ENCRYPTION_KEY segura e exclusiva e obrigatoria.")
         return self
 
     @property

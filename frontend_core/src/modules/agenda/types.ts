@@ -13,6 +13,13 @@ export interface AgendaEvent {
   tenant_id: number;
   contexto: 'campanha' | 'gabinete' | 'institucional';
   campanha_eleicao_id: number | null;
+  agenda_id: number;
+  agenda_nome: string;
+  agenda_cor: string;
+  natureza_candidato: 'rede' | 'recurso' | 'rua';
+  frente_comunidade: AgendaFront;
+  tipo_agenda: AgendaKind;
+  visibilidade: AgendaVisibility;
   tipo_evento_id: number | null;
   tipo_evento_nome: string | null;
   status_evento_id: number | null;
@@ -154,6 +161,7 @@ export interface AgendaEventDetail extends AgendaEvent {
 }
 
 export interface EventInput {
+  agenda_id?: number;
   contexto?: 'campanha' | 'gabinete' | 'institucional';
   campanha_eleicao_id?: number;
   tipo_evento_id?: number;
@@ -168,10 +176,85 @@ export interface EventInput {
 }
 
 export interface AgendaFilters {
+  agenda_id?: number;
+  natureza_candidato?: 'rede' | 'recurso' | 'rua';
+  frente_comunidade?: AgendaFront;
+  tipo_agenda?: AgendaKind;
+  visibilidade?: AgendaVisibility;
   data_inicio?: string;
   data_fim?: string;
   territorio_id?: number;
   lideranca_id?: number;
   tipo_evento_id?: number;
   status_evento_id?: number;
+}
+
+export type AgendaFront =
+  | 'juventude'
+  | 'sindicalista'
+  | 'cultura'
+  | 'engenharia'
+  | 'saude'
+  | 'educacao'
+  | 'dobradas';
+export type AgendaKind = 'fixa_campanha' | 'agenda_aberta' | 'agenda_candidato';
+export type AgendaVisibility = 'publica' | 'restrita';
+
+export interface CampaignCalendar {
+  id: number;
+  tenant_id: number;
+  nome: string;
+  descricao: string | null;
+  natureza_candidato: 'rede' | 'recurso' | 'rua';
+  frente_comunidade: AgendaFront;
+  tipo_agenda: AgendaKind;
+  visibilidade: AgendaVisibility;
+  cor: string;
+  padrao: boolean;
+  ativo: boolean;
+  criado_em: string;
+  atualizado_em: string;
+  permissoes: string[];
+  google_integracao: GoogleCalendarLink | null;
+}
+
+export interface CampaignCalendarInput {
+  nome: string;
+  descricao?: string;
+  natureza_candidato: 'rede' | 'recurso' | 'rua';
+  frente_comunidade: AgendaFront;
+  tipo_agenda: AgendaKind;
+  visibilidade: AgendaVisibility;
+  cor: string;
+}
+
+export interface GoogleCalendarOption {
+  id: string;
+  nome: string;
+  principal: boolean;
+  acesso: string;
+}
+
+export interface GoogleCalendarLink {
+  id: number;
+  agenda_id?: number;
+  google_calendar_id: string;
+  google_calendar_nome: string;
+  direcao: 'sistema_google' | 'google_sistema' | 'bidirecional';
+  status: string;
+  ultima_sincronizacao_em: string | null;
+  ultimo_erro: string | null;
+}
+
+export interface CalendarMember {
+  usuario_id: number;
+  nome: string;
+  email: string;
+  pode_visualizar: boolean;
+  pode_criar: boolean;
+  pode_editar: boolean;
+  pode_alterar_classificacao: boolean;
+  pode_excluir: boolean;
+  pode_administrar_usuarios: boolean;
+  pode_administrar_agenda: boolean;
 }

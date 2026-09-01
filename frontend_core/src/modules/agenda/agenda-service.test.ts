@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { post, remove } = vi.hoisted(() => ({
+const { get, post, remove } = vi.hoisted(() => ({
+  get: vi.fn(),
   post: vi.fn(),
   remove: vi.fn(),
 }));
 
 vi.mock('@/services/api/http-client', () => ({
   httpClient: {
-    get: vi.fn(),
+    get,
     post,
     put: vi.fn(),
     patch: vi.fn(),
@@ -15,7 +16,7 @@ vi.mock('@/services/api/http-client', () => ({
   },
 }));
 
-import { addParticipant, removeParticipant } from './agenda-service';
+import { addParticipant, getEvent, removeParticipant } from './agenda-service';
 
 describe('serviços de participantes do evento', () => {
   beforeEach(() => {
@@ -43,4 +44,15 @@ describe('serviços de participantes do evento', () => {
 
     expect(remove).toHaveBeenCalledWith('/api/v1/agenda/eventos/12/participantes/25');
   });
+
+  it.each([12, 'd9428888-122b-4c92-a30c-8625cc9466a4'])(
+    'consulta diretamente o evento por ID ou UUID: %s',
+    async (identifier) => {
+      get.mockResolvedValueOnce({ data: {} });
+
+      await getEvent(identifier);
+
+      expect(get).toHaveBeenCalledWith(`/api/v1/agenda/eventos/${identifier}`);
+    },
+  );
 });

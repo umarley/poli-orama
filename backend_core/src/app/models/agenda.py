@@ -61,6 +61,7 @@ class Evento(Base):
     campanha_eleicao_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("eleicao.campanha_eleicao.id")
     )
+    agenda_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("agenda.agenda.id"))
     tipo_evento_id: Mapped[int | None] = mapped_column(
         SmallInteger, ForeignKey("agenda.tipo_evento.id")
     )
@@ -72,9 +73,7 @@ class Evento(Base):
     data_inicio: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     data_fim: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     local_nome: Mapped[str | None] = mapped_column(String(180))
-    endereco_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("cadastro.endereco.id")
-    )
+    endereco_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("cadastro.endereco.id"))
     codigo_municipio_ibge: Mapped[int | None] = mapped_column(Integer)
     bairro_id: Mapped[int | None] = mapped_column(Integer)
     zona_eleitoral_id: Mapped[int | None] = mapped_column(Integer)
@@ -83,14 +82,31 @@ class Evento(Base):
     )
     latitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
     longitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
-    responsavel_pessoa_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("cadastro.pessoa.id")
-    )
+    responsavel_pessoa_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("cadastro.pessoa.id"))
     motivo_cancelamento: Mapped[str | None] = mapped_column(Text)
-    cancelado_por: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("auth.usuario.id")
-    )
+    cancelado_por: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("auth.usuario.id"))
     cancelado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    criado_por: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("auth.usuario.id"))
+    criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    atualizado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    excluido_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Agenda(Base):
+    __tablename__ = "agenda"
+    __table_args__ = {"schema": "agenda"}
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("public.tenant.id"))
+    nome: Mapped[str] = mapped_column(String(120))
+    descricao: Mapped[str | None] = mapped_column(Text)
+    natureza_candidato: Mapped[str] = mapped_column(String(20))
+    frente_comunidade: Mapped[str] = mapped_column(String(30))
+    tipo_agenda: Mapped[str] = mapped_column(String(30))
+    visibilidade: Mapped[str] = mapped_column(String(12))
+    cor: Mapped[str] = mapped_column(String(7))
+    padrao: Mapped[bool] = mapped_column(Boolean)
+    ativo: Mapped[bool] = mapped_column(Boolean)
     criado_por: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("auth.usuario.id"))
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     atualizado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -144,9 +160,7 @@ class Convite(Base):
     pessoa_indicou_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("cadastro.pessoa.id")
     )
-    arquivo_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("arquivo.arquivo.id")
-    )
+    arquivo_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("arquivo.arquivo.id"))
     status: Mapped[str] = mapped_column(String(20))
     descricao: Mapped[str | None] = mapped_column(Text)
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -186,9 +200,7 @@ class PresencaEvento(Base):
     numero_convidados: Mapped[int | None] = mapped_column(Integer)
     numero_estimado_presentes: Mapped[int | None] = mapped_column(Integer)
     observacao: Mapped[str | None] = mapped_column(Text)
-    registrado_por: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("auth.usuario.id")
-    )
+    registrado_por: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("auth.usuario.id"))
     registrado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 

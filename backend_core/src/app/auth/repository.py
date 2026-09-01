@@ -17,6 +17,7 @@ from app.auth.schemas import TerritorialAccessInput, UserCreate, UserUpdate
 from app.core.errors import BusinessRuleError
 from app.core.pagination import ListParams, SortDirection
 from app.core.repository import BaseRepository
+from app.mod_agenda.access import calendar_view_clause
 from app.tenants.models import Tenant
 
 
@@ -116,7 +117,7 @@ class AuthRepository(BaseRepository[User]):
         platform_profile = await self._platform_context_profile(user_id)
         if platform_profile is not None:
             return await self.permissions_for_profile(platform_profile.id)
-        permissions = await self.session.scalars(
+        permission_result = await self.session.scalars(
             select(Permission)
             .join(ProfilePermission, ProfilePermission.permissao_id == Permission.id)
             .join(
@@ -127,7 +128,30 @@ class AuthRepository(BaseRepository[User]):
             .distinct()
             .order_by(Permission.codigo)
         )
-        return list(permissions.all())
+        permissions = list(permission_result.all())
+        permission_codes = {permission.codigo for permission in permissions}
+        if "agenda.visualizar" not in permission_codes and await self._has_calendar_module_access(
+            user_id
+        ):
+            calendar_view_permission = await self.session.scalar(
+                select(Permission).where(Permission.codigo == "agenda.visualizar")
+            )
+            if calendar_view_permission is not None:
+                permissions.append(calendar_view_permission)
+                permissions.sort(key=lambda permission: permission.codigo)
+        return permissions
+
+    async def _has_calendar_module_access(self, user_id: int) -> bool:
+        return bool(
+            await self.session.scalar(
+                text(
+                    "SELECT EXISTS (SELECT 1 FROM agenda.agenda a "
+                    "WHERE a.ativo AND a.excluido_em IS NULL AND "
+                    f"{calendar_view_clause()})"
+                ),
+                {"user_id": user_id},
+            )
+        )
 
     async def _platform_context_profile(self, user_id: int) -> AccessProfile | None:
         user = await self.session.get(User, user_id)

@@ -2,6 +2,7 @@ import {
   CalendarOutlined,
   DownloadOutlined,
   PlusOutlined,
+  SettingOutlined,
   UnorderedListOutlined,
 } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -37,13 +38,17 @@ import {
   listEvents,
   listEventStatuses,
   listEventTypes,
+  listCalendars,
 } from '@/modules/agenda/agenda-service';
 import type { AgendaFilters } from '@/modules/agenda/types';
 import { listarTerritorios } from '@/modules/territorios/territorios-service';
 import { normalizeApiError } from '@/services/api/api-error';
 import { useSessionStore } from '@/stores/session-store';
 
+import { CalendarManagementModal } from './CalendarManagementModal';
+
 interface EventForm {
+  agenda_id: number;
   titulo: string;
   descricao?: string;
   tipo_evento_id?: number;
@@ -70,6 +75,7 @@ export function AgendaPage() {
   const [referenceDate, setReferenceDate] = useState(dayjs());
   const [filters, setFilters] = useState<AgendaFilters>({});
   const [modalOpen, setModalOpen] = useState(false);
+  const [managementOpen, setManagementOpen] = useState(false);
   const [form] = Form.useForm<EventForm>();
   const monthFilters = useMemo(() => {
     const periodStart =
@@ -89,6 +95,7 @@ export function AgendaPage() {
     queryFn: () => listEvents(monthFilters),
   });
   const types = useQuery({ queryKey: ['agenda', 'tipos'], queryFn: listEventTypes });
+  const calendars = useQuery({ queryKey: ['agenda', 'agendas'], queryFn: listCalendars });
   const statuses = useQuery({
     queryKey: ['agenda', 'status'],
     queryFn: listEventStatuses,
@@ -105,6 +112,7 @@ export function AgendaPage() {
     mutationFn: (values: EventForm) =>
       createEvent({
         titulo: values.titulo,
+        agenda_id: values.agenda_id,
         descricao: values.descricao,
         tipo_evento_id: values.tipo_evento_id,
         status_evento_id: values.status_evento_id,
@@ -137,7 +145,8 @@ export function AgendaPage() {
   });
   const renderEvent = (item: (typeof items)[number]) => (
     <Button type="link" size="small" onClick={() => navigate(`/agenda/eventos/${item.id}`)}>
-      {dayjs(item.data_inicio).format('HH:mm')} {item.titulo}
+      <span style={{ color: item.agenda_cor }}>●</span> {dayjs(item.data_inicio).format('HH:mm')}{' '}
+      {item.titulo}
     </Button>
   );
   return (
@@ -148,6 +157,9 @@ export function AgendaPage() {
         breadcrumbs={[{ label: 'Início', to: '/dashboard' }, { label: 'Agenda' }]}
         actions={
           <Space>
+            <Button icon={<SettingOutlined />} onClick={() => setManagementOpen(true)}>
+              Agendas
+            </Button>
             {permissions.includes('agenda.exportar') && (
               <Button
                 icon={<DownloadOutlined />}
@@ -167,6 +179,77 @@ export function AgendaPage() {
       />
       <Card style={{ marginBottom: 16 }}>
         <Row gutter={[12, 12]}>
+          <Col xs={24} md={6}>
+            <Select
+              allowClear
+              placeholder="Agenda"
+              style={{ width: '100%' }}
+              options={(calendars.data ?? []).map((item) => ({
+                value: item.id,
+                label: (
+                  <span>
+                    <span style={{ color: item.cor }}>●</span> {item.nome}
+                  </span>
+                ),
+              }))}
+              onChange={(value) => setFilters((old) => ({ ...old, agenda_id: value }))}
+            />
+          </Col>
+          <Col xs={24} md={6}>
+            <Select
+              allowClear
+              placeholder="Agenda do candidato"
+              style={{ width: '100%' }}
+              options={[
+                { value: 'rede', label: 'Rede' },
+                { value: 'recurso', label: 'Recurso' },
+                { value: 'rua', label: 'Rua' },
+              ]}
+              onChange={(value) => setFilters((old) => ({ ...old, natureza_candidato: value }))}
+            />
+          </Col>
+          <Col xs={24} md={6}>
+            <Select
+              allowClear
+              placeholder="Frente/Comunidade"
+              style={{ width: '100%' }}
+              options={[
+                { value: 'juventude', label: 'Juventude' },
+                { value: 'sindicalista', label: 'Sindicalista' },
+                { value: 'cultura', label: 'Cultura' },
+                { value: 'engenharia', label: 'Engenharia' },
+                { value: 'saude', label: 'Saúde' },
+                { value: 'educacao', label: 'Educação' },
+                { value: 'dobradas', label: 'Dobradas' },
+              ]}
+              onChange={(value) => setFilters((old) => ({ ...old, frente_comunidade: value }))}
+            />
+          </Col>
+          <Col xs={24} md={6}>
+            <Select
+              allowClear
+              placeholder="Tipo de agenda"
+              style={{ width: '100%' }}
+              options={[
+                { value: 'fixa_campanha', label: 'Agenda fixa da campanha' },
+                { value: 'agenda_aberta', label: 'Agenda aberta' },
+                { value: 'agenda_candidato', label: 'Agenda do candidato' },
+              ]}
+              onChange={(value) => setFilters((old) => ({ ...old, tipo_agenda: value }))}
+            />
+          </Col>
+          <Col xs={24} md={6}>
+            <Select
+              allowClear
+              placeholder="Visibilidade"
+              style={{ width: '100%' }}
+              options={[
+                { value: 'publica', label: 'Pública' },
+                { value: 'restrita', label: 'Restrita' },
+              ]}
+              onChange={(value) => setFilters((old) => ({ ...old, visibilidade: value }))}
+            />
+          </Col>
           <Col xs={24} md={6}>
             <Select
               allowClear
@@ -274,6 +357,10 @@ export function AgendaPage() {
                 render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm'),
               },
               { title: 'Evento', dataIndex: 'titulo' },
+              {
+                title: 'Agenda',
+                render: (_, item) => <Tag color={item.agenda_cor}>{item.agenda_nome}</Tag>,
+              },
               { title: 'Tipo', dataIndex: 'tipo_evento_nome' },
               { title: 'Território', dataIndex: 'territorio_nome' },
               {
@@ -298,6 +385,16 @@ export function AgendaPage() {
         onOk={() => form.validateFields().then((values) => creation.mutate(values))}
       >
         <Form form={form} layout="vertical">
+          <Form.Item name="agenda_id" label="Agenda" rules={[{ required: true }]}>
+            <Select
+              options={(calendars.data ?? [])
+                .filter((item) => item.permissoes.includes('criar'))
+                .map((item) => ({
+                  value: item.id,
+                  label: item.nome,
+                }))}
+            />
+          </Form.Item>
           <Form.Item name="titulo" label="Título" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
@@ -350,6 +447,7 @@ export function AgendaPage() {
           </Form.Item>
         </Form>
       </Modal>
+      <CalendarManagementModal open={managementOpen} onClose={() => setManagementOpen(false)} />
     </div>
   );
 }
