@@ -190,6 +190,7 @@ export interface AgendaFilters {
 }
 
 export type AgendaFront =
+  | 'geral'
   | 'juventude'
   | 'sindicalista'
   | 'cultura'

@@ -214,6 +214,7 @@ export function AgendaPage() {
               placeholder="Frente/Comunidade"
               style={{ width: '100%' }}
               options={[
+                { value: 'geral', label: 'Geral' },
                 { value: 'juventude', label: 'Juventude' },
                 { value: 'sindicalista', label: 'Sindicalista' },
                 { value: 'cultura', label: 'Cultura' },

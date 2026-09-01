@@ -33,7 +33,7 @@ import { canViewNavigationItem, getNavigationItems, getNavigationLabel } from '@
 import { Brand } from '@/components/brand/Brand';
 import { ToastBridge } from '@/components/feedback/ToastBridge';
 import { AppToast } from '@/components/feedback/AppToast';
-import { logout, switchTenant } from '@/modules/auth/auth-service';
+import { getCurrentUser, logout, switchTenant } from '@/modules/auth/auth-service';
 import { getCurrentCampaign } from '@/modules/eleicoes/eleicoes-service';
 import { getTenantConfiguration, listTenants } from '@/modules/tenants/tenant-service';
 import { normalizeApiError } from '@/services/api/api-error';
@@ -59,11 +59,16 @@ export function AuthenticatedLayout() {
   const setCurrentCampaign = useSessionStore((state) => state.setCurrentCampaign);
   const clearSession = useSessionStore((state) => state.clearSession);
   const setSession = useSessionStore((state) => state.setSession);
+  const updateUser = useSessionStore((state) => state.updateUser);
   const isSaasManager = user?.profiles.includes('gestor_saas') ?? false;
   const isMobile = screens.md === false;
   const currentCampaignQuery = useQuery({
     queryKey: ['current-campaign'],
     queryFn: getCurrentCampaign,
+  });
+  const currentUserQuery = useQuery({
+    queryKey: ['auth', 'me'],
+    queryFn: getCurrentUser,
   });
   const tenantConfigurationQuery = useQuery({
     queryKey: ['tenant-configuration'],
@@ -74,6 +79,10 @@ export function AuthenticatedLayout() {
     queryFn: () => listTenants({}),
     enabled: isSaasManager && tenantModalOpen,
   });
+
+  useEffect(() => {
+    if (currentUserQuery.isSuccess) updateUser(currentUserQuery.data);
+  }, [currentUserQuery.data, currentUserQuery.isSuccess, updateUser]);
 
   useEffect(() => {
     if (currentCampaignQuery.isSuccess) {

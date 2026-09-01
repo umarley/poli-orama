@@ -50,6 +50,7 @@ import { normalizeApiError } from '@/services/api/api-error';
 import { useSessionStore } from '@/stores/session-store';
 
 const fronts = [
+  ['geral', 'Geral'],
   ['juventude', 'Juventude'],
   ['sindicalista', 'Sindicalista'],
   ['cultura', 'Cultura'],

@@ -37,7 +37,14 @@ class CalendarInput(AgendaSchema):
     descricao: str | None = None
     natureza_candidato: Literal["rede", "recurso", "rua"]
     frente_comunidade: Literal[
-        "juventude", "sindicalista", "cultura", "engenharia", "saude", "educacao", "dobradas"
+        "geral",
+        "juventude",
+        "sindicalista",
+        "cultura",
+        "engenharia",
+        "saude",
+        "educacao",
+        "dobradas",
     ]
     tipo_agenda: Literal["fixa_campanha", "agenda_aberta", "agenda_candidato"]
     visibilidade: Literal["publica", "restrita"]
@@ -50,7 +57,14 @@ class CalendarUpdate(AgendaSchema):
     natureza_candidato: Literal["rede", "recurso", "rua"] | None = None
     frente_comunidade: (
         Literal[
-            "juventude", "sindicalista", "cultura", "engenharia", "saude", "educacao", "dobradas"
+            "geral",
+            "juventude",
+            "sindicalista",
+            "cultura",
+            "engenharia",
+            "saude",
+            "educacao",
+            "dobradas",
         ]
         | None
     ) = None
