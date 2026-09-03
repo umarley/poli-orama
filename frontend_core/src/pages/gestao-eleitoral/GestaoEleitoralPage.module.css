@@ -1,0 +1,153 @@
+.page {
+  display: grid;
+  gap: 20px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.card :global(.ant-card-body) {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 132px;
+}
+
+.icon {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: 12px;
+  color: #0958d9;
+  background: #e6f4ff;
+  font-size: 22px;
+}
+
+.content h5 {
+  margin: 0 0 6px;
+}
+
+.arrow {
+  color: #8c8c8c;
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.filterActions {
+  display: flex;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.summaryCard {
+  position: relative;
+  height: 100%;
+}
+
+.summaryIcon {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 8px;
+  font-size: 20px;
+}
+
+.blue {
+  background: #e6f4ff;
+  color: #1677ff;
+}
+
+.green {
+  background: #f6ffed;
+  color: #389e0d;
+}
+
+.orange {
+  background: #fff7e6;
+  color: #d46b08;
+}
+
+.purple {
+  background: #f9f0ff;
+  color: #722ed1;
+}
+
+.bars {
+  display: grid;
+  gap: 14px;
+}
+
+.barRow {
+  display: grid;
+  gap: 4px;
+}
+
+.barLabel {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.barLabel span {
+  color: #8c8c8c;
+}
+
+.mapWrap {
+  position: relative;
+  height: 520px;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.mapWrap :global(.leaflet-heatmap-layer) {
+  pointer-events: none;
+}
+
+.heatLegend {
+  position: absolute;
+  z-index: 500;
+  right: 12px;
+  bottom: 12px;
+  display: grid;
+  gap: 8px;
+  min-width: 220px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+}
+
+.heatLegendItem {
+  display: grid;
+  grid-template-columns: 12px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.heatLegendSwatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+}
+
+@media (max-width: 991px) {
+  .grid,
+  .filters {
+    grid-template-columns: 1fr;
+  }
+}

@@ -61,7 +61,7 @@ export function ElectoralLocationFields({
         codigo_municipio_ibge: codigoMunicipioIbge,
         zona_eleitoral_id: zoneId,
       }),
-    enabled: Boolean(codigoMunicipioIbge || zoneId),
+    enabled: Boolean(zoneId),
   });
 
   return (
@@ -74,6 +74,11 @@ export function ElectoralLocationFields({
             optionFilterProp="label"
             disabled={requireMunicipality && !codigoMunicipioIbge}
             loading={zones.isPending}
+            placeholder={
+              requireMunicipality && !codigoMunicipioIbge
+                ? 'Selecione o município'
+                : 'Selecione'
+            }
             options={(zones.data ?? []).map((item) => ({
               value: item.id,
               label: `Zona ${item.numero_zona}${item.descricao ? ` · ${item.descricao}` : ''}`,
@@ -90,8 +95,9 @@ export function ElectoralLocationFields({
             allowClear
             showSearch
             optionFilterProp="label"
-            disabled={!zoneId && !codigoMunicipioIbge}
+            disabled={!zoneId}
             loading={pollingPlaces.isPending}
+            placeholder={zoneId ? 'Selecione' : 'Selecione a zona eleitoral'}
             options={(pollingPlaces.data ?? []).map((item) => ({
               value: item.id,
               label: item.nome,

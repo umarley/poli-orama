@@ -1,7 +1,8 @@
+from datetime import datetime
 from ipaddress import ip_address
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Path, Query, Request, Response, status
+from fastapi import APIRouter, Depends, Header, Path, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.access import (
@@ -9,8 +10,25 @@ from app.auth.access import (
     TerritorialAccess,
     get_db_session,
     get_territorial_access,
+    require_any_profile,
     require_permission,
 )
+from app.mod_comunicacao.atendimento_repository import AtendimentoRepository
+from app.mod_comunicacao.atendimento_schemas import (
+    AttendanceClose,
+    AttendanceDocumentInput,
+    AttendanceIndicators,
+    AttendanceInteractionInput,
+    AttendanceInvalidate,
+    AttendancePersonUpdate,
+    AttendanceResponse,
+    AttendanceResult,
+    AttendanceUpdate,
+    CommunicationChannel,
+    IndicatorFilters,
+    RejectionReason,
+)
+from app.mod_comunicacao.atendimento_service import AtendimentoService
 from app.mod_comunicacao.repository import ComunicacaoRepository
 from app.mod_comunicacao.schemas import (
     CatalogInput,
@@ -20,16 +38,203 @@ from app.mod_comunicacao.schemas import (
     InteracaoResponse,
 )
 from app.mod_comunicacao.service import ComunicacaoService
+from app.schemas.cadastro import PessoaContatoCreate, PessoaContatoUpdate
 
 router = APIRouter(prefix="/comunicacao", tags=["Comunicacao"])
 
 CatalogName = Literal["tipos-interacao", "canais"]
+ModuleViewer = Annotated[RequestActor, Depends(require_any_profile("telefonista", "gestor"))]
+Operator = Annotated[RequestActor, Depends(require_any_profile("telefonista"))]
+Reporter = Annotated[RequestActor, Depends(require_any_profile("gestor"))]
+CampaignHeader = Annotated[str | None, Header(alias="X-Campaign-ID")]
 
 
 def get_service(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> ComunicacaoService:
     return ComunicacaoService(ComunicacaoRepository(session))
+
+
+def get_attendance_service(
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> AtendimentoService:
+    return AtendimentoService(AtendimentoRepository(session))
+
+
+@router.get("/atendimento/motivos-rejeicao", response_model=list[RejectionReason])
+async def list_rejection_reasons(
+    actor: ModuleViewer,
+    service: Annotated[AtendimentoService, Depends(get_attendance_service)],
+) -> list[RejectionReason]:
+    return await service.list_rejection_reasons(actor)
+
+
+@router.get("/atendimento/canais", response_model=list[CommunicationChannel])
+async def list_attendance_channels(
+    actor: ModuleViewer,
+    service: Annotated[AtendimentoService, Depends(get_attendance_service)],
+) -> list[CommunicationChannel]:
+    return await service.list_channels(actor)
+
+
+@router.get("/atendimento/atual", response_model=AttendanceResponse | None)
+async def current_attendance(
+    actor: Operator,
+    service: Annotated[AtendimentoService, Depends(get_attendance_service)],
+) -> AttendanceResponse | None:
+    return await service.current(actor)
+
+
+@router.post(
+    "/atendimento/iniciar",
+    response_model=AttendanceResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def start_attendance(
+    actor: Operator,
+    service: Annotated[AtendimentoService, Depends(get_attendance_service)],
+    campaign: CampaignHeader = None,
+) -> AttendanceResponse:
+    return await service.start(actor, campaign)
+
+
+@router.get("/atendimento/{attendance_id}", response_model=AttendanceResponse)
+async def get_attendance(
+    actor: ModuleViewer,
+    service: Annotated[AtendimentoService, Depends(get_attendance_service)],
+    attendance_id: int = Path(ge=1),
+) -> AttendanceResponse:
+    return await service.get(actor, attendance_id)
+
+
+@router.patch("/atendimento/{attendance_id}", response_model=AttendanceResponse)
+async def update_attendance(
+    payload: AttendanceUpdate,
+    actor: Operator,
+    service: Annotated[AtendimentoService, Depends(get_attendance_service)],
+    attendance_id: int = Path(ge=1),
+) -> AttendanceResponse:
+    return await service.update(actor, attendance_id, payload)
+
+
+@router.patch("/atendimento/{attendance_id}/pessoa", response_model=AttendanceResponse)
+async def update_attendance_person(
+    payload: AttendancePersonUpdate,
+    actor: Operator,
+    service: Annotated[AtendimentoService, Depends(get_attendance_service)],
+    attendance_id: int = Path(ge=1),
+) -> AttendanceResponse:
+    return await service.update_person(actor, attendance_id, payload)
+
+
+@router.post("/atendimento/{attendance_id}/documentos", response_model=AttendanceResponse)
+async def add_attendance_document(
+    payload: AttendanceDocumentInput,
+    actor: Operator,
+    service: Annotated[AtendimentoService, Depends(get_attendance_service)],
+    attendance_id: int = Path(ge=1),
+) -> AttendanceResponse:
+    return await service.add_document(actor, attendance_id, payload)
+
+
+@router.post("/atendimento/{attendance_id}/interacoes", response_model=AttendanceResponse)
+async def add_attendance_interaction(
+    payload: AttendanceInteractionInput,
+    actor: Operator,
+    service: Annotated[AtendimentoService, Depends(get_attendance_service)],
+    attendance_id: int = Path(ge=1),
+) -> AttendanceResponse:
+    return await service.add_interaction(actor, attendance_id, payload)
+
+
+@router.post(
+    "/atendimento/{attendance_id}/contatos",
+    response_model=AttendanceResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_attendance_contact(
+    payload: PessoaContatoCreate,
+    actor: Operator,
+    service: Annotated[AtendimentoService, Depends(get_attendance_service)],
+    attendance_id: int = Path(ge=1),
+) -> AttendanceResponse:
+    return await service.add_contact(actor, attendance_id, payload)
+
+
+@router.patch(
+    "/atendimento/{attendance_id}/contatos/{contact_id}",
+    response_model=AttendanceResponse,
+)
+async def update_attendance_contact(
+    payload: PessoaContatoUpdate,
+    actor: Operator,
+    service: Annotated[AtendimentoService, Depends(get_attendance_service)],
+    attendance_id: int = Path(ge=1),
+    contact_id: int = Path(ge=1),
+) -> AttendanceResponse:
+    return await service.update_contact(actor, attendance_id, contact_id, payload)
+
+
+@router.delete(
+    "/atendimento/{attendance_id}/contatos/{contact_id}",
+    response_model=AttendanceResponse,
+)
+async def delete_attendance_contact(
+    actor: Operator,
+    service: Annotated[AtendimentoService, Depends(get_attendance_service)],
+    attendance_id: int = Path(ge=1),
+    contact_id: int = Path(ge=1),
+) -> AttendanceResponse:
+    return await service.delete_contact(actor, attendance_id, contact_id)
+
+
+@router.post("/atendimento/{attendance_id}/encerrar", response_model=AttendanceResponse)
+async def close_attendance(
+    payload: AttendanceClose,
+    actor: Operator,
+    service: Annotated[AtendimentoService, Depends(get_attendance_service)],
+    attendance_id: int = Path(ge=1),
+) -> AttendanceResponse:
+    return await service.close(actor, attendance_id, payload)
+
+
+@router.post("/atendimento/{attendance_id}/invalidar", response_model=AttendanceResponse)
+async def invalidate_attendance(
+    payload: AttendanceInvalidate,
+    actor: Operator,
+    service: Annotated[AtendimentoService, Depends(get_attendance_service)],
+    attendance_id: int = Path(ge=1),
+) -> AttendanceResponse:
+    return await service.invalidate(actor, attendance_id, payload)
+
+
+@router.get("/indicadores", response_model=AttendanceIndicators)
+async def attendance_indicators(
+    actor: Reporter,
+    service: Annotated[AtendimentoService, Depends(get_attendance_service)],
+    campaign: CampaignHeader = None,
+    inicio: datetime | None = None,
+    fim: datetime | None = None,
+    atendente_usuario_id: int | None = Query(default=None, ge=1),
+    canal: int | None = Query(default=None, ge=1),
+    situacao: Literal[
+        "em_atendimento", "concluido", "sem_resposta", "numero_invalido", "interrompido"
+    ]
+    | None = None,
+    resultado: AttendanceResult | None = None,
+) -> AttendanceIndicators:
+    return await service.indicators(
+        actor,
+        campaign,
+        IndicatorFilters(
+            inicio=inicio,
+            fim=fim,
+            atendente_usuario_id=atendente_usuario_id,
+            canal=canal,
+            situacao=situacao,
+            resultado=resultado,
+        ),
+    )
 
 
 @router.get("/{catalog}", response_model=list[CatalogResponse])

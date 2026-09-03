@@ -14,7 +14,20 @@ export default defineConfig(({ mode }) => {
   const apiProxyTarget = env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:8000';
 
   return {
-    plugins: [react()],
+    plugins: [
+      react(),
+      {
+        name: 'leaflet-heat-bind-l',
+        transform(code, id) {
+          if (!id.includes('leaflet-heat')) return null;
+          if (code.includes("from 'leaflet'")) return null;
+          return {
+            code: `import L from 'leaflet';\n${code}`,
+            map: null,
+          };
+        },
+      },
+    ],
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),

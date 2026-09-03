@@ -260,6 +260,8 @@ thead th { background: var(--navy); color: var(--white); }
 .legal-content, .article-shell { width: min(780px, calc(100% - 40px)); margin: auto; padding: 70px 0 110px; }
 .legal-content h1 { font: 500 clamp(2.8rem, 5vw, 4.5rem)/1 Georgia, serif; letter-spacing: -.04em; }
 .legal-content h2 { margin-top: 42px; color: var(--navy); }
+.legal-content h3 { margin-top: 28px; color: var(--navy); font-size: 1.15rem; }
+.legal-content ul { padding-left: 1.2em; }
 .legal-content p, .legal-content li { color: var(--ink-soft); }
 .legal-content a { color: var(--teal); text-decoration: underline; }
 .legal-meta, .article-meta { color: var(--ink-soft); font-size: .82rem; }

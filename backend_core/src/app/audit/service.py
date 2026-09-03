@@ -1,9 +1,27 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from decimal import Decimal
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.models import AuditLog, ExportLog
+
+
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: _jsonable(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, UUID):
+        return str(value)
+    return value
 
 
 class AuditService:
@@ -33,8 +51,8 @@ class AuditService:
             schema_nome=schema_name,
             tabela=table_name,
             registro_id=record_id,
-            dados_anteriores=before,
-            dados_novos=after,
+            dados_anteriores=_jsonable(before) if before is not None else None,
+            dados_novos=_jsonable(after) if after is not None else None,
             ip_origem=ip_address,
             user_agent=user_agent,
             criado_em=datetime.now(UTC),

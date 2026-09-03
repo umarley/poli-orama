@@ -85,6 +85,48 @@ class TerritorioRepository(BaseRepository[object]):
         result = await self.session.execute(text(query), values or {})
         return [dict(row) for row in result.mappings()]
 
+    async def list_electoral_zones(
+        self,
+        *,
+        estado_id: int | None = None,
+        codigo_municipio_ibge: int | None = None,
+    ) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        values: dict[str, object] = {}
+        if estado_id:
+            clauses.append("ze.codigo_uf_ibge = :estado_id")
+            values["estado_id"] = estado_id
+        if codigo_municipio_ibge:
+            clauses.append(
+                """
+                (
+                    ze.codigo_municipio_ibge = :codigo_municipio_ibge
+                    OR EXISTS (
+                        SELECT 1
+                          FROM global.local_votacao lv
+                         WHERE lv.zona_eleitoral_id = ze.id
+                           AND lv.codigo_municipio_ibge = :codigo_municipio_ibge
+                           AND lv.situacao = 'ativo'
+                    )
+                )
+                """
+            )
+            values["codigo_municipio_ibge"] = codigo_municipio_ibge
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        result = await self.session.execute(
+            text(
+                f"""
+                SELECT ze.id, ze.codigo_uf_ibge, ze.codigo_municipio_ibge,
+                       ze.numero_zona, ze.descricao
+                  FROM global.zona_eleitoral ze
+                {where}
+                 ORDER BY ze.numero_zona, ze.id
+                """
+            ),
+            values,
+        )
+        return [dict(row) for row in result.mappings()]
+
     async def create_neighborhood(self, payload: BairroCreate) -> dict[str, Any]:
         existing = await self.session.execute(
             text(

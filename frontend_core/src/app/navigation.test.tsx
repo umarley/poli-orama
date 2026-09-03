@@ -12,8 +12,28 @@ describe('navegação por permissão', () => {
       .map((item) => item.key);
 
     expect(visible).toContain('/cadastro');
+    expect(visible).toContain('/comunicacao');
     expect(visible).not.toContain('/metas');
+    expect(visible).not.toContain('/gestao-eleitoral');
     expect(visible).not.toContain('/admin/tenants');
+  });
+
+  it('exibe gestão eleitoral para gestor e coordenador territorial', () => {
+    const item = navigationItems.find((entry) => entry.key === '/gestao-eleitoral');
+    expect(item).toBeDefined();
+    expect(canViewNavigationItem(item!, [], ['gestor'])).toBe(true);
+    expect(canViewNavigationItem(item!, [], ['coordenador_territorial'])).toBe(true);
+    expect(canViewNavigationItem(item!, [], ['lider'])).toBe(false);
+    expect(canViewNavigationItem(item!, ['gestao_eleitoral.visualizar'], ['lider'])).toBe(false);
+  });
+
+  it('exibe comunicação para telefonista e gestor, sem atendimento no menu de liderança', () => {
+    const item = navigationItems.find((entry) => entry.key === '/comunicacao');
+    expect(item).toBeDefined();
+    expect(canViewNavigationItem(item!, [], ['telefonista'])).toBe(true);
+    expect(canViewNavigationItem(item!, [], ['gestor'])).toBe(true);
+    expect(canViewNavigationItem(item!, [], ['lider'])).toBe(false);
+    expect(canViewNavigationItem(item!, ['comunicacao.visualizar'], ['lider'])).toBe(false);
   });
 
   it('exibe administração SaaS somente ao perfil correspondente', () => {

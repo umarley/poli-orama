@@ -4,8 +4,16 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.errors import BusinessRuleError
 from app.core.repository import BaseRepository
 from app.mod_callcenter.schemas import ContactCreate
+
+CHANNEL_CODES = {
+    "ligacao": "telefone",
+    "whatsapp": "whatsapp",
+    "presencial": "presencial",
+    "outro": "outro",
+}
 
 
 class CallCenterRepository(BaseRepository[object]):
@@ -99,6 +107,26 @@ class CallCenterRepository(BaseRepository[object]):
         )
         return int(value) if value is not None else None
 
+    async def resolve_channel_id(self, tenant_id: int, code: str) -> int:
+        mapped = CHANNEL_CODES.get(code, code)
+        channel_id = await self.session.scalar(
+            text(
+                """
+                SELECT id
+                  FROM comunicacao.canal_comunicacao
+                 WHERE ativo
+                   AND codigo = :code
+                   AND (tenant_id IS NULL OR tenant_id = :tenant_id)
+                 ORDER BY tenant_id NULLS FIRST, id
+                 LIMIT 1
+                """
+            ),
+            {"tenant_id": tenant_id, "code": mapped},
+        )
+        if channel_id is None:
+            raise BusinessRuleError("Canal de comunicacao invalido.")
+        return int(channel_id)
+
     async def create_contact(
         self,
         tenant_id: int,
@@ -107,11 +135,17 @@ class CallCenterRepository(BaseRepository[object]):
         payload: ContactCreate,
     ) -> dict[str, Any]:
         now = datetime.now().astimezone()
+        situacao = {
+            "tentativa_sem_resposta": "sem_resposta",
+            "numero_invalido": "numero_invalido",
+        }.get(payload.resultado, "concluido")
         values = {
             **payload.model_dump(),
             "tenant_id": tenant_id,
             "user_id": user_id,
             "leader_id": leader_id,
+            "situacao": situacao,
+            "canal": await self.resolve_channel_id(tenant_id, payload.canal),
             "iniciado_em": payload.iniciado_em or now,
             "finalizado_em": payload.finalizado_em or now,
         }
@@ -120,20 +154,21 @@ class CallCenterRepository(BaseRepository[object]):
                 """
                 INSERT INTO comunicacao.atendimento_eleitor
                     (tenant_id, campanha_eleicao_id, pessoa_id, lideranca_id,
-                     atendente_usuario_id, canal, resultado, observacao,
+                     atendente_usuario_id, canal, situacao, resultado, observacao,
                      iniciado_em, finalizado_em, proximo_contato_em)
                 VALUES
                     (:tenant_id, :campanha_eleicao_id, :pessoa_id, :leader_id,
-                     :user_id, :canal, :resultado, :observacao,
+                     :user_id, :canal, :situacao, :resultado, :observacao,
                      :iniciado_em, :finalizado_em, :proximo_contato_em)
                 RETURNING id, tenant_id, campanha_eleicao_id, pessoa_id,
-                          lideranca_id, atendente_usuario_id, canal, resultado,
+                          lideranca_id, atendente_usuario_id, canal, situacao, resultado,
                           observacao, iniciado_em, finalizado_em, proximo_contato_em
                 """
             ),
             values,
         )
         contact = dict(result.mappings().one())
+        contact["canal"] = payload.canal
         contact_id = contact["id"]
         await self.session.execute(
             text(

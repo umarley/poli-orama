@@ -15,8 +15,10 @@ import {
   SolutionOutlined,
   TagsOutlined,
   TeamOutlined,
+  TrophyOutlined,
   UnorderedListOutlined,
   UserOutlined,
+  CommentOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 
@@ -84,6 +86,12 @@ export const navigationItems: NavigationItem[] = [
     permission: 'territorio.visualizar',
   },
   {
+    key: '/gestao-eleitoral',
+    label: 'Gestão eleitoral',
+    icon: <TrophyOutlined />,
+    profiles: ['gestor', 'gestor_saas', 'coordenador_territorial'],
+  },
+  {
     key: '/metas',
     label: 'Metas e votos',
     icon: <FlagOutlined />,
@@ -106,6 +114,12 @@ export const navigationItems: NavigationItem[] = [
     label: 'Demandas',
     icon: <UnorderedListOutlined />,
     permission: 'demandas.visualizar',
+  },
+  {
+    key: '/comunicacao',
+    label: 'Comunicação',
+    icon: <CommentOutlined />,
+    profiles: ['telefonista', 'gestor'],
   },
   {
     key: '/contratos',

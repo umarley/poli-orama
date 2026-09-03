@@ -8,6 +8,10 @@ OPENAPI_TAGS = [
     {"name": "Territorio", "description": "Territorios e georreferenciamento."},
     {"name": "Metas", "description": "Metas, votos e indicadores."},
     {"name": "Eleicoes", "description": "Catalogo global de eleicoes oficiais."},
+    {
+        "name": "Gestao eleitoral",
+        "description": "Estatisticas de eleicoes anteriores por territorio.",
+    },
     {"name": "Importacao e ETL", "description": "Importacoes, staging e qualidade."},
     {"name": "Agenda", "description": "Agenda e eventos."},
     {"name": "Demandas", "description": "Demandas e atendimentos."},

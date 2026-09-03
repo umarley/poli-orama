@@ -52,6 +52,23 @@
   transition: margin-left 0.2s;
 }
 
+.compactMain {
+  margin-left: 0 !important;
+}
+
+.compactTitle {
+  overflow: hidden;
+  color: #fff !important;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compactContent {
+  min-height: calc(100vh - 44px);
+  padding: 16px;
+}
+
 :global(.ant-layout-sider-collapsed) + .main {
   margin-left: 72px;
 }

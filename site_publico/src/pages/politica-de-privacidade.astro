@@ -2,13 +2,166 @@
 import LegalLayout from "../layouts/LegalLayout.astro";
 const email = import.meta.env.PUBLIC_SUPPORT_EMAIL || "contato@vurix.com.br";
 ---
-<LegalLayout title="Política de privacidade | Poliorama" description="Saiba como a Poliorama trata dados pessoais no site público." effectiveDate="06/07/2026" version="1.0">
+<LegalLayout title="Política de privacidade | Poliorama" description="Saiba como a Poliorama coleta, utiliza, armazena e protege dados pessoais no site, na plataforma e nas integrações, incluindo o Google Calendar." effectiveDate="02/09/2026" version="2.0">
   <h1>Política de privacidade</h1>
-  <p>Esta política descreve o tratamento de dados pessoais realizado no site público da Poliorama. O texto deve passar por revisão jurídica antes da publicação definitiva.</p>
-  <h2>1. Dados tratados</h2><p>Nos formulários, tratamos nome, e-mail, telefone, organização, mensagem e dados mínimos necessários ao pré-cadastro comercial. Também podemos registrar parâmetros UTM, página de origem e referência de navegação para atribuição comercial.</p>
-  <h2>2. Finalidades</h2><p>Usamos os dados para responder contatos, agendar demonstrações, processar pré-cadastros, prevenir abuso, manter registros de consentimento e cumprir obrigações legais.</p>
-  <h2>3. Compartilhamento</h2><p>Dados podem ser processados por fornecedores de infraestrutura, comunicação, analytics autorizado e checkout hospedado, sob contratos e controles compatíveis com a finalidade.</p>
-  <h2>4. Retenção e segurança</h2><p>Mantemos os dados pelo período necessário à finalidade, à defesa de direitos e ao cumprimento de obrigações. Aplicamos controles técnicos e organizacionais proporcionais ao risco.</p>
-  <h2>5. Direitos do titular</h2><p>Você pode solicitar confirmação, acesso, correção, anonimização, eliminação quando aplicável e informações sobre compartilhamento.</p>
-  <h2>6. Contato</h2><p>Solicitações podem ser enviadas para <a href={`mailto:${email}`}>{email}</a>. Para detalhes, consulte nossa <a href="/lgpd">página de LGPD</a>.</p>
+  <p>A Poliorama respeita a privacidade e a proteção dos dados pessoais de seus usuários. Esta Política de Privacidade explica como coletamos, utilizamos, armazenamos, compartilhamos e protegemos dados pessoais durante o uso do nosso site, da plataforma Poliorama e de suas integrações, incluindo a integração com o Google Calendar.</p>
+  <p>O tratamento dos dados pessoais é realizado em conformidade com a Lei Geral de Proteção de Dados Pessoais — LGPD (Lei nº 13.709/2018) e, quando aplicável, com as políticas dos serviços integrados.</p>
+
+  <h2>1. Dados pessoais tratados</h2>
+  <p>A Poliorama poderá tratar os seguintes dados pessoais:</p>
+  <ul>
+    <li>nome completo;</li>
+    <li>endereço de e-mail;</li>
+    <li>número de telefone;</li>
+    <li>organização, partido, campanha ou entidade à qual o usuário está vinculado;</li>
+    <li>informações fornecidas em mensagens e solicitações de contato;</li>
+    <li>dados necessários ao cadastro ou pré-cadastro comercial;</li>
+    <li>endereço IP, data e horário de acesso, dispositivo, navegador e registros técnicos;</li>
+    <li>parâmetros UTM, página de origem e referência de navegação, utilizados para atribuição comercial e análise de desempenho;</li>
+    <li>registros de consentimento, autorizações e preferências do usuário;</li>
+    <li>dados obtidos por meio de integrações autorizadas, incluindo informações do Google Calendar.</li>
+  </ul>
+
+  <h2>2. Finalidades do tratamento</h2>
+  <p>Os dados pessoais poderão ser utilizados para:</p>
+  <ul>
+    <li>responder a contatos e solicitações;</li>
+    <li>agendar demonstrações e reuniões;</li>
+    <li>processar cadastros e pré-cadastros;</li>
+    <li>prestar, manter e aperfeiçoar as funcionalidades da plataforma;</li>
+    <li>realizar a sincronização de agendas autorizadas pelo usuário;</li>
+    <li>enviar comunicações relacionadas ao serviço;</li>
+    <li>prevenir fraudes, abusos e acessos indevidos;</li>
+    <li>manter registros de consentimento e autorizações;</li>
+    <li>produzir informações estatísticas e relatórios de uso;</li>
+    <li>exercer direitos em processos judiciais, administrativos ou arbitrais;</li>
+    <li>cumprir obrigações legais ou regulatórias.</li>
+  </ul>
+
+  <h2>3. Bases legais</h2>
+  <p>O tratamento poderá ocorrer com fundamento:</p>
+  <ul>
+    <li>no consentimento do titular;</li>
+    <li>na execução de contrato ou de procedimentos preliminares relacionados a contrato;</li>
+    <li>no cumprimento de obrigação legal ou regulatória;</li>
+    <li>no exercício regular de direitos;</li>
+    <li>no legítimo interesse da Poliorama ou de terceiros, quando aplicável e respeitados os direitos e as liberdades fundamentais do titular.</li>
+  </ul>
+  <p>Quando o tratamento depender de consentimento, o usuário poderá revogá-lo a qualquer momento, sem comprometer a legalidade dos tratamentos realizados anteriormente.</p>
+
+  <h2>4. Integração com o Google Calendar</h2>
+  <p>A Poliorama permite que o usuário conecte voluntariamente sua Conta Google para sincronizar a agenda do candidato, agente político, campanha ou organização cadastrada na plataforma com o Google Calendar.</p>
+  <p>A conexão somente é realizada após a autorização expressa do usuário na tela de consentimento do Google.</p>
+
+  <h3>4.1. Dados do Google Calendar acessados</h3>
+  <p>Conforme as permissões concedidas pelo usuário, a Poliorama poderá acessar:</p>
+  <ul>
+    <li>identificação e endereço de e-mail da Conta Google conectada;</li>
+    <li>identificação e nome dos calendários autorizados;</li>
+    <li>título e descrição dos eventos;</li>
+    <li>datas e horários de início e término;</li>
+    <li>local do evento;</li>
+    <li>participantes e respectivos endereços de e-mail, quando disponíveis;</li>
+    <li>informações sobre recorrência, status, lembretes e atualizações dos eventos;</li>
+    <li>identificadores técnicos necessários para manter a sincronização;</li>
+    <li>tokens de autorização necessários para conservar a conexão autorizada.</li>
+  </ul>
+  <p>A Poliorama solicita somente as permissões necessárias para disponibilizar a funcionalidade de sincronização.</p>
+
+  <h3>4.2. Como os dados do Google Calendar são utilizados</h3>
+  <p>Os dados são utilizados exclusivamente para:</p>
+  <ul>
+    <li>exibir na Poliorama os compromissos existentes no calendário autorizado;</li>
+    <li>criar no Google Calendar eventos cadastrados na Poliorama;</li>
+    <li>atualizar eventos quando houver alterações na plataforma ou no Google Calendar;</li>
+    <li>evitar duplicidade de compromissos;</li>
+    <li>manter as agendas sincronizadas;</li>
+    <li>identificar conflitos de horários;</li>
+    <li>permitir a gestão centralizada da agenda do usuário.</li>
+  </ul>
+  <p>A Poliorama não utiliza dados do Google Calendar para publicidade, criação de perfis comerciais, venda de informações, monitoramento indevido ou treinamento de modelos generalizados de inteligência artificial.</p>
+
+  <h3>4.3. Armazenamento dos dados do Google Calendar</h3>
+  <p>A Poliorama poderá armazenar os dados mínimos necessários para manter a sincronização, incluindo identificadores de calendários e eventos, registros de sincronização, informações dos compromissos sincronizados e tokens de autorização.</p>
+  <p>Essas informações permanecerão armazenadas enquanto a integração estiver ativa ou pelo período necessário ao cumprimento das finalidades descritas nesta Política, ressalvadas as hipóteses de conservação exigidas por lei ou necessárias ao exercício regular de direitos.</p>
+  <p>A desconexão da Conta Google interrompe novos acessos e sincronizações. Dados anteriormente sincronizados poderão permanecer na Poliorama quando fizerem parte da agenda da campanha, de registros institucionais ou quando sua conservação for necessária para o cumprimento de obrigação legal ou exercício regular de direitos. O titular poderá solicitar a eliminação dos dados quando aplicável.</p>
+
+  <h3>4.4. Compartilhamento dos dados do Google Calendar</h3>
+  <p>Os dados recebidos das APIs do Google não são vendidos nem disponibilizados para fins publicitários.</p>
+  <p>Esses dados somente poderão ser processados:</p>
+  <ul>
+    <li>pela própria Poliorama, para fornecer a sincronização solicitada;</li>
+    <li>por fornecedores de infraestrutura e armazenamento estritamente necessários ao funcionamento da plataforma;</li>
+    <li>mediante determinação legal, regulatória ou judicial;</li>
+    <li>com autorização expressa do usuário, quando necessária para outra finalidade.</li>
+  </ul>
+  <p>Os fornecedores contratados deverão tratar as informações de acordo com obrigações de confidencialidade, segurança e proteção de dados compatíveis com esta Política.</p>
+  <p>O uso e a transferência, pela Poliorama, das informações recebidas das APIs do Google obedecerão à Política de Dados do Usuário dos Serviços de API do Google, incluindo os requisitos de Uso Limitado.</p>
+
+  <h3>4.5. Revogação do acesso ao Google Calendar</h3>
+  <p>O usuário poderá desconectar a integração diretamente nas configurações da Poliorama.</p>
+  <p>Também é possível revogar a autorização nas configurações da Conta Google, na área de gerenciamento de conexões com aplicativos e serviços de terceiros.</p>
+  <p>Após a revogação, a Poliorama deixará de acessar novos dados e de sincronizar eventos com a Conta Google. A revogação poderá limitar ou impedir o funcionamento das funcionalidades que dependem dessa integração.</p>
+
+  <h2>5. Cookies e tecnologias semelhantes</h2>
+  <p>A Poliorama poderá utilizar cookies e tecnologias semelhantes para:</p>
+  <ul>
+    <li>manter a sessão autenticada;</li>
+    <li>preservar preferências do usuário;</li>
+    <li>proteger a plataforma contra acessos indevidos;</li>
+    <li>compreender a utilização do site;</li>
+    <li>medir o desempenho de páginas e campanhas;</li>
+    <li>realizar atribuição comercial por meio de parâmetros de origem.</li>
+  </ul>
+  <p>Quando exigido, cookies não essenciais somente serão utilizados após o consentimento do usuário.</p>
+
+  <h2>6. Compartilhamento de dados</h2>
+  <p>Os dados pessoais poderão ser processados por fornecedores responsáveis por:</p>
+  <ul>
+    <li>hospedagem e infraestrutura tecnológica;</li>
+    <li>armazenamento e banco de dados;</li>
+    <li>comunicação e atendimento;</li>
+    <li>monitoramento de segurança;</li>
+    <li>analytics autorizado;</li>
+    <li>processamento de pagamentos e checkout hospedado;</li>
+    <li>integrações expressamente habilitadas pelo usuário.</li>
+  </ul>
+  <p>O compartilhamento será limitado ao necessário para cada finalidade e realizado mediante contratos, controles de acesso e obrigações de confidencialidade e proteção de dados.</p>
+
+  <h2>7. Retenção e eliminação</h2>
+  <p>Os dados serão mantidos pelo período necessário para atender às finalidades desta Política, cumprir obrigações legais ou regulatórias, preservar registros de consentimento e possibilitar o exercício regular de direitos.</p>
+  <p>Encerrada a finalidade, os dados serão eliminados ou anonimizados, salvo quando sua conservação estiver autorizada ou for exigida pela legislação.</p>
+
+  <h2>8. Segurança da informação</h2>
+  <p>A Poliorama adota medidas técnicas e organizacionais proporcionais aos riscos envolvidos, incluindo controles de acesso, autenticação, registro de atividades, restrição de permissões, proteção das comunicações e procedimentos de prevenção e resposta a incidentes.</p>
+  <p>Apesar das medidas adotadas, nenhum sistema é totalmente imune a incidentes. Caso ocorra evento de segurança que possa gerar risco ou dano relevante aos titulares, serão tomadas as providências cabíveis, inclusive as comunicações exigidas pela legislação.</p>
+
+  <h2>9. Direitos do titular</h2>
+  <p>Nos termos da LGPD, o titular poderá solicitar:</p>
+  <ul>
+    <li>confirmação da existência de tratamento;</li>
+    <li>acesso aos seus dados pessoais;</li>
+    <li>correção de dados incompletos, inexatos ou desatualizados;</li>
+    <li>anonimização, bloqueio ou eliminação de dados desnecessários, excessivos ou tratados irregularmente;</li>
+    <li>portabilidade, quando aplicável e regulamentada;</li>
+    <li>informação sobre entidades com as quais os dados foram compartilhados;</li>
+    <li>informação sobre a possibilidade de não fornecer consentimento e suas consequências;</li>
+    <li>revogação do consentimento;</li>
+    <li>eliminação dos dados tratados com fundamento no consentimento, quando aplicável;</li>
+    <li>revisão de decisões tomadas exclusivamente por tratamento automatizado, quando aplicável;</li>
+    <li>oposição ao tratamento realizado em desacordo com a legislação.</li>
+  </ul>
+  <p>A solicitação poderá exigir a confirmação da identidade do titular para prevenir fraudes e acessos indevidos.</p>
+
+  <h2>10. Transferência internacional</h2>
+  <p>Alguns fornecedores e serviços integrados, incluindo serviços do Google, poderão processar dados em outros países. Nessas situações, serão adotadas medidas para assegurar um nível adequado de proteção, observando a LGPD e as normas aplicáveis.</p>
+
+  <h2>11. Alterações desta Política</h2>
+  <p>Esta Política poderá ser atualizada para refletir mudanças legais, regulatórias, operacionais ou tecnológicas.</p>
+  <p>Quando houver alteração relevante na forma de tratamento dos dados, especialmente dos dados obtidos por meio das APIs do Google, os usuários serão informados e, quando necessário, será solicitado um novo consentimento.</p>
+
+  <h2>12. Contato</h2>
+  <p>Para exercer direitos, esclarecer dúvidas ou obter informações sobre o tratamento de dados pessoais, entre em contato pelo e-mail:</p>
+  <p><a href={`mailto:${email}`}>{email}</a></p>
+  <p>Para mais informações, consulte também nossa <a href="/lgpd">Página de LGPD</a>.</p>
 </LegalLayout>

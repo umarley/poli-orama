@@ -27,7 +27,7 @@ import {
 } from 'antd';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { canViewNavigationItem, getNavigationItems, getNavigationLabel } from '@/app/navigation';
 import { Brand } from '@/components/brand/Brand';
@@ -47,6 +47,7 @@ export function AuthenticatedLayout() {
   const queryClient = useQueryClient();
   const screens = Grid.useBreakpoint();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -62,6 +63,7 @@ export function AuthenticatedLayout() {
   const updateUser = useSessionStore((state) => state.updateUser);
   const isSaasManager = user?.profiles.includes('gestor_saas') ?? false;
   const isMobile = screens.md === false;
+  const compactWindow = searchParams.get('janela') === '1';
   const currentCampaignQuery = useQuery({
     queryKey: ['current-campaign'],
     queryFn: getCurrentCampaign,
@@ -130,6 +132,54 @@ export function AuthenticatedLayout() {
     }
   };
 
+  const handleCloseAttendanceWindow = () => {
+    window.close();
+    navigate('/comunicacao');
+  };
+
+  const isAttendanceWindow = location.pathname.startsWith('/comunicacao/atendimento');
+  const profileMenuItems = isAttendanceWindow
+    ? [
+        {
+          key: 'close',
+          label: 'Sair',
+          icon: <LogoutOutlined />,
+          danger: true,
+          onClick: handleCloseAttendanceWindow,
+        },
+      ]
+    : [
+        ...(isSaasManager
+          ? [
+              {
+                key: 'tenant',
+                label: 'Selecionar tenant',
+                icon: <SafetyCertificateOutlined />,
+                onClick: () => setTenantModalOpen(true),
+              },
+            ]
+          : []),
+        {
+          key: 'profile',
+          label: 'Meu perfil',
+          icon: <UserOutlined />,
+          onClick: () => navigate('/minha-conta/perfil'),
+        },
+        {
+          key: 'security',
+          label: 'Segurança e acessos',
+          icon: <SafetyCertificateOutlined />,
+          onClick: () => navigate('/minha-conta/acessos'),
+        },
+        {
+          key: 'logout',
+          label: 'Sair',
+          icon: <LogoutOutlined />,
+          danger: true,
+          onClick: () => void handleLogout(),
+        },
+      ];
+
   const handleTenantSwitch = async () => {
     if (!selectedTenantId) return;
     setSwitchingTenant(true);
@@ -190,7 +240,7 @@ export function AuthenticatedLayout() {
   return (
     <Layout className={styles.root}>
       <ToastBridge />
-      {!isMobile && (
+      {!isMobile && !compactWindow && (
         <Sider
           width={256}
           collapsedWidth={72}
@@ -208,7 +258,7 @@ export function AuthenticatedLayout() {
       <Drawer
         placement="left"
         width={280}
-        open={isMobile && drawerOpen}
+        open={isMobile && !compactWindow && drawerOpen}
         onClose={() => setDrawerOpen(false)}
         closable={false}
         styles={{ body: { padding: 0, background: '#001d66' } }}
@@ -219,34 +269,38 @@ export function AuthenticatedLayout() {
         {navigation}
       </Drawer>
 
-      <Layout className={styles.main}>
+      <Layout className={`${styles.main} ${compactWindow ? styles.compactMain : ''}`}>
         <Header className={styles.header}>
           <Flex align="center" justify="space-between" gap={12}>
             <Flex align="center" gap={8} className={styles.headerStart}>
-              <Button
-                type="text"
-                className={styles.headerIcon}
-                icon={
-                  isMobile ? (
-                    <MenuOutlined />
-                  ) : collapsed ? (
-                    <MenuUnfoldOutlined />
-                  ) : (
-                    <MenuFoldOutlined />
-                  )
-                }
-                aria-label={isMobile ? 'Abrir menu' : 'Alternar menu'}
-                onClick={() => (isMobile ? setDrawerOpen(true) : setCollapsed((value) => !value))}
-              />
-              <div className={styles.desktopSearch}>
-                <Input
-                  variant="borderless"
-                  prefix={<SearchOutlined />}
-                  placeholder="Buscar pessoas, demandas e locais"
-                  aria-label="Busca global"
+              {!compactWindow && (
+                <Button
+                  type="text"
+                  className={styles.headerIcon}
+                  icon={
+                    isMobile ? (
+                      <MenuOutlined />
+                    ) : collapsed ? (
+                      <MenuUnfoldOutlined />
+                    ) : (
+                      <MenuFoldOutlined />
+                    )
+                  }
+                  aria-label={isMobile ? 'Abrir menu' : 'Alternar menu'}
+                  onClick={() => (isMobile ? setDrawerOpen(true) : setCollapsed((value) => !value))}
                 />
-              </div>
-              <Typography.Text className={styles.mobileTitle}>
+              )}
+              {!compactWindow && (
+                <div className={styles.desktopSearch}>
+                  <Input
+                    variant="borderless"
+                    prefix={<SearchOutlined />}
+                    placeholder="Buscar pessoas, demandas e locais"
+                    aria-label="Busca global"
+                  />
+                </div>
+              )}
+              <Typography.Text className={compactWindow ? styles.compactTitle : styles.mobileTitle}>
                 {getNavigationLabel(location.pathname, tenantConfigurationQuery.data)}
               </Typography.Text>
             </Flex>
@@ -263,37 +317,7 @@ export function AuthenticatedLayout() {
               <Dropdown
                 trigger={['click']}
                 menu={{
-                  items: [
-                    ...(isSaasManager
-                      ? [
-                          {
-                            key: 'tenant',
-                            label: 'Selecionar tenant',
-                            icon: <SafetyCertificateOutlined />,
-                            onClick: () => setTenantModalOpen(true),
-                          },
-                        ]
-                      : []),
-                    {
-                      key: 'profile',
-                      label: 'Meu perfil',
-                      icon: <UserOutlined />,
-                      onClick: () => navigate('/minha-conta/perfil'),
-                    },
-                    {
-                      key: 'security',
-                      label: 'Segurança e acessos',
-                      icon: <SafetyCertificateOutlined />,
-                      onClick: () => navigate('/minha-conta/acessos'),
-                    },
-                    {
-                      key: 'logout',
-                      label: 'Sair',
-                      icon: <LogoutOutlined />,
-                      danger: true,
-                      onClick: () => void handleLogout(),
-                    },
-                  ],
+                  items: profileMenuItems,
                 }}
               >
                 <Button type="text" className={styles.profileButton}>
@@ -311,13 +335,15 @@ export function AuthenticatedLayout() {
           </Flex>
         </Header>
 
-        <Content className={styles.content}>
+        <Content className={`${styles.content} ${compactWindow ? styles.compactContent : ''}`}>
           <Outlet />
         </Content>
 
-        <Footer className={styles.footer}>
-          Poliorama · Plataforma de inteligência para campanhas
-        </Footer>
+        {!compactWindow && (
+          <Footer className={styles.footer}>
+            Poliorama · Plataforma de inteligência para campanhas
+          </Footer>
+        )}
       </Layout>
       <Modal
         open={tenantModalOpen}

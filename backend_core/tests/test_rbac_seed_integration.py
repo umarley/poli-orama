@@ -37,6 +37,7 @@ EXPECTED_PROFILE_PERMISSIONS = {
         "demandas.criar",
         "demandas.editar",
         "dashboard.visualizar",
+        "gestao_eleitoral.visualizar",
     },
     "lider": {
         "cadastro.visualizar",

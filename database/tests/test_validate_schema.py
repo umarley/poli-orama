@@ -53,6 +53,24 @@ class ValidateSchemaTests(unittest.TestCase):
         self.assertIn("pa.codigo = 'tesoureiro'", sql)
         self.assertNotIn("pa.codigo IN ('gestor'", sql)
 
+    def test_resultados_eleicoes_migration_creates_tse_table(self) -> None:
+        migration = DEFAULT_MIGRATION.parent / "053 - tse_resultados_eleicoes.sql"
+        expected = parse_expected_structure(migration.read_text(encoding="utf-8"))
+
+        self.assertIn("tse", expected.schemas)
+        self.assertIn(("tse", "resultados_eleicoes"), expected.tables)
+        sql = migration.read_text(encoding="utf-8")
+        self.assertIn("aa_eleicao", sql)
+        self.assertIn("nr_votavel", sql)
+        self.assertIn("qt_votos", sql)
+
+    def test_gestao_eleitoral_migration_grants_permission_to_campaign_managers(self) -> None:
+        migration = DEFAULT_MIGRATION.parent / "054 - gestao_eleitoral_permissoes.sql"
+        sql = migration.read_text(encoding="utf-8")
+        self.assertIn("gestao_eleitoral.visualizar", sql)
+        self.assertIn("coordenador_territorial", sql)
+        self.assertIn("ix_resultados_eleicoes_eleicao_turno", sql)
+
 
 if __name__ == "__main__":
     unittest.main()

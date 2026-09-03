@@ -28,6 +28,11 @@ import { DemandDetailPage } from '@/pages/demandas/DemandDetailPage';
 import { AdminElectionsPage } from '@/pages/eleicoes/AdminElectionsPage';
 import { CampaignClosurePage } from '@/pages/eleicoes/CampaignClosurePage';
 import { CampaignManagementPage } from '@/pages/eleicoes/CampaignManagementPage';
+import { GestaoEleitoralAnalisePage } from '@/pages/gestao-eleitoral/GestaoEleitoralAnalisePage';
+import { GestaoEleitoralPage } from '@/pages/gestao-eleitoral/GestaoEleitoralPage';
+import { ComunicacaoAtendimentoPage } from '@/pages/comunicacao/ComunicacaoAtendimentoPage';
+import { ComunicacaoIndicadoresPage } from '@/pages/comunicacao/ComunicacaoIndicadoresPage';
+import { ComunicacaoPage } from '@/pages/comunicacao/ComunicacaoPage';
 import { ImportDetailPage } from '@/pages/etl/ImportDetailPage';
 import { ImportsPage } from '@/pages/etl/ImportsPage';
 import { GoalDetailPage } from '@/pages/metas/GoalDetailPage';
@@ -121,6 +126,46 @@ export const router = createBrowserRouter([
       {
         path: 'metas/:id',
         element: withPermission('metas.visualizar', <GoalDetailPage />),
+      },
+      {
+        path: 'gestao-eleitoral',
+        element: (
+          <ProfileRoute profiles={['gestor', 'gestor_saas', 'coordenador_territorial']}>
+            <GestaoEleitoralPage />
+          </ProfileRoute>
+        ),
+      },
+      {
+        path: 'gestao-eleitoral/analise',
+        element: (
+          <ProfileRoute profiles={['gestor', 'gestor_saas', 'coordenador_territorial']}>
+            <GestaoEleitoralAnalisePage />
+          </ProfileRoute>
+        ),
+      },
+      {
+        path: 'comunicacao',
+        element: (
+          <ProfileRoute profiles={['telefonista', 'gestor']}>
+            <ComunicacaoPage />
+          </ProfileRoute>
+        ),
+      },
+      {
+        path: 'comunicacao/atendimento',
+        element: (
+          <ProfileRoute profiles={['telefonista']}>
+            <ComunicacaoAtendimentoPage />
+          </ProfileRoute>
+        ),
+      },
+      {
+        path: 'comunicacao/indicadores',
+        element: (
+          <ProfileRoute profiles={['gestor']}>
+            <ComunicacaoIndicadoresPage />
+          </ProfileRoute>
+        ),
       },
       {
         path: 'importacoes',

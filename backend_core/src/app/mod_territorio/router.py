@@ -116,15 +116,10 @@ async def list_electoral_zones(
     estado_id: int | None = Query(default=None, ge=1),
     codigo_municipio_ibge: int | None = Query(default=None, ge=1),
 ) -> list[dict[str, Any]]:
-    clauses: list[str] = []
-    values: dict[str, object] = {}
-    if estado_id:
-        clauses.append("codigo_uf_ibge = :estado_id")
-        values["estado_id"] = estado_id
-    if codigo_municipio_ibge:
-        clauses.append("codigo_municipio_ibge = :codigo_municipio_ibge")
-        values["codigo_municipio_ibge"] = codigo_municipio_ibge
-    return await service.repository.global_list("zona_eleitoral", " AND ".join(clauses), values)
+    return await service.repository.list_electoral_zones(
+        estado_id=estado_id,
+        codigo_municipio_ibge=codigo_municipio_ibge,
+    )
 
 
 @router.get("/global/locais-votacao", response_model=list[LocalVotacaoResponse])

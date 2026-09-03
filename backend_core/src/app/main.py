@@ -22,6 +22,7 @@ from app.mod_dashboard.router import router as dashboard_router
 from app.mod_demandas.router import router as demandas_router
 from app.mod_eleicoes.router import router as eleicoes_router
 from app.mod_etl.router import router as etl_router
+from app.mod_gestao_eleitoral.router import router as gestao_eleitoral_router
 from app.mod_metas.router import router as metas_router
 from app.mod_territorio.router import router as territorio_router
 from app.tenants.public_router import router as public_router
@@ -61,6 +62,7 @@ api_app.include_router(agenda_router, prefix=settings.api_v1_prefix)
 api_app.include_router(arquivos_router, prefix=settings.api_v1_prefix)
 api_app.include_router(demandas_router, prefix=settings.api_v1_prefix)
 api_app.include_router(eleicoes_router, prefix=settings.api_v1_prefix)
+api_app.include_router(gestao_eleitoral_router, prefix=settings.api_v1_prefix)
 api_app.include_router(etl_router, prefix=settings.api_v1_prefix)
 api_app.include_router(dashboard_router, prefix=settings.api_v1_prefix)
 
