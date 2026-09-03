@@ -31,8 +31,7 @@ export function serializeElectoralParams(filters: ElectoralFilters, extra: Recor
   const params: Record<string, unknown> = { ...extra };
   (Object.entries(filters) as Array<[keyof ElectoralFilters, ElectoralFilters[keyof ElectoralFilters]]>).forEach(
     ([key, value]) => {
-      if (value === undefined || value === null || value === '') return;
-      if (Array.isArray(value) && value.length === 0) return;
+      if (!Array.isArray(value) || value.length === 0) return;
       params[key] = value;
     },
   );
