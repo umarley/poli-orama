@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import ResourceNotFoundError
@@ -72,7 +73,8 @@ async def test_new_tenant_defaults_to_leadership_terminology() -> None:
     )
 
     assert tenant.configuracao.preferencias == {
-        "nomenclatura_liderancas": "liderancas"
+        "nomenclatura_liderancas": "liderancas",
+        "maximo_atendimentos_simultaneos": 10,
     }
 
 
@@ -92,3 +94,14 @@ def test_configuration_update_keeps_full_name_required() -> None:
     assert payload.preferencias["formulario_cadastro"]["nome_completo"] is True
     assert payload.preferencias["formulario_cadastro"]["data_nascimento"] is True
     assert payload.preferencias["nomenclatura_liderancas"] == "liderancas"
+
+
+def test_configuration_update_rejects_invalid_simultaneous_limit() -> None:
+    with pytest.raises(ValidationError):
+        TenantConfiguracaoUpdate(preferencias={"maximo_atendimentos_simultaneos": 0})
+
+
+def test_configuration_update_accepts_simultaneous_limit() -> None:
+    payload = TenantConfiguracaoUpdate(preferencias={"maximo_atendimentos_simultaneos": 8})
+    assert payload.preferencias is not None
+    assert payload.preferencias["maximo_atendimentos_simultaneos"] == 8

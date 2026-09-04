@@ -58,6 +58,21 @@ export function getLeadershipTerminology(
     : DEFAULT_LEADERSHIP_TERMINOLOGY;
 }
 
+export const DEFAULT_MAX_SIMULTANEOUS_ATTENDANCES = 10;
+export const MIN_SIMULTANEOUS_ATTENDANCES = 1;
+export const MAX_SIMULTANEOUS_ATTENDANCES = 50;
+
+export function getMaxSimultaneousAttendances(
+  configuration?: { preferencias?: Record<string, unknown> } | null,
+): number {
+  const raw = configuration?.preferencias?.maximo_atendimentos_simultaneos;
+  const value = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isInteger(value) || value < MIN_SIMULTANEOUS_ATTENDANCES) {
+    return DEFAULT_MAX_SIMULTANEOUS_ATTENDANCES;
+  }
+  return Math.min(value, MAX_SIMULTANEOUS_ATTENDANCES);
+}
+
 export function getLeadershipTerminologyLabels(
   configuration?: { preferencias?: Record<string, unknown> } | null,
 ): LeadershipTerminologyLabels {

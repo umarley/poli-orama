@@ -21,6 +21,7 @@ from app.mod_comunicacao.atendimento_schemas import (
     AttendanceInteractionInput,
     AttendanceInvalidate,
     AttendancePersonUpdate,
+    AttendanceQueue,
     AttendanceResponse,
     AttendanceResult,
     AttendanceUpdate,
@@ -83,6 +84,14 @@ async def current_attendance(
     service: Annotated[AtendimentoService, Depends(get_attendance_service)],
 ) -> AttendanceResponse | None:
     return await service.current(actor)
+
+
+@router.get("/atendimento/abertos", response_model=AttendanceQueue)
+async def open_attendances(
+    actor: Operator,
+    service: Annotated[AtendimentoService, Depends(get_attendance_service)],
+) -> AttendanceQueue:
+    return await service.open_queue(actor)
 
 
 @router.post(

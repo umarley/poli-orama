@@ -1,6 +1,7 @@
 import {
   CloseCircleOutlined,
   DeleteOutlined,
+  MessageOutlined,
   PhoneOutlined,
   PlusOutlined,
   StopOutlined,
@@ -9,6 +10,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
+  Badge,
   Button,
   Card,
   Col,
@@ -25,6 +27,7 @@ import {
   Space,
   Spin,
   Switch,
+  Tabs,
   Tag,
   Timeline,
   Typography,
@@ -45,9 +48,10 @@ import {
   addAttendanceInteraction,
   closeAttendance,
   deleteAttendanceContact,
-  getCurrentAttendance,
+  getAttendance,
   invalidateAttendance,
   listAttendanceChannels,
+  listOpenAttendances,
   listRejectionReasons,
   startAttendance,
   updateAttendance,
@@ -119,6 +123,40 @@ const statusLabels: Record<AttendanceStatus, string> = {
   numero_invalido: 'Número inválido',
   interrompido: 'Interrompido',
 };
+
+const SELECTED_ATTENDANCE_KEY = 'comunicacao-atendimento-selecionado';
+const QUEUE_POLL_MS = 15_000;
+
+function readSelectedAttendanceId(): number | null {
+  const stored = sessionStorage.getItem(SELECTED_ATTENDANCE_KEY);
+  const parsed = stored ? Number(stored) : NaN;
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function persistSelectedAttendanceId(id: number | null) {
+  if (id == null) {
+    sessionStorage.removeItem(SELECTED_ATTENDANCE_KEY);
+    return;
+  }
+  sessionStorage.setItem(SELECTED_ATTENDANCE_KEY, String(id));
+}
+
+function formatElapsedSince(iso: string | null | undefined): string {
+  if (!iso) return 'Sem interação';
+  const elapsed = Date.now() - new Date(iso).getTime();
+  if (Number.isNaN(elapsed) || elapsed < 0) return 'agora';
+  const minutes = Math.floor(elapsed / 60_000);
+  if (minutes < 1) return 'agora';
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} h`;
+  return `${Math.floor(hours / 24)} d`;
+}
+
+function formatQueueTimestamp(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  return dayjs(iso).format('DD/MM/YYYY HH:mm');
+}
 
 interface PersonFormValues {
   nome_completo: string;
@@ -197,6 +235,10 @@ export function ComunicacaoAtendimentoPage() {
   const [closeOpen, setCloseOpen] = useState(false);
   const [invalidateOpen, setInvalidateOpen] = useState(false);
   const [contactEditor, setContactEditor] = useState<ContactEditor | null>(null);
+  const [view, setView] = useState<'atendimento' | 'abertos'>('atendimento');
+  const [selectedAttendanceId, setSelectedAttendanceId] = useState<number | null>(
+    readSelectedAttendanceId,
+  );
   const watchedChannel = Form.useWatch('canal', attendanceForm);
   const watchedIntention = Form.useWatch('intencao_voto', attendanceForm);
   const watchedCloseChannel = Form.useWatch('canal', closeForm);
@@ -209,9 +251,15 @@ export function ComunicacaoAtendimentoPage() {
     | number
     | undefined;
 
+  const queueQuery = useQuery({
+    queryKey: ['comunicacao', 'atendimento', 'fila'],
+    queryFn: listOpenAttendances,
+    refetchInterval: QUEUE_POLL_MS,
+  });
   const attendanceQuery = useQuery({
-    queryKey: ['comunicacao', 'atendimento', 'atual'],
-    queryFn: getCurrentAttendance,
+    queryKey: ['comunicacao', 'atendimento', selectedAttendanceId],
+    queryFn: () => getAttendance(selectedAttendanceId!),
+    enabled: Boolean(selectedAttendanceId),
   });
   const reasonsQuery = useQuery({
     queryKey: ['comunicacao', 'motivos-rejeicao'],
@@ -231,12 +279,37 @@ export function ComunicacaoAtendimentoPage() {
     enabled: Boolean(selectedVoterStateCode),
   });
 
+  const queue = queueQuery.data;
+  const queueItems = queue?.itens ?? [];
+  const queueLimit = queue?.limite ?? 10;
+  const queueTotal = queue?.total ?? queueItems.length;
+  const queueFull = queueTotal >= queueLimit;
+  const unreadCount = queueItems.reduce((sum, item) => sum + (item.mensagens_nao_lidas || 0), 0);
   const attendance = attendanceQuery.data ?? null;
   const active = isActive(attendance);
+
+  const selectAttendance = (id: number | null, nextView: 'atendimento' | 'abertos' = 'atendimento') => {
+    setSelectedAttendanceId(id);
+    persistSelectedAttendanceId(id);
+    setView(nextView);
+  };
+
+  const refreshAttendanceQueries = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['comunicacao', 'atendimento'] });
+  };
 
   useEffect(() => {
     document.title = 'Atendimento · Comunicação';
   }, []);
+
+  useEffect(() => {
+    if (!queueQuery.data) return;
+    const items = queueQuery.data.itens;
+    if (selectedAttendanceId && items.some((item) => item.id === selectedAttendanceId)) return;
+    const nextId = items[0]?.id ?? null;
+    setSelectedAttendanceId(nextId);
+    persistSelectedAttendanceId(nextId);
+  }, [queueQuery.data, selectedAttendanceId]);
 
   useEffect(() => {
     if (!attendance) {
@@ -300,7 +373,8 @@ export function ComunicacaoAtendimentoPage() {
     mutationFn: startAttendance,
     onSuccess: async (result) => {
       AppToast.success(`Atendimento iniciado com ${result.pessoa.nome_completo}.`);
-      await queryClient.invalidateQueries({ queryKey: ['comunicacao', 'atendimento', 'atual'] });
+      selectAttendance(result.id, 'atendimento');
+      await refreshAttendanceQueries();
     },
     onError: (error) => AppToast.error(normalizeApiError(error).message),
   });
@@ -324,7 +398,7 @@ export function ComunicacaoAtendimentoPage() {
     },
     onSuccess: async () => {
       AppToast.success('Cadastro atualizado neste atendimento.');
-      await queryClient.invalidateQueries({ queryKey: ['comunicacao', 'atendimento', 'atual'] });
+      await queryClient.invalidateQueries({ queryKey: ['comunicacao', 'atendimento'] });
     },
     onError: (error) => AppToast.error(normalizeApiError(error).message),
   });
@@ -344,7 +418,7 @@ export function ComunicacaoAtendimentoPage() {
     },
     onSuccess: async () => {
       AppToast.success('Dados do atendimento salvos.');
-      await queryClient.invalidateQueries({ queryKey: ['comunicacao', 'atendimento', 'atual'] });
+      await queryClient.invalidateQueries({ queryKey: ['comunicacao', 'atendimento'] });
     },
     onError: (error) => AppToast.error(normalizeApiError(error).message),
   });
@@ -357,7 +431,7 @@ export function ComunicacaoAtendimentoPage() {
     onSuccess: async () => {
       AppToast.success('Documento adicionado.');
       documentForm.resetFields();
-      await queryClient.invalidateQueries({ queryKey: ['comunicacao', 'atendimento', 'atual'] });
+      await queryClient.invalidateQueries({ queryKey: ['comunicacao', 'atendimento'] });
     },
     onError: (error) => AppToast.error(normalizeApiError(error).message),
   });
@@ -370,7 +444,7 @@ export function ComunicacaoAtendimentoPage() {
     onSuccess: async () => {
       AppToast.success('Interação registrada.');
       interactionForm.resetFields();
-      await queryClient.invalidateQueries({ queryKey: ['comunicacao', 'atendimento', 'atual'] });
+      await queryClient.invalidateQueries({ queryKey: ['comunicacao', 'atendimento'] });
     },
     onError: (error) => AppToast.error(normalizeApiError(error).message),
   });
@@ -397,7 +471,7 @@ export function ComunicacaoAtendimentoPage() {
       AppToast.success('Atendimento encerrado.');
       setCloseOpen(false);
       closeForm.resetFields();
-      await queryClient.invalidateQueries({ queryKey: ['comunicacao', 'atendimento', 'atual'] });
+      await queryClient.invalidateQueries({ queryKey: ['comunicacao', 'atendimento'] });
     },
     onError: (error) => AppToast.error(normalizeApiError(error).message),
   });
@@ -411,7 +485,7 @@ export function ComunicacaoAtendimentoPage() {
       AppToast.success('Contato marcado como inválido e cadastro inativado.');
       setInvalidateOpen(false);
       invalidateForm.resetFields();
-      await queryClient.invalidateQueries({ queryKey: ['comunicacao', 'atendimento', 'atual'] });
+      await queryClient.invalidateQueries({ queryKey: ['comunicacao', 'atendimento'] });
     },
     onError: (error) => AppToast.error(normalizeApiError(error).message),
   });
@@ -439,7 +513,7 @@ export function ComunicacaoAtendimentoPage() {
       );
       setContactEditor(null);
       contactForm.resetFields();
-      await queryClient.invalidateQueries({ queryKey: ['comunicacao', 'atendimento', 'atual'] });
+      await queryClient.invalidateQueries({ queryKey: ['comunicacao', 'atendimento'] });
     },
     onError: (error) => AppToast.error(normalizeApiError(error).message),
   });
@@ -451,7 +525,7 @@ export function ComunicacaoAtendimentoPage() {
     },
     onSuccess: async () => {
       AppToast.success('Contato removido.');
-      await queryClient.invalidateQueries({ queryKey: ['comunicacao', 'atendimento', 'atual'] });
+      await queryClient.invalidateQueries({ queryKey: ['comunicacao', 'atendimento'] });
     },
     onError: (error) => AppToast.error(normalizeApiError(error).message),
   });
@@ -514,7 +588,7 @@ export function ComunicacaoAtendimentoPage() {
     <div className={styles.page}>
       <PageHeader
         title="Atendimento"
-        description="Selecione um eleitor disponível, registre o contato e atualize o cadastro somente enquanto o atendimento estiver ativo."
+        description={`Mantenha até ${queueLimit} atendimentos em andamento e alterne entre as conversas enquanto aguarda o retorno.`}
         breadcrumbs={[
           { label: 'Comunicação', to: '/comunicacao' },
           { label: 'Atendimento' },
@@ -525,17 +599,23 @@ export function ComunicacaoAtendimentoPage() {
               type="primary"
               icon={<PhoneOutlined />}
               loading={startMutation.isPending}
+              disabled={queueFull}
+              title={
+                queueFull
+                  ? `Limite de ${queueLimit} atendimentos simultâneos atingido.`
+                  : undefined
+              }
               onClick={() => startMutation.mutate()}
             >
               Novo atendimento
             </Button>
-            <Button disabled={!active} onClick={openCloseModal}>
+            <Button disabled={!active || view !== 'atendimento'} onClick={openCloseModal}>
               Encerrar atendimento
             </Button>
             <Button
               danger
               icon={<StopOutlined />}
-              disabled={!active}
+              disabled={!active || view !== 'atendimento'}
               onClick={() => setInvalidateOpen(true)}
             >
               Marcar contato como inválido
@@ -544,7 +624,15 @@ export function ComunicacaoAtendimentoPage() {
         }
       />
 
-      {attendanceQuery.isError && (
+      {queueQuery.isError && (
+        <Alert
+          type="error"
+          showIcon
+          message="Não foi possível carregar a fila de atendimentos."
+          description={normalizeApiError(queueQuery.error).message}
+        />
+      )}
+      {attendanceQuery.isError && view === 'atendimento' && (
         <Alert
           type="error"
           showIcon
@@ -552,8 +640,98 @@ export function ComunicacaoAtendimentoPage() {
           description={normalizeApiError(attendanceQuery.error).message}
         />
       )}
+      {queueFull && (
+        <Alert
+          type="warning"
+          showIcon
+          message={`Limite de ${queueLimit} atendimentos simultâneos atingido.`}
+          description="Encerre um atendimento aberto antes de assumir outro contato."
+        />
+      )}
 
-      {attendanceQuery.isPending ? (
+      <Tabs
+        activeKey={view}
+        onChange={(key) => setView(key as 'atendimento' | 'abertos')}
+        items={[
+          {
+            key: 'atendimento',
+            label: 'Atendimento',
+          },
+          {
+            key: 'abertos',
+            label: (
+              <Space size={8}>
+                Atendimentos abertos
+                <Badge count={unreadCount} size="small" overflowCount={99} />
+                <Typography.Text type="secondary">
+                  {queueTotal}/{queueLimit}
+                </Typography.Text>
+              </Space>
+            ),
+          },
+        ]}
+      />
+
+      {view === 'abertos' ? (
+        <Card>
+          {queueQuery.isPending ? (
+            <Spin />
+          ) : !queueItems.length ? (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description="Nenhum atendimento aberto. Clique em Novo atendimento para assumir um contato."
+            />
+          ) : (
+            <List
+              dataSource={queueItems}
+              renderItem={(item) => (
+                <List.Item
+                  className={
+                    item.id === selectedAttendanceId ? styles.queueItemActive : styles.queueItem
+                  }
+                  onClick={() => selectAttendance(item.id, 'atendimento')}
+                >
+                  <List.Item.Meta
+                    avatar={
+                      <Badge dot={item.mensagens_nao_lidas > 0} offset={[-2, 8]}>
+                        <MessageOutlined className={styles.queueIcon} />
+                      </Badge>
+                    }
+                    title={
+                      <Space wrap>
+                        <Typography.Text strong>{item.nome_completo}</Typography.Text>
+                        <Tag color="processing">{statusLabels[item.situacao]}</Tag>
+                        {item.mensagens_nao_lidas > 0 ? (
+                          <Tag color="red">
+                            {item.mensagens_nao_lidas} não lida
+                            {item.mensagens_nao_lidas > 1 ? 's' : ''}
+                          </Tag>
+                        ) : null}
+                      </Space>
+                    }
+                    description={
+                      <Space direction="vertical" size={2}>
+                        <Typography.Text>
+                          WhatsApp: {item.whatsapp ? formatContactValue('whatsapp', item.whatsapp) : '—'}
+                        </Typography.Text>
+                        <Typography.Text type="secondary">
+                          Última mensagem: {formatQueueTimestamp(item.ultima_interacao_em)} ·{' '}
+                          {formatElapsedSince(item.ultima_interacao_em ?? item.iniciado_em)}
+                        </Typography.Text>
+                        {item.ultima_mensagem ? (
+                          <Typography.Text type="secondary" ellipsis>
+                            {item.ultima_mensagem}
+                          </Typography.Text>
+                        ) : null}
+                      </Space>
+                    }
+                  />
+                </List.Item>
+              )}
+            />
+          )}
+        </Card>
+      ) : attendanceQuery.isPending && selectedAttendanceId ? (
         <Spin />
       ) : !attendance ? (
         <Card>

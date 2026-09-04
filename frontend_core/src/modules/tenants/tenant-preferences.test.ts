@@ -5,6 +5,7 @@ import {
   getCommunityTerminologyLabels,
   getLeadershipTerminology,
   getLeadershipTerminologyLabels,
+  getMaxSimultaneousAttendances,
 } from './tenant-preferences';
 
 describe('preferências de nomenclatura do tenant', () => {
@@ -61,5 +62,16 @@ describe('preferências de nomenclatura do tenant', () => {
     const configuration = { preferencias: { nomenclatura_liderancas: 'chefes' } };
 
     expect(getLeadershipTerminology(configuration)).toBe('liderancas');
+  });
+
+  it('usa 10 atendimentos simultâneos quando a preferência não está configurada', () => {
+    expect(getMaxSimultaneousAttendances()).toBe(10);
+    expect(getMaxSimultaneousAttendances({ preferencias: {} })).toBe(10);
+  });
+
+  it('respeita o limite configurado pelo tenant', () => {
+    expect(
+      getMaxSimultaneousAttendances({ preferencias: { maximo_atendimentos_simultaneos: 6 } }),
+    ).toBe(6);
   });
 });

@@ -147,6 +147,24 @@ class AttendanceInteraction(BaseModel):
     registrado_por_nome: str | None = None
 
 
+class AttendanceQueueItem(BaseModel):
+    id: int
+    situacao: AttendanceStatus
+    iniciado_em: datetime
+    nome_completo: str
+    whatsapp: str | None = None
+    ultima_interacao_em: datetime | None = None
+    ultima_mensagem: str | None = None
+    ultima_direcao: Literal["entrada", "saida"] | None = None
+    mensagens_nao_lidas: int = 0
+
+
+class AttendanceQueue(BaseModel):
+    itens: list[AttendanceQueueItem] = Field(default_factory=list)
+    total: int = 0
+    limite: int = 10
+
+
 class AttendanceResponse(BaseModel):
     id: int
     tenant_id: int

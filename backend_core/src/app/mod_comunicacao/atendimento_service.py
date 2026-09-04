@@ -11,6 +11,8 @@ from app.mod_comunicacao.atendimento_schemas import (
     AttendanceInteractionInput,
     AttendanceInvalidate,
     AttendancePersonUpdate,
+    AttendanceQueue,
+    AttendanceQueueItem,
     AttendanceResponse,
     AttendanceUpdate,
     CommunicationChannel,
@@ -73,13 +75,30 @@ class AtendimentoService:
             return None
         return await self._hydrate(actor, row)
 
+    async def open_queue(self, actor: RequestActor) -> AttendanceQueue:
+        self.ensure_operator(actor)
+        limite = await self.repository.simultaneous_limit(actor.tenant_id)
+        itens = await self.repository.list_open_queue(actor.tenant_id, actor.user_id)
+        return AttendanceQueue(
+            itens=[AttendanceQueueItem.model_validate(item) for item in itens],
+            total=len(itens),
+            limite=limite,
+        )
+
     async def start(
         self, actor: RequestActor, campaign_header: str | None
     ) -> AttendanceResponse:
         self.ensure_operator(actor)
-        existing = await self.repository.active_for_user(actor.tenant_id, actor.user_id)
-        if existing is not None:
-            return await self._hydrate(actor, existing)
+        await self.repository.lock_operator_queue(actor.tenant_id, actor.user_id)
+        limite = await self.repository.simultaneous_limit(actor.tenant_id)
+        abertos = await self.repository.count_active_for_user(actor.tenant_id, actor.user_id)
+        if abertos >= limite:
+            raise BusinessRuleError(
+                f"Limite de {limite} atendimentos simultaneos atingido. "
+                "Encerre um atendimento aberto antes de assumir outro.",
+                code="attendance_queue_limit_reached",
+                details={"limite": limite, "abertos": abertos},
+            )
         campaign_id = await self.campaign_id(actor, campaign_header)
         person_id = await self.repository.pick_eligible_person(actor.tenant_id)
         if person_id is None:
@@ -104,6 +123,14 @@ class AtendimentoService:
 
     async def get(self, actor: RequestActor, attendance_id: int) -> AttendanceResponse:
         row = await self._owned(actor, attendance_id, operator_only=False)
+        if (
+            "telefonista" in actor.profiles
+            and int(row["atendente_usuario_id"]) == actor.user_id
+            and row.get("situacao") == "em_atendimento"
+            and row.get("finalizado_em") is None
+        ):
+            await self.repository.mark_viewed(actor.tenant_id, actor.user_id, attendance_id)
+            await self.repository.commit()
         return await self._hydrate(actor, row)
 
     async def update(

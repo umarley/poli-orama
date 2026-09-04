@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from sqlalchemy import text
@@ -14,6 +15,7 @@ from app.mod_comunicacao.atendimento_schemas import (
     IndicatorFilters,
 )
 from app.schemas.cadastro import PessoaContatoCreate, PessoaContatoUpdate
+from app.tenants.preferences import maximo_atendimentos_simultaneos
 
 
 class AtendimentoRepository:
@@ -137,17 +139,136 @@ class AtendimentoRepository:
             )
         )
 
+    async def simultaneous_limit(self, tenant_id: int) -> int:
+        raw = await self.session.scalar(
+            text(
+                """
+                SELECT preferencias
+                  FROM public.tenant_configuracao
+                 WHERE tenant_id = :tenant_id
+                """
+            ),
+            {"tenant_id": tenant_id},
+        )
+        if isinstance(raw, dict):
+            preferencias = raw
+        elif isinstance(raw, str):
+            preferencias = json.loads(raw)
+        else:
+            preferencias = {}
+        return maximo_atendimentos_simultaneos(preferencias)
+
+    async def count_active_for_user(self, tenant_id: int, user_id: int) -> int:
+        count = await self.session.scalar(
+            text(
+                """
+                SELECT count(*)::int
+                  FROM comunicacao.atendimento_eleitor
+                 WHERE tenant_id = :tenant_id
+                   AND atendente_usuario_id = :user_id
+                   AND situacao = 'em_atendimento'
+                   AND finalizado_em IS NULL
+                """
+            ),
+            {"tenant_id": tenant_id, "user_id": user_id},
+        )
+        return int(count or 0)
+
+    async def lock_operator_queue(self, tenant_id: int, user_id: int) -> None:
+        await self.session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
+            {"lock_key": f"attendance-queue:{tenant_id}:{user_id}"},
+        )
+
     async def active_for_user(self, tenant_id: int, user_id: int) -> dict[str, Any] | None:
-        return await self._one(
-            self._attendance_select()
-            + """
+        queue = await self.list_open_queue(tenant_id, user_id)
+        if not queue:
+            return None
+        return await self.get_attendance(tenant_id, int(queue[0]["id"]))
+
+    async def list_open_queue(self, tenant_id: int, user_id: int) -> list[dict[str, Any]]:
+        return await self._all(
+            """
+            SELECT a.id,
+                   a.situacao,
+                   a.iniciado_em,
+                   p.nome_completo,
+                   COALESCE(whatsapp.valor, celular.valor, telefone.valor) AS whatsapp,
+                   last_i.data_interacao AS ultima_interacao_em,
+                   last_i.conteudo AS ultima_mensagem,
+                   last_i.direcao AS ultima_direcao,
+                   COALESCE(unread.quantidade, 0) AS mensagens_nao_lidas
+              FROM comunicacao.atendimento_eleitor a
+              JOIN cadastro.pessoa p
+                ON p.id = a.pessoa_id AND p.tenant_id = a.tenant_id
+              LEFT JOIN LATERAL (
+                    SELECT pc.valor
+                      FROM cadastro.pessoa_contato pc
+                     WHERE pc.tenant_id = a.tenant_id
+                       AND pc.pessoa_id = a.pessoa_id
+                       AND pc.tipo_contato = 'whatsapp'
+                     ORDER BY pc.principal DESC, pc.id
+                     LIMIT 1
+              ) whatsapp ON TRUE
+              LEFT JOIN LATERAL (
+                    SELECT pc.valor
+                      FROM cadastro.pessoa_contato pc
+                     WHERE pc.tenant_id = a.tenant_id
+                       AND pc.pessoa_id = a.pessoa_id
+                       AND pc.tipo_contato = 'celular'
+                     ORDER BY pc.principal DESC, pc.id
+                     LIMIT 1
+              ) celular ON TRUE
+              LEFT JOIN LATERAL (
+                    SELECT pc.valor
+                      FROM cadastro.pessoa_contato pc
+                     WHERE pc.tenant_id = a.tenant_id
+                       AND pc.pessoa_id = a.pessoa_id
+                       AND pc.tipo_contato = 'telefone'
+                     ORDER BY pc.principal DESC, pc.id
+                     LIMIT 1
+              ) telefone ON TRUE
+              LEFT JOIN LATERAL (
+                    SELECT i.data_interacao, i.conteudo, i.direcao
+                      FROM comunicacao.interacao i
+                     WHERE i.tenant_id = a.tenant_id
+                       AND i.pessoa_id = a.pessoa_id
+                     ORDER BY i.data_interacao DESC, i.id DESC
+                     LIMIT 1
+              ) last_i ON TRUE
+              LEFT JOIN LATERAL (
+                    SELECT count(*)::int AS quantidade
+                      FROM comunicacao.interacao i
+                     WHERE i.tenant_id = a.tenant_id
+                       AND i.pessoa_id = a.pessoa_id
+                       AND i.direcao = 'entrada'
+                       AND i.data_interacao > COALESCE(a.ultima_visualizacao_em, a.iniciado_em)
+              ) unread ON TRUE
              WHERE a.tenant_id = :tenant_id
                AND a.atendente_usuario_id = :user_id
                AND a.situacao = 'em_atendimento'
                AND a.finalizado_em IS NULL
-             LIMIT 1
+             ORDER BY COALESCE(unread.quantidade, 0) > 0 DESC,
+                      COALESCE(last_i.data_interacao, a.iniciado_em) DESC,
+                      a.id DESC
             """,
             {"tenant_id": tenant_id, "user_id": user_id},
+        )
+
+    async def mark_viewed(self, tenant_id: int, user_id: int, attendance_id: int) -> None:
+        await self.session.execute(
+            text(
+                """
+                UPDATE comunicacao.atendimento_eleitor
+                   SET ultima_visualizacao_em = now()
+                 WHERE tenant_id = :tenant_id
+                   AND id = :id
+                   AND atendente_usuario_id = :user_id
+                   AND situacao = 'em_atendimento'
+                   AND finalizado_em IS NULL
+                """
+            ),
+            {"tenant_id": tenant_id, "user_id": user_id, "id": attendance_id},
         )
 
     async def get_attendance(
@@ -199,10 +320,11 @@ class AtendimentoRepository:
                     """
                     INSERT INTO comunicacao.atendimento_eleitor
                         (tenant_id, campanha_eleicao_id, pessoa_id, atendente_usuario_id,
-                         canal, situacao, resultado, iniciado_em, finalizado_em)
+                         canal, situacao, resultado, iniciado_em, finalizado_em,
+                         ultima_visualizacao_em)
                     VALUES
                         (:tenant_id, :campaign_id, :person_id, :user_id,
-                         :channel_id, 'em_atendimento', NULL, now(), NULL)
+                         :channel_id, 'em_atendimento', NULL, now(), NULL, now())
                     RETURNING id
                     """
                 ),

@@ -38,6 +38,12 @@ import {
   updateTenantConfiguration,
   uploadTenantLogo,
 } from '@/modules/tenants/tenant-service';
+import {
+  DEFAULT_MAX_SIMULTANEOUS_ATTENDANCES,
+  getMaxSimultaneousAttendances,
+  MAX_SIMULTANEOUS_ATTENDANCES,
+  MIN_SIMULTANEOUS_ATTENDANCES,
+} from '@/modules/tenants/tenant-preferences';
 import type { TenantConfiguration } from '@/modules/tenants/types';
 import { normalizeApiError } from '@/services/api/api-error';
 import { useSessionStore } from '@/stores/session-store';
@@ -47,7 +53,9 @@ import styles from './TenantPages.module.css';
 type TenantSettingsForm = Pick<
   TenantConfiguration,
   'nome_publico' | 'cor_primaria' | 'fuso_horario' | 'percentual_alerta_meta'
->;
+> & {
+  maximo_atendimentos_simultaneos: number;
+};
 
 interface SettingsCard {
   title: string;
@@ -86,7 +94,18 @@ export function TenantSettingsPage() {
     return null;
   }, [storedLogoQuery.data, storedLogoUrl]);
   const save = useMutation({
-    mutationFn: updateTenantConfiguration,
+    mutationFn: (values: Partial<TenantSettingsForm>) => {
+      const { maximo_atendimentos_simultaneos, ...configuration } = values;
+      return updateTenantConfiguration({
+        ...configuration,
+        preferencias: {
+          ...(configQuery.data?.preferencias ?? {}),
+          maximo_atendimentos_simultaneos: getMaxSimultaneousAttendances({
+            preferencias: { maximo_atendimentos_simultaneos },
+          }),
+        },
+      });
+    },
     onSuccess: async (configuration) => {
       AppToast.success('Configurações atualizadas.');
       if (tenantQuery.data) {
@@ -118,6 +137,7 @@ export function TenantSettingsPage() {
         cor_primaria,
         fuso_horario,
         percentual_alerta_meta,
+        maximo_atendimentos_simultaneos: getMaxSimultaneousAttendances(configQuery.data),
       });
     }
   }, [configQuery.data, form]);
@@ -294,6 +314,27 @@ export function TenantSettingsPage() {
                 </Form.Item>
                 <Form.Item name="percentual_alerta_meta" label="Alerta de meta (%)">
                   <InputNumber min={0} max={100} style={{ width: '100%' }} />
+                </Form.Item>
+                <Form.Item
+                  name="maximo_atendimentos_simultaneos"
+                  label="Máximo de atendimentos simultâneos por atendente"
+                  extra="Quantidade de atendimentos com situação Em atendimento que cada telefonista pode manter ao mesmo tempo."
+                  rules={[
+                    { required: true, message: 'Informe o limite de atendimentos simultâneos.' },
+                    {
+                      type: 'number',
+                      min: MIN_SIMULTANEOUS_ATTENDANCES,
+                      max: MAX_SIMULTANEOUS_ATTENDANCES,
+                      message: `Informe um valor entre ${MIN_SIMULTANEOUS_ATTENDANCES} e ${MAX_SIMULTANEOUS_ATTENDANCES}.`,
+                    },
+                  ]}
+                >
+                  <InputNumber
+                    min={MIN_SIMULTANEOUS_ATTENDANCES}
+                    max={MAX_SIMULTANEOUS_ATTENDANCES}
+                    style={{ width: '100%' }}
+                    placeholder={String(DEFAULT_MAX_SIMULTANEOUS_ATTENDANCES)}
+                  />
                 </Form.Item>
                 <Form.Item className={styles.full}>
                   <Button type="primary" htmlType="submit" loading={save.isPending}>

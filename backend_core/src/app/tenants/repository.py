@@ -18,6 +18,7 @@ from app.tenants.models import (
     Tenant,
     TenantConfiguracao,
 )
+from app.tenants.preferences import MAXIMO_ATENDIMENTOS_SIMULTANEOS_PADRAO
 from app.tenants.schemas import (
     ContratacaoCreate,
     LeadCreate,
@@ -108,7 +109,10 @@ class TenantRepository(BaseRepository[Tenant]):
             fuso_horario="America/Sao_Paulo",
             percentual_alerta_meta=Decimal("70"),
             integracoes={},
-            preferencias={"nomenclatura_liderancas": "liderancas"},
+            preferencias={
+                "nomenclatura_liderancas": "liderancas",
+                "maximo_atendimentos_simultaneos": MAXIMO_ATENDIMENTOS_SIMULTANEOS_PADRAO,
+            },
             criado_em=datetime.now(UTC),
             atualizado_em=datetime.now(UTC),
         )
@@ -323,7 +327,10 @@ class CommercialRepository(BaseRepository[PlanoAssinatura]):
             fuso_horario="America/Sao_Paulo",
             percentual_alerta_meta=Decimal("70"),
             integracoes={},
-            preferencias={"nomenclatura_liderancas": "liderancas"},
+            preferencias={
+                "nomenclatura_liderancas": "liderancas",
+                "maximo_atendimentos_simultaneos": MAXIMO_ATENDIMENTOS_SIMULTANEOS_PADRAO,
+            },
             criado_em=now,
             atualizado_em=now,
         )

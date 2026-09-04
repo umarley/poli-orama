@@ -108,6 +108,26 @@
   gap: 6px;
 }
 
+.queueItem,
+.queueItemActive {
+  cursor: pointer;
+  padding: 12px 8px;
+  border-radius: 8px;
+}
+
+.queueItem:hover {
+  background: #f5f5f5;
+}
+
+.queueItemActive {
+  background: #e6f4ff;
+}
+
+.queueIcon {
+  font-size: 20px;
+  color: #1677ff;
+}
+
 @media (max-width: 991px) {
   .grid,
   .filters,

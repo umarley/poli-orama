@@ -118,6 +118,24 @@ export interface AttendanceClosePayload {
   motivo_encerramento?: string | null;
 }
 
+export interface AttendanceQueueItem {
+  id: number;
+  situacao: AttendanceStatus;
+  iniciado_em: string;
+  nome_completo: string;
+  whatsapp: string | null;
+  ultima_interacao_em: string | null;
+  ultima_mensagem: string | null;
+  ultima_direcao: 'entrada' | 'saida' | null;
+  mensagens_nao_lidas: number;
+}
+
+export interface AttendanceQueue {
+  itens: AttendanceQueueItem[];
+  total: number;
+  limite: number;
+}
+
 export interface AttendanceIndicators {
   total_atendimentos: number;
   concluidos: number;

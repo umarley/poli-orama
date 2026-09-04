@@ -6,6 +6,7 @@ import type {
   AttendanceClosePayload,
   AttendanceIndicators,
   AttendancePersonUpdate,
+  AttendanceQueue,
   AttendanceUpdate,
   CommunicationChannel,
   RejectionReason,
@@ -25,6 +26,16 @@ export async function listRejectionReasons() {
 
 export async function getCurrentAttendance() {
   const { data } = await httpClient.get<Attendance | null>(`${base}/atendimento/atual`);
+  return data;
+}
+
+export async function listOpenAttendances() {
+  const { data } = await httpClient.get<AttendanceQueue>(`${base}/atendimento/abertos`);
+  return data;
+}
+
+export async function getAttendance(id: number) {
+  const { data } = await httpClient.get<Attendance>(`${base}/atendimento/${id}`);
   return data;
 }
 

@@ -36,6 +36,7 @@ export interface TenantPreferences extends Record<string, unknown> {
   nomenclatura_comunidades?: CommunityTerminology;
   nomenclatura_liderancas?: LeadershipTerminology;
   formulario_cadastro?: RegistrationFormPreferences;
+  maximo_atendimentos_simultaneos?: number;
 }
 
 export interface Plan {

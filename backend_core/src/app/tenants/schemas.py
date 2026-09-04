@@ -5,6 +5,13 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.tenants.preferences import (
+    MAXIMO_ATENDIMENTOS_SIMULTANEOS_MAXIMO,
+    MAXIMO_ATENDIMENTOS_SIMULTANEOS_MINIMO,
+    PREFERENCIA_FILA_ATENDIMENTO,
+    parse_maximo_atendimentos_simultaneos,
+)
+
 TenantStatus = Literal["pendente", "ativo", "suspenso", "cancelado", "trial", "inadimplente"]
 
 
@@ -84,18 +91,32 @@ class TenantConfiguracaoUpdate(BaseModel):
 
     @field_validator("preferencias")
     @classmethod
-    def force_nome_completo_obrigatorio(
-        cls, value: dict[str, Any] | None
-    ) -> dict[str, Any] | None:
+    def normalize_preferencias(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
         if not isinstance(value, dict):
             return value
-        formulario = value.get("formulario_cadastro")
-        if not isinstance(formulario, dict):
-            return value
-        return {
-            **value,
-            "formulario_cadastro": {**formulario, "nome_completo": True},
-        }
+        next_value = dict(value)
+        formulario = next_value.get("formulario_cadastro")
+        if isinstance(formulario, dict):
+            next_value["formulario_cadastro"] = {**formulario, "nome_completo": True}
+        if PREFERENCIA_FILA_ATENDIMENTO in next_value:
+            parsed = parse_maximo_atendimentos_simultaneos(
+                next_value.get(PREFERENCIA_FILA_ATENDIMENTO)
+            )
+            if parsed is None:
+                raise ValueError(
+                    "Informe um numero inteiro para o limite de atendimentos simultaneos."
+                )
+            if (
+                parsed < MAXIMO_ATENDIMENTOS_SIMULTANEOS_MINIMO
+                or parsed > MAXIMO_ATENDIMENTOS_SIMULTANEOS_MAXIMO
+            ):
+                raise ValueError(
+                    "O limite de atendimentos simultaneos deve estar entre "
+                    f"{MAXIMO_ATENDIMENTOS_SIMULTANEOS_MINIMO} e "
+                    f"{MAXIMO_ATENDIMENTOS_SIMULTANEOS_MAXIMO}."
+                )
+            next_value[PREFERENCIA_FILA_ATENDIMENTO] = parsed
+        return next_value
 
 
 class UtmSource(BaseModel):

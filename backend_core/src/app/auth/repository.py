@@ -50,15 +50,33 @@ class AuthRepository(BaseRepository[User]):
             {"tenant_id": str(tenant_id)},
         )
 
-    async def get_user_by_email(self, tenant_id: int, email: str) -> User | None:
-        user: User | None = await self.session.scalar(
-            select(User).where(
-                User.tenant_id == tenant_id,
-                func.lower(User.email) == email.lower(),
-                User.excluido_em.is_(None),
-            )
-        )
+    async def get_user_by_email(
+        self, tenant_id: int, email: str, *, include_deleted: bool = False
+    ) -> User | None:
+        conditions = [
+            User.tenant_id == tenant_id,
+            func.lower(User.email) == email.lower(),
+        ]
+        if not include_deleted:
+            conditions.append(User.excluido_em.is_(None))
+        user: User | None = await self.session.scalar(select(User).where(*conditions))
         return user
+
+    async def ensure_email_available(
+        self, tenant_id: int, email: str, *, exclude_user_id: int | None = None
+    ) -> None:
+        existing = await self.get_user_by_email(tenant_id, email, include_deleted=True)
+        if existing is None or existing.id == exclude_user_id:
+            return
+        if existing.excluido_em is not None:
+            raise BusinessRuleError(
+                "E-mail ja cadastrado para um usuario excluido.",
+                code="user_email_already_exists",
+            )
+        raise BusinessRuleError(
+            "E-mail ja cadastrado.",
+            code="user_email_already_exists",
+        )
 
     async def get_user(self, tenant_id: int, user_id: int) -> User | None:
         user: User | None = await self.session.scalar(
@@ -316,6 +334,7 @@ class AuthRepository(BaseRepository[User]):
         return user
 
     async def create_user(self, tenant_id: int, payload: UserCreate, password_hash: str) -> User:
+        await self.ensure_email_available(tenant_id, payload.email)
         now = datetime.now(UTC)
         user = User(
             uuid_publico=uuid4(),
@@ -336,18 +355,22 @@ class AuthRepository(BaseRepository[User]):
             atualizado_em=now,
         )
         self.session.add(user)
-        await self.session.flush()
+        await self._flush_user()
         await self.replace_profiles(user.id, tenant_id, payload.perfil_ids)
         return user
 
     async def update_user(self, user: User, payload: UserUpdate) -> User:
+        if payload.email is not None:
+            await self.ensure_email_available(
+                user.tenant_id, payload.email, exclude_user_id=user.id
+            )
         data = payload.model_dump(exclude_unset=True, exclude={"perfil_ids"})
         for field, value in data.items():
             setattr(user, field, value)
         user.atualizado_em = datetime.now(UTC)
         if payload.perfil_ids is not None:
             await self.replace_profiles(user.id, user.tenant_id, payload.perfil_ids)
-        await self.session.flush()
+        await self._flush_user()
         return user
 
     async def delete_user(self, user: User) -> None:
@@ -530,14 +553,26 @@ class AuthRepository(BaseRepository[User]):
         user.atualizado_em = datetime.now(UTC)
         await self.session.flush()
 
+    async def _flush_user(self) -> None:
+        try:
+            await self.session.flush()
+        except IntegrityError as exc:
+            await self.session.rollback()
+            self._raise_email_conflict(exc)
+            raise
+
     async def commit(self) -> None:
         try:
             await self.session.commit()
         except IntegrityError as exc:
             await self.session.rollback()
-            if "uq_usuario_email_tenant" in str(exc.orig):
-                raise BusinessRuleError(
-                    "Ja existe um usuario com este e-mail no tenant.",
-                    code="user_email_already_exists",
-                ) from exc
+            self._raise_email_conflict(exc)
             raise
+
+    @staticmethod
+    def _raise_email_conflict(exc: IntegrityError) -> None:
+        if "uq_usuario_email_tenant" in str(exc.orig):
+            raise BusinessRuleError(
+                "E-mail ja cadastrado.",
+                code="user_email_already_exists",
+            ) from exc

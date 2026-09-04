@@ -142,7 +142,14 @@ export function UsersPage() {
       userForm.resetFields();
       await queryClient.invalidateQueries({ queryKey: ['users'] });
     },
-    onError: (error) => AppToast.error(normalizeApiError(error).message),
+    onError: (error) => {
+      const apiErr = normalizeApiError(error);
+      const friendly: Record<string, string> = {
+        user_email_already_exists: 'Já existe um usuário com este e-mail cadastrado.',
+        weak_password: 'A senha não atende à política mínima de segurança.',
+      };
+      AppToast.error(friendly[apiErr.code] ?? apiErr.message);
+    },
   });
 
   const saveScopes = useMutation({
