@@ -83,6 +83,10 @@ from app.schemas.cadastro_operacional import (
 )
 
 
+SITE_ORIGIN_TAG_NAME = "origem-site"
+SITE_ORIGIN_NOTE = "Cadastro originado pelo site."
+
+
 class CadastroService:
     def __init__(self, repository: CadastroRepository) -> None:
         self.repository = repository
@@ -227,7 +231,17 @@ class CadastroService:
             )
         await self._validate_references(actor.tenant_id, payload)
         payload, mobile = await self._prepare_mobile_create(actor, payload)
-        origem_cadastro, fonte_dado_id = await self._prepare_integration_create(actor)
+        payload, origem_cadastro, fonte_dado_id = await self._prepare_integration_create(
+            actor, payload
+        )
+        site_tag = None
+        if actor.is_integration_session:
+            site_tag = await self.repository.get_or_create_tag_by_name(
+                actor.tenant_id,
+                SITE_ORIGIN_TAG_NAME,
+                categoria="origem",
+                descricao="Cadastros recebidos pelo site de integracao.",
+            )
         person = await self.repository.create_person(
             actor.tenant_id,
             actor.user_id,
@@ -236,6 +250,8 @@ class CadastroService:
             origem_cadastro=origem_cadastro,
             fonte_dado_id=fonte_dado_id,
         )
+        if site_tag is not None:
+            await self.repository.add_person_tag(actor.tenant_id, site_tag.id, person.id)
         await self.repository.create_duplicate_suspicions(actor.tenant_id, person, payload)
         if not self._has_assigned_leader(payload, actor):
             await self.repository.create_validation(
@@ -1442,12 +1458,15 @@ class CadastroService:
         return data, mobile
 
     async def _prepare_integration_create(
-        self, actor: RequestActor
-    ) -> tuple[str | None, int | None]:
+        self, actor: RequestActor, payload: PessoaCadastroCreate
+    ) -> tuple[PessoaCadastroCreate, str | None, int | None]:
         if not actor.is_integration_session:
-            return None, None
+            return payload, None, None
         fonte_dado_id = await self.repository.resolve_global_fonte_dado_id("site_integracao")
-        return "integracao", fonte_dado_id
+        observacoes = _with_site_origin_note(payload.observacoes)
+        if observacoes != payload.observacoes:
+            payload = payload.model_copy(update={"observacoes": observacoes})
+        return payload, "integracao", fonte_dado_id
 
     @staticmethod
     def _has_assigned_leader(
@@ -1475,3 +1494,12 @@ class CadastroService:
     def _require_merge_manager(actor: RequestActor) -> None:
         if not {"gestor", "gestor_saas"} & set(actor.profiles):
             raise AuthorizationError("Apenas gestores podem executar merge de cadastros.")
+
+
+def _with_site_origin_note(observacoes: str | None) -> str:
+    current = (observacoes or "").strip()
+    if current and SITE_ORIGIN_NOTE.lower() in current.lower():
+        return current
+    if not current:
+        return SITE_ORIGIN_NOTE
+    return f"{current}\n{SITE_ORIGIN_NOTE}"

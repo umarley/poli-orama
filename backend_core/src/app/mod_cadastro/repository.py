@@ -1417,6 +1417,45 @@ class CadastroRepository(BaseRepository[Pessoa]):
         )
         return bool(result.rowcount)
 
+    async def get_tag_by_name(self, tenant_id: int, nome: str) -> Tag | None:
+        result: Tag | None = await self.session.scalar(
+            select(Tag).where(
+                Tag.tenant_id == tenant_id,
+                func.lower(Tag.nome) == nome.strip().lower(),
+            )
+        )
+        return result
+
+    async def get_or_create_tag_by_name(
+        self,
+        tenant_id: int,
+        nome: str,
+        *,
+        categoria: str | None = None,
+        descricao: str | None = None,
+    ) -> Tag:
+        existing = await self.get_tag_by_name(tenant_id, nome)
+        if existing is not None:
+            return existing
+        item = Tag(
+            tenant_id=tenant_id,
+            nome=nome.strip(),
+            categoria=categoria,
+            descricao=descricao,
+            ativo=True,
+            criado_em=datetime.now(UTC),
+        )
+        try:
+            async with self.session.begin_nested():
+                self.session.add(item)
+                await self.session.flush()
+            return item
+        except IntegrityError:
+            existing = await self.get_tag_by_name(tenant_id, nome)
+            if existing is None:
+                raise
+            return existing
+
     async def create_tag(self, tenant_id: int, payload: TagInput) -> Tag:
         item = Tag(
             tenant_id=tenant_id,

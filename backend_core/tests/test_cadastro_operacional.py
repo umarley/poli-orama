@@ -13,7 +13,7 @@ from app.core.errors import AuthorizationError, BusinessRuleError
 from app.core.pagination import ListParams
 from app.mod_cadastro.repository import CadastroRepository
 from app.mod_cadastro.router import router
-from app.mod_cadastro.service import CadastroService
+from app.mod_cadastro.service import SITE_ORIGIN_NOTE, SITE_ORIGIN_TAG_NAME, CadastroService
 from app.schemas.cadastro import (
     EleitorCreate,
     PessoaContatoCreate,
@@ -49,12 +49,8 @@ def make_actor() -> RequestActor:
     )
 
 
-@pytest.mark.asyncio
-async def test_integration_create_marks_origem_and_fonte() -> None:
-    repository = AsyncMock()
-    repository.resolve_global_fonte_dado_id = AsyncMock(return_value=44)
-    service = CadastroService(repository)
-    actor = RequestActor(
+def _integration_actor() -> RequestActor:
+    return RequestActor(
         tenant_id=10,
         user_id=20,
         session_id=0,
@@ -64,13 +60,77 @@ async def test_integration_create_marks_origem_and_fonte() -> None:
         login_origin="integracao",
     )
 
-    origem, fonte = await service._prepare_integration_create(actor)
-    web_origem, web_fonte = await service._prepare_integration_create(make_actor())
+
+@pytest.mark.asyncio
+async def test_integration_create_marks_origem_fonte_and_observacao() -> None:
+    repository = AsyncMock()
+    repository.resolve_global_fonte_dado_id = AsyncMock(return_value=44)
+    service = CadastroService(repository)
+    actor = _integration_actor()
+    payload = PessoaCadastroCreate(nome_completo="Ana Site", observacoes="Lead do formulario")
+
+    prepared, origem, fonte = await service._prepare_integration_create(actor, payload)
+    web_payload, web_origem, web_fonte = await service._prepare_integration_create(
+        make_actor(), payload
+    )
 
     assert origem == "integracao"
     assert fonte == 44
+    assert SITE_ORIGIN_NOTE in (prepared.observacoes or "")
+    assert "Lead do formulario" in (prepared.observacoes or "")
     assert web_origem is None
     assert web_fonte is None
+    assert web_payload.observacoes == "Lead do formulario"
+
+
+@pytest.mark.asyncio
+async def test_integration_create_fills_observacao_when_missing() -> None:
+    service = CadastroService(AsyncMock())
+    payload = PessoaCadastroCreate(nome_completo="Ana Site")
+
+    prepared, _, _ = await service._prepare_integration_create(_integration_actor(), payload)
+
+    assert prepared.observacoes == SITE_ORIGIN_NOTE
+
+
+@pytest.mark.asyncio
+async def test_create_person_from_site_links_origem_site_tag() -> None:
+    person = SimpleNamespace(
+        id=55,
+        nome_completo="Ana Site",
+        nome_social=None,
+        data_nascimento=None,
+        ativo=True,
+    )
+    repository = AsyncMock()
+    repository.strong_duplicate = AsyncMock(return_value=None)
+    repository.create_person = AsyncMock(return_value=person)
+    repository.create_duplicate_suspicions = AsyncMock()
+    repository.create_validation = AsyncMock()
+    repository.audit = AsyncMock()
+    repository.commit = AsyncMock()
+    repository.resolve_global_fonte_dado_id = AsyncMock(return_value=7)
+    repository.get_or_create_tag_by_name = AsyncMock(
+        return_value=SimpleNamespace(id=3, nome=SITE_ORIGIN_TAG_NAME)
+    )
+    repository.add_person_tag = AsyncMock()
+    service = CadastroService(repository)
+    service.get_person = AsyncMock(return_value="ok")
+
+    result = await service.create_person(
+        _integration_actor(), PessoaCadastroCreate(nome_completo="Ana Site")
+    )
+
+    assert result == "ok"
+    repository.get_or_create_tag_by_name.assert_awaited_once_with(
+        10,
+        SITE_ORIGIN_TAG_NAME,
+        categoria="origem",
+        descricao="Cadastros recebidos pelo site de integracao.",
+    )
+    repository.add_person_tag.assert_awaited_once_with(10, 3, 55)
+    created_payload = repository.create_person.await_args.args[2]
+    assert created_payload.observacoes == SITE_ORIGIN_NOTE
 
 
 def test_mobile_leader_filter_is_applied_only_to_mobile_session() -> None:
