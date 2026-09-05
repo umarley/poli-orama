@@ -74,6 +74,18 @@ def token_digest(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+API_KEY_PREFIX = "plr_"
+_API_KEY_SECRET_BYTES = 32
+
+
+def generate_api_key() -> str:
+    return f"{API_KEY_PREFIX}{secrets.token_urlsafe(_API_KEY_SECRET_BYTES)}"
+
+
+def is_api_key_token(token: str) -> bool:
+    return token.startswith(API_KEY_PREFIX)
+
+
 def generate_mfa_secret() -> str:
     return pyotp.random_base32()
 

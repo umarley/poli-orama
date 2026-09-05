@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.auth.models import (
     AccessProfile,
+    ApiKey,
     Permission,
     ProfilePermission,
     TerritorialAccessPolicy,
@@ -513,6 +514,82 @@ class AuthRepository(BaseRepository[User]):
         user.tentativas_login = min(user.tentativas_login + 1, 32767)
         if user.tentativas_login >= 5:
             user.status = "bloqueado"
+        await self.session.flush()
+
+    async def get_active_api_key_by_hash(self, token_hash: str) -> ApiKey | None:
+        api_key: ApiKey | None = await self.session.scalar(
+            select(ApiKey).where(
+                ApiKey.token_api == token_hash,
+                ApiKey.ativo.is_(True),
+                ApiKey.revogada_em.is_(None),
+            )
+        )
+        return api_key
+
+    async def list_api_keys(
+        self, params: ListParams, tenant_id: int | None = None
+    ) -> tuple[list[tuple[ApiKey, Tenant]], int]:
+        statement = (
+            select(ApiKey, Tenant)
+            .join(Tenant, Tenant.id == ApiKey.tenant_id)
+            .where(Tenant.excluido_em.is_(None))
+        )
+        if tenant_id is not None:
+            statement = statement.where(ApiKey.tenant_id == tenant_id)
+        if params.query:
+            term = f"%{params.query}%"
+            statement = statement.where(
+                or_(ApiKey.nome.ilike(term), Tenant.nome.ilike(term), Tenant.slug.ilike(term))
+            )
+        total = int(
+            (await self.session.scalar(select(func.count()).select_from(statement.subquery())))
+            or 0
+        )
+        rows = await self.session.execute(
+            statement.order_by(ApiKey.criado_em.desc())
+            .offset(params.offset)
+            .limit(params.page_size)
+        )
+        return [(api_key, tenant) for api_key, tenant in rows.all()], total
+
+    async def get_api_key(self, api_key_id: int) -> ApiKey | None:
+        return await self.session.get(ApiKey, api_key_id)
+
+    async def create_api_key(
+        self,
+        *,
+        tenant_id: int,
+        nome: str,
+        token_hash: str,
+        token_prefix: str,
+        created_by: int,
+    ) -> ApiKey:
+        now = datetime.now(UTC)
+        api_key = ApiKey(
+            uuid_publico=uuid4(),
+            tenant_id=tenant_id,
+            nome=nome.strip(),
+            token_prefix=token_prefix,
+            token_api=token_hash,
+            ativo=True,
+            criado_por=created_by,
+            criado_em=now,
+            atualizado_em=now,
+        )
+        self.session.add(api_key)
+        await self.session.flush()
+        return api_key
+
+    async def revoke_api_key(self, api_key: ApiKey) -> ApiKey:
+        now = datetime.now(UTC)
+        api_key.ativo = False
+        api_key.revogada_em = now
+        api_key.atualizado_em = now
+        await self.session.flush()
+        return api_key
+
+    async def touch_api_key(self, api_key: ApiKey, now: datetime) -> None:
+        api_key.ultimo_uso_em = now
         await self.session.flush()
 
     async def set_password(

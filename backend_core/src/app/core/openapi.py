@@ -2,6 +2,10 @@ OPENAPI_TAGS = [
     {"name": "Infraestrutura", "description": "Disponibilidade e dependencias da API."},
     {"name": "Tenants", "description": "Gestao das unidades de isolamento do SaaS."},
     {"name": "Autenticacao", "description": "Login, sessao e identidade atual."},
+    {
+        "name": "Integracao",
+        "description": "Chaves de integracao para cadastro externo de pessoas.",
+    },
     {"name": "Usuarios", "description": "Usuarios, perfis e permissoes do tenant."},
     {"name": "Publico", "description": "Planos, leads e contratacoes do site publico."},
     {"name": "Cadastro", "description": "Pessoas, eleitores e liderancas."},

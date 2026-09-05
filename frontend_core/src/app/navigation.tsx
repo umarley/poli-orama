@@ -9,6 +9,7 @@ import {
   MergeCellsOutlined,
   FileTextOutlined,
   FileProtectOutlined,
+  KeyOutlined,
   SafetyCertificateOutlined,
   SettingOutlined,
   ShareAltOutlined,
@@ -160,6 +161,12 @@ export const navigationItems: NavigationItem[] = [
     key: '/admin/eleicoes',
     label: 'Eleições oficiais',
     icon: <FlagOutlined />,
+    profiles: ['gestor_saas'],
+  },
+  {
+    key: '/admin/tokens-integracao',
+    label: 'Token de integração',
+    icon: <KeyOutlined />,
     profiles: ['gestor_saas'],
   },
 ];

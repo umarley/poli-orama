@@ -142,6 +142,28 @@ class UserSession(Base):
     revogada_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class ApiKey(Base):
+    __tablename__ = "api_key"
+    __table_args__ = {"schema": "auth"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    uuid_publico: Mapped[UUID] = mapped_column(PostgreSQLUUID(as_uuid=True), unique=True)
+    tenant_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("public.tenant.id", ondelete="CASCADE")
+    )
+    nome: Mapped[str] = mapped_column(String(120))
+    token_prefix: Mapped[str] = mapped_column(String(16))
+    token_api: Mapped[str] = mapped_column(Text, unique=True)
+    ativo: Mapped[bool] = mapped_column(Boolean)
+    ultimo_uso_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revogada_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    criado_por: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("auth.usuario.id", ondelete="RESTRICT")
+    )
+    criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    atualizado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class TerritorialAccessPolicy(Base):
     __tablename__ = "politica_acesso_territorial"
     __table_args__ = {"schema": "auth"}

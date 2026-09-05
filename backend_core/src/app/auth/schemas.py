@@ -260,3 +260,38 @@ class SessionResponse(BaseModel):
     revogada_em: datetime | None
     atual: bool = False
     status: Literal["ativa", "revogada", "expirada", "expirada_inatividade"]
+
+
+class ApiKeyCreate(BaseModel):
+    tenant_id: int = Field(ge=1)
+    nome: str = Field(min_length=2, max_length=120)
+
+    @field_validator("nome")
+    @classmethod
+    def normalize_nome(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 2:
+            raise ValueError("Informe um nome com ao menos 2 caracteres.")
+        return normalized
+
+
+class ApiKeyResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    uuid_publico: UUID
+    tenant_id: int
+    tenant_nome: str
+    tenant_slug: str
+    nome: str
+    token_prefix: str
+    ativo: bool
+    ultimo_uso_em: datetime | None
+    revogada_em: datetime | None
+    criado_por: int
+    criado_em: datetime
+    atualizado_em: datetime
+
+
+class ApiKeyCreatedResponse(ApiKeyResponse):
+    token: str

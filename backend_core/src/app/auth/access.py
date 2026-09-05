@@ -9,7 +9,12 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.repository import AuthRepository
-from app.auth.security import decode_access_token, session_is_inactive, token_digest
+from app.auth.security import (
+    decode_access_token,
+    is_api_key_token,
+    session_is_inactive,
+    token_digest,
+)
 from app.core.config import get_settings
 from app.core.database import get_session
 from app.core.errors import (
@@ -26,6 +31,8 @@ _PASSWORD_CHANGE_ALLOWED_PATH_SUFFIXES = (
     "/auth/logout",
     "/auth/me",
 )
+_API_KEY_ALLOWED_PATH_SUFFIXES = ("/cadastro/pessoas",)
+_INTEGRATION_PERMISSIONS = frozenset({"cadastro.criar"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +55,10 @@ class RequestActor:
     @property
     def is_mobile_leader_session(self) -> bool:
         return self.login_origin == "app_lider"
+
+    @property
+    def is_integration_session(self) -> bool:
+        return self.login_origin == "integracao"
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +83,55 @@ class TerritorialAccess:
         return False
 
 
+def _is_api_key_allowed_path(request: Request) -> bool:
+    if request.method != "POST":
+        return False
+    path = request.url.path.rstrip("/")
+    return any(path.endswith(suffix) for suffix in _API_KEY_ALLOWED_PATH_SUFFIXES)
+
+
+async def _authenticate_api_key(
+    request: Request,
+    repository: AuthRepository,
+    token: str,
+) -> RequestActor:
+    if not _is_api_key_allowed_path(request):
+        raise AuthorizationError(
+            "Token de integracao autorizado apenas para cadastro de pessoas."
+        )
+    api_key = await repository.get_active_api_key_by_hash(token_digest(token))
+    if api_key is None or not hmac.compare_digest(api_key.token_api, token_digest(token)):
+        raise AuthenticationError("Token de integracao invalido ou revogado.")
+
+    await repository.set_tenant_context(api_key.tenant_id)
+    tenant = await repository.resolve_tenant_for_login_by_id(api_key.tenant_id)
+    if tenant is None:
+        raise AuthenticationError("Tenant da chave de integracao nao foi encontrado.")
+    if tenant.status not in {"ativo", "trial"}:
+        raise TenantInactiveError(tenant.status)
+
+    settings = get_settings()
+    now = datetime.now(UTC)
+    if (
+        api_key.ultimo_uso_em is None
+        or api_key.ultimo_uso_em + timedelta(seconds=settings.session_touch_interval_seconds)
+        <= now
+    ):
+        await repository.touch_api_key(api_key, now)
+        await repository.commit()
+        await repository.set_tenant_context(api_key.tenant_id)
+
+    return RequestActor(
+        tenant_id=api_key.tenant_id,
+        user_id=api_key.criado_por,
+        session_id=0,
+        profiles=("integracao",),
+        permissions=_INTEGRATION_PERMISSIONS,
+        token=token,
+        login_origin="integracao",
+    )
+
+
 async def get_current_user(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -79,6 +139,8 @@ async def get_current_user(
 ) -> RequestActor:
     if not token:
         raise AuthenticationError()
+    if is_api_key_token(token):
+        return await _authenticate_api_key(request, AuthRepository(session), token)
     settings = get_settings()
     claims = decode_access_token(token, settings)
     repository = AuthRepository(session)

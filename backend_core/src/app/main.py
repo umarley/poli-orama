@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.auth.api_key_router import router as api_key_router
 from app.auth.router import router as auth_router
 from app.core.config import get_settings
 from app.core.database import dispose_database
@@ -51,7 +52,8 @@ install_exception_handlers(api_app)
 api_app.include_router(health_router)
 api_app.include_router(public_router)
 api_app.include_router(auth_router, prefix=settings.api_v1_prefix)
-api_app.include_router(tenants_router, prefix=settings.api_v1_prefix)
+    api_app.include_router(api_key_router, prefix=settings.api_v1_prefix)
+    api_app.include_router(tenants_router, prefix=settings.api_v1_prefix)
 api_app.include_router(cadastro_router, prefix=settings.api_v1_prefix)
 api_app.include_router(callcenter_router, prefix=settings.api_v1_prefix)
 api_app.include_router(comunicacao_router, prefix=settings.api_v1_prefix)

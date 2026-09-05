@@ -49,6 +49,30 @@ def make_actor() -> RequestActor:
     )
 
 
+@pytest.mark.asyncio
+async def test_integration_create_marks_origem_and_fonte() -> None:
+    repository = AsyncMock()
+    repository.resolve_global_fonte_dado_id = AsyncMock(return_value=44)
+    service = CadastroService(repository)
+    actor = RequestActor(
+        tenant_id=10,
+        user_id=20,
+        session_id=0,
+        profiles=("integracao",),
+        permissions=frozenset({"cadastro.criar"}),
+        token="plr_secret",
+        login_origin="integracao",
+    )
+
+    origem, fonte = await service._prepare_integration_create(actor)
+    web_origem, web_fonte = await service._prepare_integration_create(make_actor())
+
+    assert origem == "integracao"
+    assert fonte == 44
+    assert web_origem is None
+    assert web_fonte is None
+
+
 def test_mobile_leader_filter_is_applied_only_to_mobile_session() -> None:
     filters = PessoaFiltros()
     common = {

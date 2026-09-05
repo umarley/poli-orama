@@ -332,6 +332,8 @@ class CadastroRepository(BaseRepository[Pessoa]):
         payload: PessoaCadastroCreate,
         *,
         mobile: MobileLeaderContext | None = None,
+        origem_cadastro: str | None = None,
+        fonte_dado_id: int | None = None,
     ) -> Pessoa:
         now = datetime.now(UTC)
         mobile_fields: dict[str, Any] = {}
@@ -342,6 +344,10 @@ class CadastroRepository(BaseRepository[Pessoa]):
             }
             if mobile.fonte_dado_id is not None:
                 mobile_fields["fonte_dado_id"] = mobile.fonte_dado_id
+        elif origem_cadastro:
+            mobile_fields["origem_cadastro"] = origem_cadastro
+            if fonte_dado_id is not None:
+                mobile_fields["fonte_dado_id"] = fonte_dado_id
         person = Pessoa(
             uuid_publico=uuid4(),
             tenant_id=tenant_id,

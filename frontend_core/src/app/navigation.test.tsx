@@ -38,9 +38,14 @@ describe('navegação por permissão', () => {
 
   it('exibe administração SaaS somente ao perfil correspondente', () => {
     const tenants = navigationItems.find((item) => item.key === '/admin/tenants');
+    const tokens = navigationItems.find((item) => item.key === '/admin/tokens-integracao');
     expect(tenants).toBeDefined();
+    expect(tokens).toBeDefined();
+    expect(tokens?.label).toBe('Token de integração');
     expect(canViewNavigationItem(tenants!, [], ['gestor_saas'])).toBe(true);
+    expect(canViewNavigationItem(tokens!, [], ['gestor_saas'])).toBe(true);
     expect(canViewNavigationItem(tenants!, [], ['gestor'])).toBe(false);
+    expect(canViewNavigationItem(tokens!, [], ['gestor'])).toBe(false);
   });
 
   it('usa o item mais específico em rotas internas de cadastro', () => {

@@ -227,11 +227,14 @@ class CadastroService:
             )
         await self._validate_references(actor.tenant_id, payload)
         payload, mobile = await self._prepare_mobile_create(actor, payload)
+        origem_cadastro, fonte_dado_id = await self._prepare_integration_create(actor)
         person = await self.repository.create_person(
             actor.tenant_id,
             actor.user_id,
             payload,
             mobile=mobile,
+            origem_cadastro=origem_cadastro,
+            fonte_dado_id=fonte_dado_id,
         )
         await self.repository.create_duplicate_suspicions(actor.tenant_id, person, payload)
         if not self._has_assigned_leader(payload, actor):
@@ -1437,6 +1440,14 @@ class CadastroService:
             fonte_dado_id=fonte_dado_id,
         )
         return data, mobile
+
+    async def _prepare_integration_create(
+        self, actor: RequestActor
+    ) -> tuple[str | None, int | None]:
+        if not actor.is_integration_session:
+            return None, None
+        fonte_dado_id = await self.repository.resolve_global_fonte_dado_id("site_integracao")
+        return "integracao", fonte_dado_id
 
     @staticmethod
     def _has_assigned_leader(

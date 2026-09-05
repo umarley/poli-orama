@@ -38,6 +38,7 @@ import { ImportsPage } from '@/pages/etl/ImportsPage';
 import { GoalDetailPage } from '@/pages/metas/GoalDetailPage';
 import { GoalsPage } from '@/pages/metas/GoalsPage';
 import { NotFoundPage } from '@/pages/shared/NotFoundPage';
+import { AdminApiKeysPage } from '@/pages/admin/AdminApiKeysPage';
 import { AdminTenantsPage } from '@/pages/tenants/AdminTenantsPage';
 import { SubscriptionPage } from '@/pages/tenants/SubscriptionPage';
 import { TenantSettingsPage } from '@/pages/tenants/TenantSettingsPage';
@@ -279,6 +280,14 @@ export const router = createBrowserRouter([
         element: (
           <SaasAdminRoute>
             <AdminElectionsPage />
+          </SaasAdminRoute>
+        ),
+      },
+      {
+        path: 'admin/tokens-integracao',
+        element: (
+          <SaasAdminRoute>
+            <AdminApiKeysPage />
           </SaasAdminRoute>
         ),
       },
