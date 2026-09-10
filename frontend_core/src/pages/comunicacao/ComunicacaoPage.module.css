@@ -47,6 +47,17 @@
   gap: 12px;
 }
 
+.searchFilters {
+  display: grid;
+  grid-template-columns: minmax(200px, 1.4fr) minmax(180px, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.searchResults {
+  margin-top: 4px;
+}
+
 .filterActions {
   display: flex;
   grid-column: 1 / -1;
@@ -131,6 +142,7 @@
 @media (max-width: 991px) {
   .grid,
   .filters,
+  .searchFilters,
   .layout {
     grid-template-columns: 1fr;
   }

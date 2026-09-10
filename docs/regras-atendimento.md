@@ -17,7 +17,7 @@ A contabilização de votos confirmados a partir do atendimento está em
 
 | Perfil | Pode |
 |---|---|
-| `telefonista` | Assumir, cadastrar atendimento manual, operar, encerrar e invalidar atendimentos da própria fila |
+| `telefonista` | Assumir, cadastrar atendimento manual, buscar e retomar sem resposta/interrompido, operar, encerrar e invalidar atendimentos da própria fila |
 | `gestor` | Consultar atendimento e indicadores; não assume pessoa na fila |
 
 Somente o telefonista dono do atendimento edita cadastro, contatos, documentos e
@@ -89,6 +89,45 @@ Antes de criar, o sistema bloqueia quando:
 
 Se o cadastro for aceito, a pessoa entra imediatamente em `em_atendimento` com o
 telefonista autenticado.
+
+## Busca e retomada
+
+Quando o atendimento é encerrado como `sem_resposta` (ou `interrompido`) e o
+eleitor responde depois, o telefonista pode recuperar o **mesmo** registro na
+tela operacional.
+
+A seção **Buscar atendimento anterior** fica entre os botões de ação e as abas.
+Informe nome (mínimo 2 letras) e/ou telefone (mínimo 8 dígitos). A busca
+`GET /api/v1/comunicacao/atendimento/buscar` lista até 20 atendimentos da
+campanha atual, priorizando `sem_resposta` e `interrompido`.
+
+`POST /api/v1/comunicacao/atendimento/{id}/retomar` reabre o atendimento:
+
+- volta `situacao` para `em_atendimento`, limpa `finalizado_em` e `resultado`;
+- atribui o registro ao telefonista autenticado;
+- grava a interação "Reabertura de atendimento";
+- devolve o atendimento hidratado para a tela operacional.
+
+### Pode retomar
+
+| Situação | Efeito |
+|---|---|
+| `sem_resposta` | Reabre o mesmo atendimento |
+| `interrompido` | Reabre o mesmo atendimento |
+| `em_atendimento` do próprio telefonista | Só abre o registro já da fila |
+
+### Não retoma
+
+| Condição | Efeito |
+|---|---|
+| `concluido` ou `numero_invalido` | Encerramento definitivo |
+| Pessoa com outro atendimento `concluido`/`numero_invalido` | Pessoa já saiu do fluxo operacional |
+| Pessoa já `em_atendimento` | Não pode haver dois abertos |
+| Cadastro inativo ou excluído | Fora do fluxo |
+| Limite simultâneo atingido | Precisa encerrar outro da fila antes |
+
+A retomada **não** cria um atendimento novo. O sorteio continua criando um
+registro novo quando a pessoa volta à fila.
 
 ## Retorno à fila (sorteio)
 
@@ -198,6 +237,8 @@ Isoladas por tenant:
 - `GET /api/v1/comunicacao/atendimento/abertos`
 - `POST /api/v1/comunicacao/atendimento/iniciar`
 - `POST /api/v1/comunicacao/atendimento/manual`
+- `GET /api/v1/comunicacao/atendimento/buscar`
+- `POST /api/v1/comunicacao/atendimento/{id}/retomar`
 - `GET /api/v1/comunicacao/atendimento/{id}`
 - `PATCH /api/v1/comunicacao/atendimento/{id}`
 - `POST /api/v1/comunicacao/atendimento/{id}/encerrar`

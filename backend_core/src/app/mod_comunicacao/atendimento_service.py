@@ -23,6 +23,9 @@ from app.mod_comunicacao.atendimento_schemas import (
     AttendanceQueue,
     AttendanceQueueItem,
     AttendanceResponse,
+    AttendanceSearchFilters,
+    AttendanceSearchItem,
+    AttendanceSearchResult,
     AttendanceUpdate,
     CommunicationChannel,
     IndicatorFilters,
@@ -156,6 +159,146 @@ class AtendimentoService:
             },
         )
         return await self._open_attendance(actor, campaign_id, channel_id, person_id)
+
+    async def search(
+        self,
+        actor: RequestActor,
+        filters: AttendanceSearchFilters,
+        campaign_header: str | None,
+    ) -> AttendanceSearchResult:
+        self.ensure_operator(actor)
+        campaign_id = await self.campaign_id(actor, campaign_header)
+        rows = await self.repository.search_attendances(
+            actor.tenant_id, campaign_id, filters.nome, filters.telefone
+        )
+        return AttendanceSearchResult(
+            itens=[self._search_item(actor, row) for row in rows]
+        )
+
+    async def resume(
+        self, actor: RequestActor, attendance_id: int
+    ) -> AttendanceResponse:
+        self.ensure_operator(actor)
+        row = await self.repository.get_attendance(actor.tenant_id, attendance_id)
+        if row is None:
+            raise ResourceNotFoundError("Atendimento", attendance_id)
+        if row.get("situacao") == "em_atendimento" and row.get("finalizado_em") is None:
+            if int(row["atendente_usuario_id"]) == actor.user_id:
+                return await self._hydrate(actor, row)
+            raise BusinessRuleError(
+                "Este atendimento ja esta aberto com outro telefonista.",
+                code="attendance_open_other",
+                details={"atendente_nome": row.get("atendente_nome")},
+            )
+        if row.get("situacao") not in {"sem_resposta", "interrompido"}:
+            raise BusinessRuleError(
+                "Somente atendimentos sem resposta ou interrompidos podem ser retomados.",
+                code="attendance_not_resumable",
+            )
+        person_id = int(row["pessoa_id"])
+        if not await self.repository.person_is_active(actor.tenant_id, person_id):
+            raise BusinessRuleError(
+                "Este cadastro nao esta ativo e nao pode ser retomado.",
+                code="person_inactive",
+            )
+        opened = await self.repository.find_open_for_person(actor.tenant_id, person_id)
+        if opened is not None:
+            if int(opened["atendente_usuario_id"]) == actor.user_id:
+                raise BusinessRuleError(
+                    "Este eleitor ja esta na sua fila de atendimentos.",
+                    code="person_already_in_own_queue",
+                    details={"atendimento_id": opened["id"]},
+                )
+            raise BusinessRuleError(
+                "Este eleitor ja esta em atendimento com outro telefonista.",
+                code="person_in_other_attendance",
+                details={"atendente_nome": opened.get("atendente_nome")},
+            )
+        if await self.repository.person_has_terminal_attendance(actor.tenant_id, person_id):
+            raise BusinessRuleError(
+                "Este eleitor ja possui atendimento concluido ou numero invalido.",
+                code="person_already_closed",
+            )
+        await self.repository.lock_operator_queue(actor.tenant_id, actor.user_id)
+        limite = await self.repository.simultaneous_limit(actor.tenant_id)
+        abertos = await self.repository.count_active_for_user(actor.tenant_id, actor.user_id)
+        if abertos >= limite:
+            raise BusinessRuleError(
+                f"Limite de {limite} atendimentos simultaneos atingido. "
+                "Encerre um atendimento aberto antes de retomar outro.",
+                code="attendance_queue_limit_reached",
+                details={"limite": limite, "abertos": abertos},
+            )
+        updated = await self.repository.reopen_attendance(
+            actor.tenant_id, attendance_id, actor.user_id
+        )
+        if updated is None or updated.get("situacao") != "em_atendimento":
+            raise BusinessRuleError(
+                "Nao foi possivel retomar este atendimento.",
+                code="attendance_resume_failed",
+            )
+        await self.repository.add_interaction(
+            actor.tenant_id,
+            actor.user_id,
+            person_id,
+            "Reabertura de atendimento",
+            "Atendimento retomado para registrar a resposta do eleitor.",
+            None,
+            int(updated["canal"]) if updated.get("canal") is not None else None,
+        )
+        await self.audit.record(
+            action="editar",
+            tenant_id=actor.tenant_id,
+            user_id=actor.user_id,
+            schema_name="comunicacao",
+            table_name="atendimento_eleitor",
+            record_id=attendance_id,
+            before={"situacao": row.get("situacao"), "finalizado_em": row.get("finalizado_em")},
+            after={"situacao": "em_atendimento", "finalizado_em": None},
+        )
+        await self.repository.commit()
+        return await self._hydrate(actor, updated)
+
+    def _search_item(self, actor: RequestActor, row: dict[str, Any]) -> AttendanceSearchItem:
+        situacao = str(row.get("situacao") or "")
+        owner_id = int(row["atendente_usuario_id"])
+        open_id = row.get("atendimento_aberto_id")
+        open_owner = row.get("atendimento_aberto_atendente_id")
+        pessoa_ativa = bool(row.get("pessoa_ativa"))
+        terminal = bool(row.get("possui_encerramento_definitivo"))
+        pode_abrir = (
+            situacao == "em_atendimento"
+            and row.get("finalizado_em") is None
+            and owner_id == actor.user_id
+        )
+        pode_retomar = False
+        bloqueio: str | None = None
+        if pode_abrir:
+            bloqueio = None
+        elif situacao == "em_atendimento":
+            bloqueio = (
+                f"Em atendimento com {row.get('atendente_nome') or 'outro telefonista'}."
+            )
+        elif situacao not in {"sem_resposta", "interrompido"}:
+            bloqueio = "Este atendimento nao pode ser retomado."
+        elif not pessoa_ativa:
+            bloqueio = "Este cadastro nao esta ativo."
+        elif terminal:
+            bloqueio = "Este eleitor ja possui atendimento concluido ou numero invalido."
+        elif open_id is not None and int(open_owner or 0) == actor.user_id:
+            bloqueio = "Este eleitor ja esta na sua fila de atendimentos."
+        elif open_id is not None:
+            bloqueio = "Este eleitor ja esta em atendimento com outro telefonista."
+        else:
+            pode_retomar = True
+        return AttendanceSearchItem.model_validate(
+            {
+                **row,
+                "pode_abrir": pode_abrir,
+                "pode_retomar": pode_retomar,
+                "bloqueio": bloqueio,
+            }
+        )
 
     async def _prepare_start(
         self, actor: RequestActor, campaign_header: str | None

@@ -449,6 +449,197 @@ class AtendimentoRepository:
         assert item is not None
         return item
 
+    async def search_attendances(
+        self,
+        tenant_id: int,
+        campaign_id: int,
+        nome: str | None,
+        telefone: str | None,
+    ) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {
+            "tenant_id": tenant_id,
+            "campaign_id": campaign_id,
+        }
+        clauses = [
+            "a.tenant_id = :tenant_id",
+            "a.campanha_eleicao_id = :campaign_id",
+        ]
+        if nome:
+            clauses.append("p.nome_completo ILIKE :nome")
+            params["nome"] = f"%{nome}%"
+        if telefone:
+            variants = self.phone_digits(telefone)
+            phone_1, phone_2, phone_3 = (variants + variants[:1] * 2)[:3]
+            params.update(
+                {
+                    "phone_1": phone_1,
+                    "phone_2": phone_2,
+                    "phone_3": phone_3,
+                    "phone_local": telefone,
+                }
+            )
+            clauses.append(
+                """
+                EXISTS (
+                    SELECT 1
+                      FROM cadastro.pessoa_contato pc
+                     WHERE pc.tenant_id = p.tenant_id
+                       AND pc.pessoa_id = p.id
+                       AND pc.tipo_contato IN ('telefone', 'celular', 'whatsapp')
+                       AND (
+                            regexp_replace(pc.valor, '\\D', '', 'g')
+                                IN (:phone_1, :phone_2, :phone_3)
+                            OR regexp_replace(pc.valor, '\\D', '', 'g')
+                                LIKE '%' || :phone_local
+                       )
+                )
+                """
+            )
+        return await self._all(
+            f"""
+            SELECT a.id,
+                   a.pessoa_id,
+                   p.nome_completo,
+                   COALESCE(whatsapp.valor, celular.valor, telefone.valor) AS telefone,
+                   a.situacao,
+                   a.iniciado_em,
+                   a.finalizado_em,
+                   a.atendente_usuario_id,
+                   COALESCE(u.nome, 'Telefonista') AS atendente_nome,
+                   (p.ativo AND p.excluido_em IS NULL) AS pessoa_ativa,
+                   EXISTS (
+                        SELECT 1
+                          FROM comunicacao.atendimento_eleitor terminal
+                         WHERE terminal.tenant_id = a.tenant_id
+                           AND terminal.pessoa_id = a.pessoa_id
+                           AND terminal.situacao IN ('concluido', 'numero_invalido')
+                   ) AS possui_encerramento_definitivo,
+                   aberto.id AS atendimento_aberto_id,
+                   aberto.atendente_usuario_id AS atendimento_aberto_atendente_id
+              FROM comunicacao.atendimento_eleitor a
+              JOIN cadastro.pessoa p
+                ON p.id = a.pessoa_id AND p.tenant_id = a.tenant_id
+         LEFT JOIN auth.usuario u ON u.id = a.atendente_usuario_id
+         LEFT JOIN comunicacao.atendimento_eleitor aberto
+                ON aberto.tenant_id = a.tenant_id
+               AND aberto.pessoa_id = a.pessoa_id
+               AND aberto.situacao = 'em_atendimento'
+               AND aberto.finalizado_em IS NULL
+              LEFT JOIN LATERAL (
+                    SELECT pc.valor
+                      FROM cadastro.pessoa_contato pc
+                     WHERE pc.tenant_id = a.tenant_id
+                       AND pc.pessoa_id = a.pessoa_id
+                       AND pc.tipo_contato = 'whatsapp'
+                     ORDER BY pc.principal DESC, pc.id
+                     LIMIT 1
+              ) whatsapp ON TRUE
+              LEFT JOIN LATERAL (
+                    SELECT pc.valor
+                      FROM cadastro.pessoa_contato pc
+                     WHERE pc.tenant_id = a.tenant_id
+                       AND pc.pessoa_id = a.pessoa_id
+                       AND pc.tipo_contato = 'celular'
+                     ORDER BY pc.principal DESC, pc.id
+                     LIMIT 1
+              ) celular ON TRUE
+              LEFT JOIN LATERAL (
+                    SELECT pc.valor
+                      FROM cadastro.pessoa_contato pc
+                     WHERE pc.tenant_id = a.tenant_id
+                       AND pc.pessoa_id = a.pessoa_id
+                       AND pc.tipo_contato = 'telefone'
+                     ORDER BY pc.principal DESC, pc.id
+                     LIMIT 1
+              ) telefone ON TRUE
+             WHERE {" AND ".join(clauses)}
+             ORDER BY CASE a.situacao
+                        WHEN 'sem_resposta' THEN 0
+                        WHEN 'interrompido' THEN 1
+                        WHEN 'em_atendimento' THEN 2
+                        ELSE 3
+                      END,
+                      a.iniciado_em DESC,
+                      a.id DESC
+             LIMIT 20
+            """,
+            params,
+        )
+
+    async def find_open_for_person(
+        self, tenant_id: int, person_id: int
+    ) -> dict[str, Any] | None:
+        return await self._one(
+            """
+            SELECT a.id,
+                   a.atendente_usuario_id,
+                   COALESCE(u.nome, 'outro telefonista') AS atendente_nome
+              FROM comunicacao.atendimento_eleitor a
+         LEFT JOIN auth.usuario u ON u.id = a.atendente_usuario_id
+             WHERE a.tenant_id = :tenant_id
+               AND a.pessoa_id = :person_id
+               AND a.situacao = 'em_atendimento'
+               AND a.finalizado_em IS NULL
+             LIMIT 1
+            """,
+            {"tenant_id": tenant_id, "person_id": person_id},
+        )
+
+    async def person_has_terminal_attendance(
+        self, tenant_id: int, person_id: int
+    ) -> bool:
+        exists = await self.session.scalar(
+            text(
+                """
+                SELECT 1
+                  FROM comunicacao.atendimento_eleitor
+                 WHERE tenant_id = :tenant_id
+                   AND pessoa_id = :person_id
+                   AND situacao IN ('concluido', 'numero_invalido')
+                 LIMIT 1
+                """
+            ),
+            {"tenant_id": tenant_id, "person_id": person_id},
+        )
+        return exists is not None
+
+    async def person_is_active(self, tenant_id: int, person_id: int) -> bool:
+        active = await self.session.scalar(
+            text(
+                """
+                SELECT p.ativo AND p.excluido_em IS NULL
+                  FROM cadastro.pessoa p
+                 WHERE p.tenant_id = :tenant_id AND p.id = :person_id
+                """
+            ),
+            {"tenant_id": tenant_id, "person_id": person_id},
+        )
+        return bool(active)
+
+    async def reopen_attendance(
+        self,
+        tenant_id: int,
+        attendance_id: int,
+        user_id: int,
+    ) -> dict[str, Any] | None:
+        await self.session.execute(
+            text(
+                """
+                UPDATE comunicacao.atendimento_eleitor
+                   SET situacao = 'em_atendimento',
+                       finalizado_em = NULL,
+                       resultado = NULL,
+                       atendente_usuario_id = :user_id,
+                       ultima_visualizacao_em = now()
+                 WHERE tenant_id = :tenant_id
+                   AND id = :id
+                   AND situacao IN ('sem_resposta', 'interrompido')
+                """
+            ),
+            {"tenant_id": tenant_id, "id": attendance_id, "user_id": user_id},
+        )
+        return await self.get_attendance(tenant_id, attendance_id)
+
     async def update_attendance(
         self, tenant_id: int, attendance_id: int, payload: AttendanceUpdate
     ) -> dict[str, Any] | None:

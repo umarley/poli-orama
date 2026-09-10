@@ -29,6 +29,8 @@ from app.mod_comunicacao.atendimento_schemas import (
     AttendanceReportFilters,
     AttendanceResponse,
     AttendanceResult,
+    AttendanceSearchFilters,
+    AttendanceSearchResult,
     AttendanceUpdate,
     CommunicationChannel,
     IndicatorFilters,
@@ -124,6 +126,28 @@ async def start_manual_attendance(
     campaign: CampaignHeader = None,
 ) -> AttendanceResponse:
     return await service.start_manual(actor, payload, campaign)
+
+
+@router.get("/atendimento/buscar", response_model=AttendanceSearchResult)
+async def search_attendances(
+    actor: Operator,
+    service: Annotated[AtendimentoService, Depends(get_attendance_service)],
+    nome: str | None = Query(default=None, max_length=180),
+    telefone: str | None = Query(default=None, max_length=32),
+    campaign: CampaignHeader = None,
+) -> AttendanceSearchResult:
+    return await service.search(
+        actor, AttendanceSearchFilters(nome=nome, telefone=telefone), campaign
+    )
+
+
+@router.post("/atendimento/{attendance_id}/retomar", response_model=AttendanceResponse)
+async def resume_attendance(
+    actor: Operator,
+    service: Annotated[AtendimentoService, Depends(get_attendance_service)],
+    attendance_id: int = Path(ge=1),
+) -> AttendanceResponse:
+    return await service.resume(actor, attendance_id)
 
 
 @router.get("/atendimento/{attendance_id}", response_model=AttendanceResponse)

@@ -4,6 +4,7 @@ import {
   MessageOutlined,
   PhoneOutlined,
   PlusOutlined,
+  SearchOutlined,
   StopOutlined,
   UserAddOutlined,
   UserOutlined,
@@ -54,6 +55,8 @@ import {
   listAttendanceChannels,
   listOpenAttendances,
   listRejectionReasons,
+  resumeAttendance,
+  searchAttendances,
   startAttendance,
   startManualAttendance,
   updateAttendance,
@@ -65,6 +68,7 @@ import type {
   AttendanceClosePayload,
   AttendanceManualPayload,
   AttendancePersonUpdate,
+  AttendanceSearchItem,
   AttendanceStatus,
   CommunicationChannel,
   VoteIntention,
@@ -125,6 +129,14 @@ const statusLabels: Record<AttendanceStatus, string> = {
   sem_resposta: 'Sem resposta',
   numero_invalido: 'Número inválido',
   interrompido: 'Interrompido',
+};
+
+const statusTagColor: Record<AttendanceStatus, string> = {
+  em_atendimento: 'processing',
+  concluido: 'success',
+  sem_resposta: 'warning',
+  numero_invalido: 'error',
+  interrompido: 'default',
 };
 
 const SELECTED_ATTENDANCE_KEY = 'comunicacao-atendimento-selecionado';
@@ -215,6 +227,11 @@ interface ManualFormValues {
   sexo?: 'M' | 'F' | 'O' | 'N' | null;
 }
 
+interface SearchFormValues {
+  nome?: string;
+  telefone?: string;
+}
+
 type ContactEditor =
   | { type: 'contact'; item: PessoaContato }
   | { type: 'new-contact' };
@@ -244,6 +261,8 @@ export function ComunicacaoAtendimentoPage() {
   const [contactForm] = Form.useForm<ContactFormValues>();
   const [invalidateForm] = Form.useForm<{ motivo_inativacao: string }>();
   const [manualForm] = Form.useForm<ManualFormValues>();
+  const [searchForm] = Form.useForm<SearchFormValues>();
+  const [searchResults, setSearchResults] = useState<AttendanceSearchItem[] | null>(null);
   const [closeOpen, setCloseOpen] = useState(false);
   const [invalidateOpen, setInvalidateOpen] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
@@ -319,10 +338,11 @@ export function ComunicacaoAtendimentoPage() {
     if (!queueQuery.data) return;
     const items = queueQuery.data.itens;
     if (selectedAttendanceId && items.some((item) => item.id === selectedAttendanceId)) return;
+    if (selectedAttendanceId && queueQuery.isFetching) return;
     const nextId = items[0]?.id ?? null;
     setSelectedAttendanceId(nextId);
     persistSelectedAttendanceId(nextId);
-  }, [queueQuery.data, selectedAttendanceId]);
+  }, [queueQuery.data, queueQuery.isFetching, selectedAttendanceId]);
 
   useEffect(() => {
     if (!attendance) {
@@ -386,6 +406,40 @@ export function ComunicacaoAtendimentoPage() {
     mutationFn: startAttendance,
     onSuccess: async (result) => {
       AppToast.success(`Atendimento iniciado com ${result.pessoa.nome_completo}.`);
+      selectAttendance(result.id, 'atendimento');
+      await refreshAttendanceQueries();
+    },
+    onError: (error) => AppToast.error(normalizeApiError(error).message),
+  });
+
+  const searchMutation = useMutation({
+    mutationFn: (values: SearchFormValues) =>
+      searchAttendances({
+        nome: values.nome?.trim() || undefined,
+        telefone: values.telefone?.replace(/\D/g, '') || undefined,
+      }),
+    onSuccess: (data) => setSearchResults(data.itens),
+    onError: (error) => AppToast.error(normalizeApiError(error).message),
+  });
+
+  const resumeMutation = useMutation({
+    mutationFn: (id: number) => resumeAttendance(id),
+    onSuccess: async (result) => {
+      AppToast.success(`Atendimento retomado com ${result.pessoa.nome_completo}.`);
+      setSearchResults((current) =>
+        current?.map((item) =>
+          item.id === result.id
+            ? {
+                ...item,
+                situacao: 'em_atendimento',
+                finalizado_em: null,
+                pode_abrir: true,
+                pode_retomar: false,
+                bloqueio: null,
+              }
+            : item,
+        ) ?? null,
+      );
       selectAttendance(result.id, 'atendimento');
       await refreshAttendanceQueries();
     },
@@ -700,6 +754,152 @@ export function ComunicacaoAtendimentoPage() {
           description="Encerre um atendimento aberto antes de assumir outro contato."
         />
       )}
+
+      <Card title="Buscar atendimento anterior">
+        <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+          Use quando o eleitor responder depois do encerramento sem resposta. Informe o
+          nome e/ou o telefone para localizar o atendimento e retomá-lo nesta tela.
+        </Typography.Paragraph>
+        <Form
+          form={searchForm}
+          layout="vertical"
+          requiredMark={false}
+          onFinish={(values) => {
+            const nome = values.nome?.trim() ?? '';
+            const telefone = String(values.telefone ?? '').replace(/\D/g, '');
+            if (nome.length < 2 && telefone.length < 8) {
+              AppToast.error('Informe o nome ou o telefone para buscar.');
+              return;
+            }
+            searchMutation.mutate(values);
+          }}
+        >
+          <div className={styles.searchFilters}>
+            <Form.Item name="nome" label="Nome" style={{ marginBottom: 0 }}>
+              <Input allowClear maxLength={180} placeholder="Nome do eleitor" />
+            </Form.Item>
+            <Form.Item
+              name="telefone"
+              label="Telefone"
+              style={{ marginBottom: 0 }}
+              normalize={(value?: string) => (value ? formatPhoneContact(value) : value)}
+            >
+              <Input
+                allowClear
+                inputMode="tel"
+                maxLength={15}
+                placeholder="(00) 00000-0000"
+              />
+            </Form.Item>
+            <Form.Item
+              style={{ marginBottom: 0 }}
+              shouldUpdate={(prev, next) => prev.nome !== next.nome || prev.telefone !== next.telefone}
+            >
+              {() => {
+                const nome = (searchForm.getFieldValue('nome') as string | undefined)?.trim() ?? '';
+                const telefone = String(searchForm.getFieldValue('telefone') ?? '').replace(/\D/g, '');
+                const canSearch = nome.length >= 2 || telefone.length >= 8;
+                return (
+                  <Button
+                    type="primary"
+                    htmlType="submit"
+                    icon={<SearchOutlined />}
+                    loading={searchMutation.isPending}
+                    disabled={!canSearch}
+                  >
+                    Buscar
+                  </Button>
+                );
+              }}
+            </Form.Item>
+          </div>
+        </Form>
+        {searchResults ? (
+          <div className={styles.searchResults}>
+            {searchResults.length === 0 ? (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description="Nenhum atendimento encontrado com os dados informados."
+              />
+            ) : (
+              <List
+                dataSource={searchResults}
+                renderItem={(item) => {
+                  const resumeDisabled =
+                    !item.pode_retomar ||
+                    queueFull ||
+                    resumeMutation.isPending;
+                  const resumeTitle = item.bloqueio
+                    ? item.bloqueio
+                    : queueFull
+                      ? `Limite de ${queueLimit} atendimentos simultâneos atingido.`
+                      : undefined;
+                  return (
+                    <List.Item
+                      actions={[
+                        item.pode_abrir ? (
+                          <Button
+                            key="abrir"
+                            type="link"
+                            onClick={() => selectAttendance(item.id, 'atendimento')}
+                          >
+                            Abrir
+                          </Button>
+                        ) : (
+                          <Button
+                            key="retomar"
+                            type="link"
+                            disabled={resumeDisabled}
+                            title={resumeTitle}
+                            loading={
+                              resumeMutation.isPending &&
+                              resumeMutation.variables === item.id
+                            }
+                            onClick={() => resumeMutation.mutate(item.id)}
+                          >
+                            Retomar
+                          </Button>
+                        ),
+                      ]}
+                    >
+                      <List.Item.Meta
+                        title={
+                          <Space wrap>
+                            <Typography.Text strong>{item.nome_completo}</Typography.Text>
+                            <Tag color={statusTagColor[item.situacao]}>
+                              {statusLabels[item.situacao]}
+                            </Tag>
+                          </Space>
+                        }
+                        description={
+                          <Space direction="vertical" size={2}>
+                            <Typography.Text>
+                              Telefone:{' '}
+                              {item.telefone
+                                ? formatContactValue('telefone', item.telefone)
+                                : '—'}
+                            </Typography.Text>
+                            <Typography.Text type="secondary">
+                              Iniciado em {formatQueueTimestamp(item.iniciado_em)}
+                              {item.finalizado_em
+                                ? ` · Encerrado em ${formatQueueTimestamp(item.finalizado_em)}`
+                                : ''}
+                              {item.atendente_nome ? ` · ${item.atendente_nome}` : ''}
+                            </Typography.Text>
+                            {item.bloqueio && !item.pode_abrir ? (
+                              <Typography.Text type="secondary">{item.bloqueio}</Typography.Text>
+                            ) : null}
+                          </Space>
+                        }
+                      />
+                    </List.Item>
+                  );
+                }}
+              />
+            )}
+          </div>
+        ) : null}
+      </Card>
 
       <Tabs
         activeKey={view}

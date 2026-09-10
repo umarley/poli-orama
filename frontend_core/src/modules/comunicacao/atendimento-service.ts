@@ -10,6 +10,7 @@ import type {
   AttendanceReport,
   AttendancePersonUpdate,
   AttendanceQueue,
+  AttendanceSearchResult,
   AttendanceUpdate,
   CommunicationChannel,
   RejectionReason,
@@ -49,6 +50,18 @@ export async function startAttendance() {
 
 export async function startManualAttendance(payload: AttendanceManualPayload) {
   const { data } = await httpClient.post<Attendance>(`${base}/atendimento/manual`, payload);
+  return data;
+}
+
+export async function searchAttendances(params: { nome?: string; telefone?: string }) {
+  const { data } = await httpClient.get<AttendanceSearchResult>(`${base}/atendimento/buscar`, {
+    params,
+  });
+  return data;
+}
+
+export async function resumeAttendance(id: number) {
+  const { data } = await httpClient.post<Attendance>(`${base}/atendimento/${id}/retomar`);
   return data;
 }
 

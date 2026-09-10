@@ -131,6 +131,56 @@ class AttendanceManualCreate(BaseModel):
         return normalized
 
 
+class AttendanceSearchFilters(BaseModel):
+    nome: str | None = Field(default=None, max_length=180)
+    telefone: str | None = Field(default=None, max_length=32)
+
+    @field_validator("nome")
+    @classmethod
+    def normalize_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = " ".join(value.split())
+        return normalized or None
+
+    @field_validator("telefone")
+    @classmethod
+    def normalize_phone(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        digits = re.sub(r"\D", "", value)
+        if digits.startswith("55") and len(digits) in {12, 13}:
+            digits = digits[2:]
+        return digits or None
+
+    @model_validator(mode="after")
+    def require_criteria(self) -> "AttendanceSearchFilters":
+        name_ok = len(self.nome or "") >= 2
+        phone_ok = len(self.telefone or "") >= 8
+        if not name_ok and not phone_ok:
+            raise ValueError("Informe o nome ou o telefone para buscar o atendimento.")
+        return self
+
+
+class AttendanceSearchItem(BaseModel):
+    id: int
+    pessoa_id: int
+    nome_completo: str
+    telefone: str | None = None
+    situacao: AttendanceStatus
+    iniciado_em: datetime
+    finalizado_em: datetime | None = None
+    atendente_usuario_id: int
+    atendente_nome: str | None = None
+    pode_abrir: bool = False
+    pode_retomar: bool = False
+    bloqueio: str | None = None
+
+
+class AttendanceSearchResult(BaseModel):
+    itens: list[AttendanceSearchItem] = Field(default_factory=list)
+
+
 class AttendanceDocumentInput(BaseModel):
     tipo_documento: Literal["cpf", "rg", "titulo_eleitor", "cnh", "passaporte", "outro"]
     numero: str = Field(min_length=1, max_length=40)

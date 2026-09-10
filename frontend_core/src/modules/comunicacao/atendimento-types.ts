@@ -144,6 +144,25 @@ export interface AttendanceQueue {
   limite: number;
 }
 
+export interface AttendanceSearchItem {
+  id: number;
+  pessoa_id: number;
+  nome_completo: string;
+  telefone: string | null;
+  situacao: AttendanceStatus;
+  iniciado_em: string;
+  finalizado_em: string | null;
+  atendente_usuario_id: number;
+  atendente_nome: string | null;
+  pode_abrir: boolean;
+  pode_retomar: boolean;
+  bloqueio: string | null;
+}
+
+export interface AttendanceSearchResult {
+  itens: AttendanceSearchItem[];
+}
+
 export interface AttendanceReportItem {
   id: number;
   pessoa_id: number;
