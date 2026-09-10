@@ -668,25 +668,31 @@ class AtendimentoRepository:
         payload: AttendanceClose,
         resultado: str,
     ) -> dict[str, Any] | None:
+        values = {
+            "tenant_id": tenant_id,
+            "id": attendance_id,
+            "resultado": resultado,
+            **payload.model_dump(),
+        }
+        intention_assignments = ""
+        if payload.situacao == "concluido":
+            intention_assignments = """
+                       intencao_voto = :intencao_voto,
+                       motivo_rejeicao_id = :motivo_rejeicao_id,
+                       motivo_observacao = :motivo_observacao,
+            """
+        else:
+            values.pop("intencao_voto", None)
+            values.pop("motivo_rejeicao_id", None)
+            values.pop("motivo_observacao", None)
         await self.session.execute(
             text(
-                """
+                f"""
                 UPDATE comunicacao.atendimento_eleitor
                    SET situacao = :situacao,
                        canal = :canal,
                        canal_outro = :canal_outro,
-                       intencao_voto = CASE
-                            WHEN :situacao = 'concluido' THEN :intencao_voto
-                            ELSE intencao_voto
-                       END,
-                       motivo_rejeicao_id = CASE
-                            WHEN :situacao = 'concluido' THEN :motivo_rejeicao_id
-                            ELSE motivo_rejeicao_id
-                       END,
-                       motivo_observacao = CASE
-                            WHEN :situacao = 'concluido' THEN :motivo_observacao
-                            ELSE motivo_observacao
-                       END,
+                       {intention_assignments}
                        observacao = :observacao,
                        motivo_encerramento = :motivo_encerramento,
                        resultado = :resultado,
@@ -696,12 +702,7 @@ class AtendimentoRepository:
                    AND situacao = 'em_atendimento'
                 """
             ),
-            {
-                "tenant_id": tenant_id,
-                "id": attendance_id,
-                "resultado": resultado,
-                **payload.model_dump(),
-            },
+            values,
         )
         return await self.get_attendance(tenant_id, attendance_id)
 
