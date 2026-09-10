@@ -42,6 +42,12 @@ const resultOptions = [
   { value: 'retorno_agendado', label: 'Retorno agendado' },
 ];
 
+type RejectionReasonRow = {
+  motivo_rejeicao_id: number | null;
+  motivo: string;
+  quantidade: number;
+};
+
 interface IndicatorFilterForm {
   periodo?: [dayjs.Dayjs, dayjs.Dayjs];
   atendente_usuario_id?: number;
@@ -355,19 +361,16 @@ export function ComunicacaoIndicadoresPage() {
         </Col>
         <Col xs={24} lg={12}>
           <Card title="Principais motivos de rejeição">
-            <Table
+            <Table<RejectionReasonRow>
               size="small"
-              rowKey={(row) => row.motivo}
+              rowKey={(row) => `${row.motivo_rejeicao_id ?? 0}-${row.motivo}`}
               pagination={false}
               dataSource={data?.principais_motivos_rejeicao ?? []}
               columns={[
                 {
                   title: 'Motivo',
                   dataIndex: 'motivo',
-                  render: (
-                    value: string,
-                    row: { motivo_rejeicao_id: number | null },
-                  ) => {
+                  render: (value: string, row) => {
                     const params = new URLSearchParams();
                     if (filters.periodo?.[0]) params.set('inicio', filters.periodo[0].format('YYYY-MM-DD'));
                     if (filters.periodo?.[1]) params.set('fim', filters.periodo[1].format('YYYY-MM-DD'));
