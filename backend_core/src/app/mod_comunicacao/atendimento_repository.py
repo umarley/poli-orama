@@ -675,9 +675,18 @@ class AtendimentoRepository:
                    SET situacao = :situacao,
                        canal = :canal,
                        canal_outro = :canal_outro,
-                       intencao_voto = :intencao_voto,
-                       motivo_rejeicao_id = :motivo_rejeicao_id,
-                       motivo_observacao = :motivo_observacao,
+                       intencao_voto = CASE
+                            WHEN :situacao = 'concluido' THEN :intencao_voto
+                            ELSE intencao_voto
+                       END,
+                       motivo_rejeicao_id = CASE
+                            WHEN :situacao = 'concluido' THEN :motivo_rejeicao_id
+                            ELSE motivo_rejeicao_id
+                       END,
+                       motivo_observacao = CASE
+                            WHEN :situacao = 'concluido' THEN :motivo_observacao
+                            ELSE motivo_observacao
+                       END,
                        observacao = :observacao,
                        motivo_encerramento = :motivo_encerramento,
                        resultado = :resultado,

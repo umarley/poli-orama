@@ -159,15 +159,16 @@ Pessoas nunca atendidas e ativas também entram no sorteio.
 ## Situações e resultados no encerramento
 
 O encerramento (`POST /atendimento/{id}/encerrar`) grava `situacao`, `resultado`,
-`finalizado_em` e uma interação automática. Intenção `nao_votara` exige motivo de
-rejeição. `interrompido` e `numero_invalido` exigem motivo de encerramento.
+`finalizado_em` e uma interação automática. Intenção de voto só é pedida quando a
+situação é `concluido`. Intenção `nao_votara` exige motivo de rejeição.
+`interrompido` e `numero_invalido` exigem motivo de encerramento.
 
 | Situação | Resultado gravado | Volta ao sorteio |
 |---|---|---|
 | `concluido` + intenção `votara` | `confirmado` | Não |
 | `concluido` + intenção `indeciso` | `indeciso` | Não |
+| `concluido` + intenção `nao_votara` | `nao_apoia` | Não |
 | `concluido` + outras intenções | `concluido` | Não |
-| Qualquer situação + intenção `nao_votara` | `nao_apoia` | Depende da situação, não da intenção |
 | `sem_resposta` | `tentativa_sem_resposta` | Sim |
 | `numero_invalido` | `numero_invalido` | Não |
 | `interrompido` | `interrompido` | Sim |

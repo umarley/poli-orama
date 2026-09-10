@@ -592,16 +592,17 @@ class AtendimentoService:
             actor.tenant_id, attendance_id, payload, resultado
         )
         assert closed is not None
-        await self.repository.add_vote_history(
-            actor.tenant_id,
-            attendance_id,
-            int(row["pessoa_id"]),
-            actor.user_id,
-            payload.intencao_voto,
-            payload.motivo_rejeicao_id,
-            payload.motivo_observacao,
-        )
-        await self._sync_vote_confirmation(actor, closed, payload.intencao_voto)
+        if payload.intencao_voto:
+            await self.repository.add_vote_history(
+                actor.tenant_id,
+                attendance_id,
+                int(row["pessoa_id"]),
+                actor.user_id,
+                payload.intencao_voto,
+                payload.motivo_rejeicao_id,
+                payload.motivo_observacao,
+            )
+            await self._sync_vote_confirmation(actor, closed, payload.intencao_voto)
         await self.repository.add_interaction(
             actor.tenant_id,
             actor.user_id,
@@ -770,9 +771,10 @@ class AtendimentoService:
         lines = [
             f"Canal: {channel_name}",
             f"Situação: {_STATUS_LABELS[payload.situacao]}",
-            f"Intenção de voto: {_INTENTION_LABELS[payload.intencao_voto]}",
             f"Resultado: {resultado}",
         ]
+        if payload.intencao_voto:
+            lines.insert(2, f"Intenção de voto: {_INTENTION_LABELS[payload.intencao_voto]}")
         if reason_name:
             lines.append(f"Motivo: {reason_name}")
         if payload.motivo_observacao:

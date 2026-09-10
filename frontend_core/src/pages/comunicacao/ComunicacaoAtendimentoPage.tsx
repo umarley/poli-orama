@@ -542,16 +542,19 @@ export function ComunicacaoAtendimentoPage() {
   const closeMutation = useMutation({
     mutationFn: (values: CloseFormValues) => {
       if (!attendance) throw new Error('Nenhum atendimento ativo.');
+      const concluded = values.situacao === 'concluido';
       const payload: AttendanceClosePayload = {
         situacao: values.situacao,
         canal: values.canal,
         canal_outro: isOtherChannel(channelsQuery.data ?? [], values.canal)
           ? values.canal_outro
           : null,
-        intencao_voto: values.intencao_voto as VoteIntention,
+        intencao_voto: concluded ? (values.intencao_voto as VoteIntention) : null,
         motivo_rejeicao_id:
-          values.intencao_voto === 'nao_votara' ? values.motivo_rejeicao_id : null,
-        motivo_observacao: values.motivo_observacao ?? null,
+          concluded && values.intencao_voto === 'nao_votara'
+            ? values.motivo_rejeicao_id
+            : null,
+        motivo_observacao: concluded ? values.motivo_observacao ?? null : null,
         observacao: values.observacao ?? null,
         motivo_encerramento: values.motivo_encerramento ?? null,
       };
@@ -1406,10 +1409,12 @@ export function ComunicacaoAtendimentoPage() {
               <Input />
             </Form.Item>
           )}
-          <Form.Item name="intencao_voto" label="Intenção de voto" rules={[{ required: true }]}>
-            <Select options={intentionOptions} />
-          </Form.Item>
-          {watchedCloseIntention === 'nao_votara' && (
+          {watchedCloseStatus === 'concluido' && (
+            <Form.Item name="intencao_voto" label="Intenção de voto" rules={[{ required: true }]}>
+              <Select options={intentionOptions} />
+            </Form.Item>
+          )}
+          {watchedCloseStatus === 'concluido' && watchedCloseIntention === 'nao_votara' && (
             <>
               <Form.Item
                 name="motivo_rejeicao_id"

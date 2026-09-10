@@ -119,7 +119,7 @@ export interface AttendanceClosePayload {
   situacao: Exclude<AttendanceStatus, 'em_atendimento'>;
   canal: number;
   canal_outro?: string | null;
-  intencao_voto: VoteIntention;
+  intencao_voto?: VoteIntention | null;
   motivo_rejeicao_id?: number | null;
   motivo_observacao?: string | null;
   observacao?: string | null;

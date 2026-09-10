@@ -72,7 +72,7 @@ class AttendanceClose(BaseModel):
     situacao: Literal["concluido", "sem_resposta", "numero_invalido", "interrompido"]
     canal: int = Field(ge=1)
     canal_outro: str | None = Field(default=None, max_length=80)
-    intencao_voto: VoteIntention
+    intencao_voto: VoteIntention | None = None
     motivo_rejeicao_id: int | None = Field(default=None, ge=1)
     motivo_observacao: str | None = Field(default=None, max_length=2000)
     observacao: str | None = Field(default=None, max_length=5000)
@@ -80,7 +80,13 @@ class AttendanceClose(BaseModel):
 
     @model_validator(mode="after")
     def validate_required(self) -> "AttendanceClose":
-        if self.intencao_voto == "nao_votara" and self.motivo_rejeicao_id is None:
+        if self.situacao != "concluido":
+            self.intencao_voto = None
+            self.motivo_rejeicao_id = None
+            self.motivo_observacao = None
+        elif self.intencao_voto is None:
+            raise ValueError("Informe a intencao de voto.")
+        elif self.intencao_voto == "nao_votara" and self.motivo_rejeicao_id is None:
             raise ValueError("Informe o motivo da intencao negativa.")
         if self.situacao in {"interrompido", "numero_invalido"} and not (
             self.motivo_encerramento or ""
