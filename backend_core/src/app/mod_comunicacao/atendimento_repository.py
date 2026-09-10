@@ -10,7 +10,10 @@ from app.mod_comunicacao.atendimento_schemas import (
     AttendanceClose,
     AttendanceDocumentInput,
     AttendanceInvalidate,
+    AttendanceManualCreate,
     AttendancePersonUpdate,
+    AttendanceReasonReportFilters,
+    AttendanceReportFilters,
     AttendanceUpdate,
     IndicatorFilters,
 )
@@ -281,6 +284,11 @@ class AtendimentoRepository:
         )
 
     async def pick_eligible_person(self, tenant_id: int) -> int | None:
+        """Sorteia pessoa ativa sem atendimento aberto.
+
+        Quem ja foi encerrado como concluido ou numero_invalido nao volta a
+        fila. Interrompido e sem_resposta permanecem elegiveis.
+        """
         person_id = await self.session.scalar(
             text(
                 """
@@ -294,8 +302,10 @@ class AtendimentoRepository:
                           FROM comunicacao.atendimento_eleitor a
                          WHERE a.tenant_id = p.tenant_id
                            AND a.pessoa_id = p.id
-                           AND a.situacao = 'em_atendimento'
-                           AND a.finalizado_em IS NULL
+                           AND (
+                                (a.situacao = 'em_atendimento' AND a.finalizado_em IS NULL)
+                                OR a.situacao IN ('concluido', 'numero_invalido')
+                           )
                    )
                  ORDER BY random()
                  LIMIT 1
@@ -305,6 +315,104 @@ class AtendimentoRepository:
             {"tenant_id": tenant_id},
         )
         return int(person_id) if person_id is not None else None
+
+    @staticmethod
+    def phone_digits(value: str) -> list[str]:
+        digits = "".join(character for character in value if character.isdigit())
+        local = digits[2:] if digits.startswith("55") and len(digits) in {12, 13} else digits
+        variants = {digits, local, f"55{local}"}
+        return [item for item in variants if item]
+
+    async def find_person_by_phone(
+        self, tenant_id: int, phone: str
+    ) -> dict[str, Any] | None:
+        variants = self.phone_digits(phone)
+        if not variants:
+            return None
+        phone_1, phone_2, phone_3 = (variants + variants[:1] * 2)[:3]
+        return await self._one(
+            """
+            SELECT p.id,
+                   p.nome_completo,
+                   a.id AS atendimento_id,
+                   a.atendente_usuario_id,
+                   COALESCE(u.nome, 'outro telefonista') AS atendente_nome
+              FROM cadastro.pessoa_contato pc
+              JOIN cadastro.pessoa p
+                ON p.id = pc.pessoa_id AND p.tenant_id = pc.tenant_id
+              LEFT JOIN comunicacao.atendimento_eleitor a
+                ON a.tenant_id = p.tenant_id
+               AND a.pessoa_id = p.id
+               AND a.situacao = 'em_atendimento'
+               AND a.finalizado_em IS NULL
+              LEFT JOIN auth.usuario u ON u.id = a.atendente_usuario_id
+             WHERE pc.tenant_id = :tenant_id
+               AND pc.tipo_contato IN ('telefone', 'celular', 'whatsapp')
+               AND p.excluido_em IS NULL
+               AND regexp_replace(pc.valor, '\\D', '', 'g')
+                   IN (:phone_1, :phone_2, :phone_3)
+             ORDER BY a.id NULLS LAST, p.id
+             LIMIT 1
+            """,
+            {
+                "tenant_id": tenant_id,
+                "phone_1": phone_1,
+                "phone_2": phone_2,
+                "phone_3": phone_3,
+            },
+        )
+
+    async def create_manual_person(
+        self,
+        tenant_id: int,
+        user_id: int,
+        payload: AttendanceManualCreate,
+    ) -> int:
+        person_id = await self.session.scalar(
+            text(
+                """
+                INSERT INTO cadastro.pessoa (
+                    tenant_id, nome_completo, sexo, data_nascimento,
+                    origem_cadastro, ativo, criado_por, atualizado_por,
+                    criado_em, atualizado_em
+                )
+                VALUES (
+                    :tenant_id, :nome_completo, :sexo, :data_nascimento,
+                    'call_center', TRUE, :user_id, :user_id, now(), now()
+                )
+                RETURNING id
+                """
+            ),
+            {
+                "tenant_id": tenant_id,
+                "user_id": user_id,
+                "nome_completo": payload.nome_completo,
+                "sexo": payload.sexo,
+                "data_nascimento": payload.data_nascimento,
+            },
+        )
+        created_id = int(person_id)
+        phone_type = "celular" if len(payload.telefone) == 11 else "telefone"
+        await self.add_contact(
+            tenant_id,
+            created_id,
+            PessoaContatoCreate(
+                tipo_contato=phone_type,
+                valor=payload.telefone,
+                principal=True,
+            ),
+        )
+        if payload.email:
+            await self.add_contact(
+                tenant_id,
+                created_id,
+                PessoaContatoCreate(
+                    tipo_contato="email",
+                    valor=payload.email,
+                    principal=True,
+                ),
+            )
+        return created_id
 
     async def start_attendance(
         self,
@@ -1048,12 +1156,14 @@ class AtendimentoRepository:
         )
         reasons = await self._all(
             f"""
-            SELECT COALESCE(m.nome, 'Sem motivo') AS motivo, count(*)::int AS quantidade
+            SELECT m.id AS motivo_rejeicao_id,
+                   COALESCE(m.nome, 'Sem motivo') AS motivo,
+                   count(*)::int AS quantidade
               FROM comunicacao.atendimento_eleitor a
          LEFT JOIN comunicacao.motivo_rejeicao_voto m ON m.id = a.motivo_rejeicao_id
              WHERE {clause}
                AND a.intencao_voto = 'nao_votara'
-             GROUP BY COALESCE(m.nome, 'Sem motivo')
+             GROUP BY m.id, COALESCE(m.nome, 'Sem motivo')
              ORDER BY quantidade DESC
              LIMIT 8
             """,
@@ -1066,6 +1176,305 @@ class AtendimentoRepository:
             "por_telefonista": operators,
             "por_canal": channels,
             "principais_motivos_rejeicao": reasons,
+        }
+
+    async def operator_report(
+        self,
+        tenant_id: int,
+        campaign_id: int,
+        filters: AttendanceReportFilters,
+    ) -> dict[str, Any]:
+        where = [
+            "a.tenant_id = :tenant_id",
+            "a.campanha_eleicao_id = :campaign_id",
+            "a.situacao <> 'em_atendimento'",
+            "a.atendente_usuario_id = :atendente_usuario_id",
+        ]
+        values: dict[str, Any] = {
+            "tenant_id": tenant_id,
+            "campaign_id": campaign_id,
+            "atendente_usuario_id": filters.atendente_usuario_id,
+            "inicio": filters.inicio,
+            "fim": filters.fim,
+            "limit": filters.tamanho,
+            "offset": (filters.pagina - 1) * filters.tamanho,
+        }
+        if filters.inicio is not None:
+            where.append("a.iniciado_em >= :inicio")
+        if filters.fim is not None:
+            where.append("a.iniciado_em < :fim")
+        clause = " AND ".join(where)
+        totals = await self._one(
+            f"""
+            SELECT count(*)::int AS total,
+                   count(*) FILTER (WHERE a.situacao = 'concluido')::int AS concluido,
+                   count(*) FILTER (WHERE a.situacao = 'sem_resposta')::int AS sem_resposta,
+                   count(*) FILTER (WHERE a.situacao = 'numero_invalido')::int AS numero_invalido,
+                   count(*) FILTER (WHERE a.situacao = 'interrompido')::int AS interrompido,
+                   count(*) FILTER (WHERE a.intencao_voto = 'votara')::int AS votara,
+                   count(*) FILTER (WHERE a.intencao_voto = 'nao_votara')::int AS nao_votara,
+                   count(*) FILTER (WHERE a.intencao_voto = 'indeciso')::int AS indeciso,
+                   count(*) FILTER (WHERE a.intencao_voto = 'nao_respondeu')::int AS nao_respondeu,
+                   COALESCE(max(u.nome), 'Telefonista') AS atendente_nome
+              FROM comunicacao.atendimento_eleitor a
+         LEFT JOIN auth.usuario u ON u.id = a.atendente_usuario_id
+             WHERE {clause}
+            """,
+            values,
+        )
+        if totals is None or int(totals.get("total") or 0) == 0:
+            operator_name = await self.session.scalar(
+                text(
+                    """
+                    SELECT COALESCE(u.nome, 'Telefonista')
+                      FROM auth.usuario u
+                     WHERE u.id = :atendente_usuario_id
+                     LIMIT 1
+                    """
+                ),
+                {"atendente_usuario_id": filters.atendente_usuario_id},
+            )
+            totals = {
+                "total": 0,
+                "concluido": 0,
+                "sem_resposta": 0,
+                "numero_invalido": 0,
+                "interrompido": 0,
+                "votara": 0,
+                "nao_votara": 0,
+                "indeciso": 0,
+                "nao_respondeu": 0,
+                "atendente_nome": operator_name or "Telefonista",
+            }
+        itens = await self._all(
+            f"""
+            SELECT a.id,
+                   a.pessoa_id,
+                   p.nome_completo,
+                   contacts.telefone,
+                   contacts.email,
+                   p.data_nascimento,
+                   p.sexo,
+                   a.iniciado_em,
+                   a.finalizado_em,
+                   a.situacao,
+                   a.resultado,
+                   a.intencao_voto,
+                   COALESCE(cc.nome, 'Canal') AS canal_nome,
+                   a.canal_outro,
+                   a.observacao,
+                   m.nome AS motivo_rejeicao_nome,
+                   a.motivo_observacao,
+                   a.motivo_encerramento,
+                   a.motivo_inativacao,
+                   a.atendente_usuario_id,
+                   COALESCE(u.nome, 'Telefonista') AS atendente_nome
+              FROM comunicacao.atendimento_eleitor a
+              JOIN cadastro.pessoa p
+                ON p.id = a.pessoa_id AND p.tenant_id = a.tenant_id
+         LEFT JOIN comunicacao.canal_comunicacao cc ON cc.id = a.canal
+         LEFT JOIN comunicacao.motivo_rejeicao_voto m ON m.id = a.motivo_rejeicao_id
+         LEFT JOIN auth.usuario u ON u.id = a.atendente_usuario_id
+         LEFT JOIN LATERAL (
+                   SELECT
+                     max(pc.valor) FILTER (
+                        WHERE pc.tipo_contato IN ('telefone', 'celular', 'whatsapp')
+                     ) AS telefone,
+                     max(pc.valor) FILTER (WHERE pc.tipo_contato = 'email') AS email
+                     FROM cadastro.pessoa_contato pc
+                    WHERE pc.tenant_id = p.tenant_id AND pc.pessoa_id = p.id
+                ) contacts ON TRUE
+             WHERE {clause}
+             ORDER BY a.iniciado_em DESC, a.id DESC
+             LIMIT :limit OFFSET :offset
+            """,
+            values,
+        )
+        operators = await self._all(
+            """
+            SELECT a.atendente_usuario_id, COALESCE(u.nome, 'Atendente') AS atendente_nome,
+                   count(*)::int AS quantidade
+              FROM comunicacao.atendimento_eleitor a
+         LEFT JOIN auth.usuario u ON u.id = a.atendente_usuario_id
+             WHERE a.tenant_id = :tenant_id
+               AND a.campanha_eleicao_id = :campaign_id
+               AND a.situacao <> 'em_atendimento'
+             GROUP BY a.atendente_usuario_id, u.nome
+             ORDER BY atendente_nome
+            """,
+            {"tenant_id": tenant_id, "campaign_id": campaign_id},
+        )
+        return {
+            "total": int(totals.get("total") or 0),
+            "atendente_nome": totals.get("atendente_nome") or "Telefonista",
+            "resumo": {
+                "total": int(totals.get("total") or 0),
+                "concluido": int(totals.get("concluido") or 0),
+                "sem_resposta": int(totals.get("sem_resposta") or 0),
+                "numero_invalido": int(totals.get("numero_invalido") or 0),
+                "interrompido": int(totals.get("interrompido") or 0),
+                "votara": int(totals.get("votara") or 0),
+                "nao_votara": int(totals.get("nao_votara") or 0),
+                "indeciso": int(totals.get("indeciso") or 0),
+                "nao_respondeu": int(totals.get("nao_respondeu") or 0),
+            },
+            "itens": itens,
+            "telefonistas": operators,
+        }
+
+    async def reason_report(
+        self,
+        tenant_id: int,
+        campaign_id: int,
+        filters: AttendanceReasonReportFilters,
+    ) -> dict[str, Any]:
+        where = [
+            "a.tenant_id = :tenant_id",
+            "a.campanha_eleicao_id = :campaign_id",
+            "a.situacao <> 'em_atendimento'",
+            "a.intencao_voto = 'nao_votara'",
+        ]
+        values: dict[str, Any] = {
+            "tenant_id": tenant_id,
+            "campaign_id": campaign_id,
+            "motivo_rejeicao_id": filters.motivo_rejeicao_id,
+            "inicio": filters.inicio,
+            "fim": filters.fim,
+            "limit": filters.tamanho,
+            "offset": (filters.pagina - 1) * filters.tamanho,
+        }
+        if filters.inicio is not None:
+            where.append("a.iniciado_em >= :inicio")
+        if filters.fim is not None:
+            where.append("a.iniciado_em < :fim")
+        if filters.motivo_rejeicao_id is None:
+            where.append("a.motivo_rejeicao_id IS NULL")
+        else:
+            where.append("a.motivo_rejeicao_id = :motivo_rejeicao_id")
+        clause = " AND ".join(where)
+        totals = await self._one(
+            f"""
+            SELECT count(*)::int AS total,
+                   count(*) FILTER (WHERE a.situacao = 'concluido')::int AS concluido,
+                   count(*) FILTER (WHERE a.situacao = 'sem_resposta')::int AS sem_resposta,
+                   count(*) FILTER (WHERE a.situacao = 'numero_invalido')::int AS numero_invalido,
+                   count(*) FILTER (WHERE a.situacao = 'interrompido')::int AS interrompido,
+                   count(*) FILTER (WHERE a.intencao_voto = 'votara')::int AS votara,
+                   count(*) FILTER (WHERE a.intencao_voto = 'nao_votara')::int AS nao_votara,
+                   count(*) FILTER (WHERE a.intencao_voto = 'indeciso')::int AS indeciso,
+                   count(*) FILTER (WHERE a.intencao_voto = 'nao_respondeu')::int AS nao_respondeu,
+                   COALESCE(max(m.nome), 'Sem motivo') AS motivo
+              FROM comunicacao.atendimento_eleitor a
+         LEFT JOIN comunicacao.motivo_rejeicao_voto m ON m.id = a.motivo_rejeicao_id
+             WHERE {clause}
+            """,
+            values,
+        )
+        if totals is None or int(totals.get("total") or 0) == 0:
+            reason_name = "Sem motivo"
+            if filters.motivo_rejeicao_id is not None:
+                reason_name = (
+                    await self.session.scalar(
+                        text(
+                            """
+                            SELECT COALESCE(nome, 'Sem motivo')
+                              FROM comunicacao.motivo_rejeicao_voto
+                             WHERE id = :motivo_rejeicao_id
+                             LIMIT 1
+                            """
+                        ),
+                        {"motivo_rejeicao_id": filters.motivo_rejeicao_id},
+                    )
+                    or "Sem motivo"
+                )
+            totals = {
+                "total": 0,
+                "concluido": 0,
+                "sem_resposta": 0,
+                "numero_invalido": 0,
+                "interrompido": 0,
+                "votara": 0,
+                "nao_votara": 0,
+                "indeciso": 0,
+                "nao_respondeu": 0,
+                "motivo": reason_name,
+            }
+        itens = await self._all(
+            f"""
+            SELECT a.id,
+                   a.pessoa_id,
+                   p.nome_completo,
+                   contacts.telefone,
+                   contacts.email,
+                   p.data_nascimento,
+                   p.sexo,
+                   a.iniciado_em,
+                   a.finalizado_em,
+                   a.situacao,
+                   a.resultado,
+                   a.intencao_voto,
+                   COALESCE(cc.nome, 'Canal') AS canal_nome,
+                   a.canal_outro,
+                   a.observacao,
+                   m.nome AS motivo_rejeicao_nome,
+                   a.motivo_observacao,
+                   a.motivo_encerramento,
+                   a.motivo_inativacao,
+                   a.atendente_usuario_id,
+                   COALESCE(u.nome, 'Telefonista') AS atendente_nome
+              FROM comunicacao.atendimento_eleitor a
+              JOIN cadastro.pessoa p
+                ON p.id = a.pessoa_id AND p.tenant_id = a.tenant_id
+         LEFT JOIN comunicacao.canal_comunicacao cc ON cc.id = a.canal
+         LEFT JOIN comunicacao.motivo_rejeicao_voto m ON m.id = a.motivo_rejeicao_id
+         LEFT JOIN auth.usuario u ON u.id = a.atendente_usuario_id
+         LEFT JOIN LATERAL (
+                   SELECT
+                     max(pc.valor) FILTER (
+                        WHERE pc.tipo_contato IN ('telefone', 'celular', 'whatsapp')
+                     ) AS telefone,
+                     max(pc.valor) FILTER (WHERE pc.tipo_contato = 'email') AS email
+                     FROM cadastro.pessoa_contato pc
+                    WHERE pc.tenant_id = p.tenant_id AND pc.pessoa_id = p.id
+                ) contacts ON TRUE
+             WHERE {clause}
+             ORDER BY a.iniciado_em DESC, a.id DESC
+             LIMIT :limit OFFSET :offset
+            """,
+            values,
+        )
+        reasons = await self._all(
+            """
+            SELECT m.id AS motivo_rejeicao_id,
+                   COALESCE(m.nome, 'Sem motivo') AS motivo,
+                   count(*)::int AS quantidade
+              FROM comunicacao.atendimento_eleitor a
+         LEFT JOIN comunicacao.motivo_rejeicao_voto m ON m.id = a.motivo_rejeicao_id
+             WHERE a.tenant_id = :tenant_id
+               AND a.campanha_eleicao_id = :campaign_id
+               AND a.situacao <> 'em_atendimento'
+               AND a.intencao_voto = 'nao_votara'
+             GROUP BY m.id, COALESCE(m.nome, 'Sem motivo')
+             ORDER BY motivo
+            """,
+            {"tenant_id": tenant_id, "campaign_id": campaign_id},
+        )
+        return {
+            "total": int(totals.get("total") or 0),
+            "motivo": totals.get("motivo") or "Sem motivo",
+            "resumo": {
+                "total": int(totals.get("total") or 0),
+                "concluido": int(totals.get("concluido") or 0),
+                "sem_resposta": int(totals.get("sem_resposta") or 0),
+                "numero_invalido": int(totals.get("numero_invalido") or 0),
+                "interrompido": int(totals.get("interrompido") or 0),
+                "votara": int(totals.get("votara") or 0),
+                "nao_votara": int(totals.get("nao_votara") or 0),
+                "indeciso": int(totals.get("indeciso") or 0),
+                "nao_respondeu": int(totals.get("nao_respondeu") or 0),
+            },
+            "itens": itens,
+            "motivos": reasons,
         }
 
     async def commit(self) -> None:

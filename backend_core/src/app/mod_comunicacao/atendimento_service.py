@@ -10,6 +10,15 @@ from app.mod_comunicacao.atendimento_schemas import (
     AttendanceIndicators,
     AttendanceInteractionInput,
     AttendanceInvalidate,
+    AttendanceManualCreate,
+    AttendanceReasonReport,
+    AttendanceReasonReportFilters,
+    AttendanceReport,
+    AttendanceReportFilters,
+    AttendanceReportItem,
+    AttendanceReportSummary,
+    OperatorCount,
+    RejectionCount,
     AttendancePersonUpdate,
     AttendanceQueue,
     AttendanceQueueItem,
@@ -88,6 +97,69 @@ class AtendimentoService:
     async def start(
         self, actor: RequestActor, campaign_header: str | None
     ) -> AttendanceResponse:
+        campaign_id, channel_id = await self._prepare_start(actor, campaign_header)
+        person_id = await self.repository.pick_eligible_person(actor.tenant_id)
+        if person_id is None:
+            raise BusinessRuleError("Nao ha pessoas disponiveis para atendimento no momento.")
+        return await self._open_attendance(actor, campaign_id, channel_id, person_id)
+
+    async def start_manual(
+        self,
+        actor: RequestActor,
+        payload: AttendanceManualCreate,
+        campaign_header: str | None,
+    ) -> AttendanceResponse:
+        campaign_id, channel_id = await self._prepare_start(actor, campaign_header)
+        existing = await self.repository.find_person_by_phone(
+            actor.tenant_id, payload.telefone
+        )
+        if existing is not None:
+            operator_id = existing.get("atendente_usuario_id")
+            if operator_id is not None and int(operator_id) != actor.user_id:
+                raise BusinessRuleError(
+                    "Este telefone ja esta em atendimento com outro telefonista.",
+                    code="phone_in_other_attendance",
+                    details={
+                        "pessoa_id": existing["id"],
+                        "pessoa_nome": existing["nome_completo"],
+                        "atendente_nome": existing.get("atendente_nome"),
+                    },
+                )
+            if operator_id is not None:
+                raise BusinessRuleError(
+                    "Este telefone ja esta na sua fila de atendimentos.",
+                    code="phone_in_own_attendance",
+                    details={
+                        "pessoa_id": existing["id"],
+                        "atendimento_id": existing.get("atendimento_id"),
+                    },
+                )
+            raise BusinessRuleError(
+                "Este telefone ja esta cadastrado para "
+                f"{existing['nome_completo']}.",
+                code="phone_already_registered",
+                details={"pessoa_id": existing["id"]},
+            )
+        person_id = await self.repository.create_manual_person(
+            actor.tenant_id, actor.user_id, payload
+        )
+        await self.audit.record(
+            action="criar",
+            tenant_id=actor.tenant_id,
+            user_id=actor.user_id,
+            schema_name="cadastro",
+            table_name="pessoa",
+            record_id=person_id,
+            after={
+                "nome_completo": payload.nome_completo,
+                "origem_cadastro": "call_center",
+            },
+        )
+        return await self._open_attendance(actor, campaign_id, channel_id, person_id)
+
+    async def _prepare_start(
+        self, actor: RequestActor, campaign_header: str | None
+    ) -> tuple[int, int]:
         self.ensure_operator(actor)
         await self.repository.lock_operator_queue(actor.tenant_id, actor.user_id)
         limite = await self.repository.simultaneous_limit(actor.tenant_id)
@@ -100,12 +172,18 @@ class AtendimentoService:
                 details={"limite": limite, "abertos": abertos},
             )
         campaign_id = await self.campaign_id(actor, campaign_header)
-        person_id = await self.repository.pick_eligible_person(actor.tenant_id)
-        if person_id is None:
-            raise BusinessRuleError("Nao ha pessoas disponiveis para atendimento no momento.")
         channel_id = await self.repository.default_channel_id(actor.tenant_id)
         if channel_id is None:
             raise BusinessRuleError("Nenhum canal de comunicacao cadastrado.")
+        return campaign_id, channel_id
+
+    async def _open_attendance(
+        self,
+        actor: RequestActor,
+        campaign_id: int,
+        channel_id: int,
+        person_id: int,
+    ) -> AttendanceResponse:
         row = await self.repository.start_attendance(
             actor.tenant_id, campaign_id, actor.user_id, person_id, channel_id
         )
@@ -476,6 +554,49 @@ class AtendimentoService:
             por_telefonista=data.get("por_telefonista") or [],
             por_canal=data.get("por_canal") or [],
             principais_motivos_rejeicao=data.get("principais_motivos_rejeicao") or [],
+        )
+
+    async def operator_report(
+        self,
+        actor: RequestActor,
+        campaign_header: str | None,
+        filters: AttendanceReportFilters,
+    ) -> AttendanceReport:
+        if "gestor" not in actor.profiles:
+            raise AuthorizationError("Somente o perfil gestor pode consultar o relatorio analitico.")
+        campaign_id = await self.campaign_id(actor, campaign_header)
+        data = await self.repository.operator_report(actor.tenant_id, campaign_id, filters)
+        operator_name = str(data.get("atendente_nome") or "Telefonista")
+        return AttendanceReport(
+            itens=[AttendanceReportItem.model_validate(item) for item in data.get("itens") or []],
+            total=int(data.get("total") or 0),
+            pagina=filters.pagina,
+            tamanho=filters.tamanho,
+            atendente_usuario_id=filters.atendente_usuario_id,
+            atendente_nome=operator_name,
+            resumo=AttendanceReportSummary.model_validate(data.get("resumo") or {"total": data.get("total") or 0}),
+            telefonistas=[OperatorCount.model_validate(item) for item in data.get("telefonistas") or []],
+        )
+
+    async def reason_report(
+        self,
+        actor: RequestActor,
+        campaign_header: str | None,
+        filters: AttendanceReasonReportFilters,
+    ) -> AttendanceReasonReport:
+        if "gestor" not in actor.profiles:
+            raise AuthorizationError("Somente o perfil gestor pode consultar o relatorio analitico.")
+        campaign_id = await self.campaign_id(actor, campaign_header)
+        data = await self.repository.reason_report(actor.tenant_id, campaign_id, filters)
+        return AttendanceReasonReport(
+            itens=[AttendanceReportItem.model_validate(item) for item in data.get("itens") or []],
+            total=int(data.get("total") or 0),
+            pagina=filters.pagina,
+            tamanho=filters.tamanho,
+            motivo_rejeicao_id=filters.motivo_rejeicao_id,
+            motivo=str(data.get("motivo") or "Sem motivo"),
+            resumo=AttendanceReportSummary.model_validate(data.get("resumo") or {"total": data.get("total") or 0}),
+            motivos=[RejectionCount.model_validate(item) for item in data.get("motivos") or []],
         )
 
     async def _sync_vote_confirmation(

@@ -31,6 +31,8 @@ import { CampaignManagementPage } from '@/pages/eleicoes/CampaignManagementPage'
 import { GestaoEleitoralAnalisePage } from '@/pages/gestao-eleitoral/GestaoEleitoralAnalisePage';
 import { GestaoEleitoralPage } from '@/pages/gestao-eleitoral/GestaoEleitoralPage';
 import { ComunicacaoAtendimentoPage } from '@/pages/comunicacao/ComunicacaoAtendimentoPage';
+import { ComunicacaoAtendenteRelatorioPage } from '@/pages/comunicacao/ComunicacaoAtendenteRelatorioPage';
+import { ComunicacaoMotivoRelatorioPage } from '@/pages/comunicacao/ComunicacaoMotivoRelatorioPage';
 import { ComunicacaoIndicadoresPage } from '@/pages/comunicacao/ComunicacaoIndicadoresPage';
 import { ComunicacaoPage } from '@/pages/comunicacao/ComunicacaoPage';
 import { ImportDetailPage } from '@/pages/etl/ImportDetailPage';
@@ -165,6 +167,22 @@ export const router = createBrowserRouter([
         element: (
           <ProfileRoute profiles={['gestor']}>
             <ComunicacaoIndicadoresPage />
+          </ProfileRoute>
+        ),
+      },
+      {
+        path: 'comunicacao/indicadores/atendente/:userId',
+        element: (
+          <ProfileRoute profiles={['gestor']}>
+            <ComunicacaoAtendenteRelatorioPage />
+          </ProfileRoute>
+        ),
+      },
+      {
+        path: 'comunicacao/indicadores/motivo/:reasonId',
+        element: (
+          <ProfileRoute profiles={['gestor']}>
+            <ComunicacaoMotivoRelatorioPage />
           </ProfileRoute>
         ),
       },

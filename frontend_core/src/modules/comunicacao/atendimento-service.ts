@@ -5,6 +5,9 @@ import type {
   Attendance,
   AttendanceClosePayload,
   AttendanceIndicators,
+  AttendanceManualPayload,
+  AttendanceReasonReport,
+  AttendanceReport,
   AttendancePersonUpdate,
   AttendanceQueue,
   AttendanceUpdate,
@@ -41,6 +44,11 @@ export async function getAttendance(id: number) {
 
 export async function startAttendance() {
   const { data } = await httpClient.post<Attendance>(`${base}/atendimento/iniciar`);
+  return data;
+}
+
+export async function startManualAttendance(payload: AttendanceManualPayload) {
+  const { data } = await httpClient.post<Attendance>(`${base}/atendimento/manual`, payload);
   return data;
 }
 
@@ -126,6 +134,38 @@ export async function getAttendanceIndicators(params: {
     Object.entries(params).filter(([, value]) => value !== undefined && value !== ''),
   );
   const { data } = await httpClient.get<AttendanceIndicators>(`${base}/indicadores`, {
+    params: cleaned,
+  });
+  return data;
+}
+
+export async function getAttendanceOperatorReport(params: {
+  atendente_usuario_id: number;
+  inicio?: string;
+  fim?: string;
+  pagina?: number;
+  tamanho?: number;
+}) {
+  const cleaned = Object.fromEntries(
+    Object.entries(params).filter(([, value]) => value !== undefined && value !== ''),
+  );
+  const { data } = await httpClient.get<AttendanceReport>(`${base}/indicadores/atendimentos`, {
+    params: cleaned,
+  });
+  return data;
+}
+
+export async function getAttendanceReasonReport(params: {
+  motivo_rejeicao_id?: number | null;
+  inicio?: string;
+  fim?: string;
+  pagina?: number;
+  tamanho?: number;
+}) {
+  const cleaned = Object.fromEntries(
+    Object.entries(params).filter(([, value]) => value !== undefined && value !== '' && value !== null),
+  );
+  const { data } = await httpClient.get<AttendanceReasonReport>(`${base}/indicadores/rejeicoes`, {
     params: cleaned,
   });
   return data;

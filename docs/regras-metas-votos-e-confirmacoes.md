@@ -85,6 +85,10 @@ atingimento.
 
 ## Fluxo do Call Center
 
+As regras da fila operacional em `/comunicacao/atendimento` (quem volta ao
+sorteio, situações e limite simultâneo) estão em
+[regras-atendimento.md](regras-atendimento.md).
+
 1. A fila seleciona pessoas com vínculo ativo e apresenta seus dados de contato.
 2. O atendente registra uma tentativa em
    `comunicacao.atendimento_eleitor`.

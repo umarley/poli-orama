@@ -12,6 +12,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Alert, Button, Card, Col, DatePicker, Form, Row, Select, Table } from 'antd';
 import dayjs from 'dayjs';
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import { LocalizedStatistic as Statistic } from '@/components/data/LocalizedStatistic';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -308,7 +309,20 @@ export function ComunicacaoIndicadoresPage() {
               pagination={false}
               dataSource={data?.por_telefonista ?? []}
               columns={[
-                { title: 'Telefonista', dataIndex: 'atendente_nome' },
+                {
+                  title: 'Telefonista',
+                  dataIndex: 'atendente_nome',
+                  render: (value: string, row: { atendente_usuario_id: number }) => {
+                    const params = new URLSearchParams();
+                    if (filters.periodo?.[0]) params.set('inicio', filters.periodo[0].format('YYYY-MM-DD'));
+                    if (filters.periodo?.[1]) params.set('fim', filters.periodo[1].format('YYYY-MM-DD'));
+                    return (
+                      <Link to={`/comunicacao/indicadores/atendente/${row.atendente_usuario_id}?${params}`}>
+                        {value}
+                      </Link>
+                    );
+                  },
+                },
                 {
                   title: 'Quantidade',
                   dataIndex: 'quantidade',
@@ -347,7 +361,24 @@ export function ComunicacaoIndicadoresPage() {
               pagination={false}
               dataSource={data?.principais_motivos_rejeicao ?? []}
               columns={[
-                { title: 'Motivo', dataIndex: 'motivo' },
+                {
+                  title: 'Motivo',
+                  dataIndex: 'motivo',
+                  render: (
+                    value: string,
+                    row: { motivo_rejeicao_id: number | null },
+                  ) => {
+                    const params = new URLSearchParams();
+                    if (filters.periodo?.[0]) params.set('inicio', filters.periodo[0].format('YYYY-MM-DD'));
+                    if (filters.periodo?.[1]) params.set('fim', filters.periodo[1].format('YYYY-MM-DD'));
+                    const reasonId = row.motivo_rejeicao_id ?? 0;
+                    return (
+                      <Link to={`/comunicacao/indicadores/motivo/${reasonId}?${params}`}>
+                        {value}
+                      </Link>
+                    );
+                  },
+                },
                 {
                   title: 'Quantidade',
                   dataIndex: 'quantidade',

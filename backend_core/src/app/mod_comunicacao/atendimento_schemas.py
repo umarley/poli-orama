@@ -1,7 +1,8 @@
+import re
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.schemas.cadastro import PessoaContatoResponse
 
@@ -90,6 +91,44 @@ class AttendanceClose(BaseModel):
 
 class AttendanceInvalidate(BaseModel):
     motivo_inativacao: str = Field(min_length=5, max_length=2000)
+
+
+class AttendanceManualCreate(BaseModel):
+    nome_completo: str = Field(min_length=2, max_length=180)
+    telefone: str = Field(min_length=8, max_length=20)
+    email: str | None = Field(default=None, max_length=180)
+    data_nascimento: date | None = None
+    sexo: Sexo | None = None
+
+    @field_validator("nome_completo")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        normalized = " ".join(value.split())
+        if len(normalized) < 2:
+            raise ValueError("Informe o nome completo.")
+        return normalized
+
+    @field_validator("telefone")
+    @classmethod
+    def normalize_phone(cls, value: str) -> str:
+        digits = re.sub(r"\D", "", value)
+        if digits.startswith("55") and len(digits) in {12, 13}:
+            digits = digits[2:]
+        if len(digits) not in {10, 11}:
+            raise ValueError("Telefone invalido; informe DDD e numero.")
+        return digits
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        if not normalized:
+            return None
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", normalized):
+            raise ValueError("E-mail invalido.")
+        return normalized
 
 
 class AttendanceDocumentInput(BaseModel):
@@ -202,6 +241,7 @@ class IndicatorFilters(BaseModel):
 
 
 class RejectionCount(BaseModel):
+    motivo_rejeicao_id: int | None = None
     motivo: str
     quantidade: int
 
@@ -236,3 +276,77 @@ class AttendanceIndicators(BaseModel):
     por_telefonista: list[OperatorCount]
     por_canal: list[ChannelCount]
     principais_motivos_rejeicao: list[RejectionCount]
+
+
+class AttendanceReportFilters(BaseModel):
+    inicio: datetime | None = None
+    fim: datetime | None = None
+    atendente_usuario_id: int = Field(ge=1)
+    pagina: int = Field(default=1, ge=1)
+    tamanho: int = Field(default=20, ge=1, le=100)
+
+
+class AttendanceReportItem(BaseModel):
+    id: int
+    pessoa_id: int
+    nome_completo: str
+    telefone: str | None = None
+    email: str | None = None
+    data_nascimento: date | None = None
+    sexo: str | None = None
+    iniciado_em: datetime
+    finalizado_em: datetime | None = None
+    situacao: AttendanceStatus
+    resultado: str | None = None
+    intencao_voto: VoteIntention | None = None
+    canal_nome: str | None = None
+    canal_outro: str | None = None
+    observacao: str | None = None
+    motivo_rejeicao_nome: str | None = None
+    motivo_observacao: str | None = None
+    motivo_encerramento: str | None = None
+    motivo_inativacao: str | None = None
+    atendente_usuario_id: int
+    atendente_nome: str | None = None
+
+
+class AttendanceReportSummary(BaseModel):
+    total: int = 0
+    concluido: int = 0
+    sem_resposta: int = 0
+    numero_invalido: int = 0
+    interrompido: int = 0
+    votara: int = 0
+    nao_votara: int = 0
+    indeciso: int = 0
+    nao_respondeu: int = 0
+
+
+class AttendanceReport(BaseModel):
+    itens: list[AttendanceReportItem] = Field(default_factory=list)
+    total: int = 0
+    pagina: int = 1
+    tamanho: int = 20
+    atendente_usuario_id: int
+    atendente_nome: str
+    resumo: AttendanceReportSummary = Field(default_factory=AttendanceReportSummary)
+    telefonistas: list[OperatorCount] = Field(default_factory=list)
+
+
+class AttendanceReasonReportFilters(BaseModel):
+    inicio: datetime | None = None
+    fim: datetime | None = None
+    motivo_rejeicao_id: int | None = Field(default=None, ge=1)
+    pagina: int = Field(default=1, ge=1)
+    tamanho: int = Field(default=20, ge=1, le=100)
+
+
+class AttendanceReasonReport(BaseModel):
+    itens: list[AttendanceReportItem] = Field(default_factory=list)
+    total: int = 0
+    pagina: int = 1
+    tamanho: int = 20
+    motivo_rejeicao_id: int | None = None
+    motivo: str
+    resumo: AttendanceReportSummary = Field(default_factory=AttendanceReportSummary)
+    motivos: list[RejectionCount] = Field(default_factory=list)

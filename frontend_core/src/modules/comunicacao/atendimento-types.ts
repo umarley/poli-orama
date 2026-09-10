@@ -87,6 +87,14 @@ export interface Attendance {
   historico_intencao: VoteIntentionHistoryItem[];
 }
 
+export interface AttendanceManualPayload {
+  nome_completo: string;
+  telefone: string;
+  email?: string | null;
+  data_nascimento?: string | null;
+  sexo?: 'M' | 'F' | 'O' | 'N' | null;
+}
+
 export interface AttendancePersonUpdate {
   nome_completo?: string;
   data_nascimento?: string | null;
@@ -136,6 +144,53 @@ export interface AttendanceQueue {
   limite: number;
 }
 
+export interface AttendanceReportItem {
+  id: number;
+  pessoa_id: number;
+  nome_completo: string;
+  telefone: string | null;
+  email: string | null;
+  data_nascimento: string | null;
+  sexo: string | null;
+  iniciado_em: string;
+  finalizado_em: string | null;
+  situacao: AttendanceStatus;
+  resultado: string | null;
+  intencao_voto: VoteIntention | null;
+  canal_nome: string | null;
+  canal_outro: string | null;
+  observacao: string | null;
+  motivo_rejeicao_nome: string | null;
+  motivo_observacao: string | null;
+  motivo_encerramento: string | null;
+  motivo_inativacao: string | null;
+  atendente_usuario_id: number;
+  atendente_nome: string | null;
+}
+
+export interface AttendanceReportSummary {
+  total: number;
+  concluido: number;
+  sem_resposta: number;
+  numero_invalido: number;
+  interrompido: number;
+  votara: number;
+  nao_votara: number;
+  indeciso: number;
+  nao_respondeu: number;
+}
+
+export interface AttendanceReport {
+  itens: AttendanceReportItem[];
+  total: number;
+  pagina: number;
+  tamanho: number;
+  atendente_usuario_id: number;
+  atendente_nome: string;
+  resumo: AttendanceReportSummary;
+  telefonistas: Array<{ atendente_usuario_id: number; atendente_nome: string; quantidade: number }>;
+}
+
 export interface AttendanceIndicators {
   total_atendimentos: number;
   concluidos: number;
@@ -148,5 +203,20 @@ export interface AttendanceIndicators {
   por_periodo: Array<{ periodo: string; quantidade: number }>;
   por_telefonista: Array<{ atendente_usuario_id: number; atendente_nome: string; quantidade: number }>;
   por_canal: Array<{ canal_id: number; canal: string; quantidade: number }>;
-  principais_motivos_rejeicao: Array<{ motivo: string; quantidade: number }>;
+  principais_motivos_rejeicao: Array<{
+    motivo_rejeicao_id: number | null;
+    motivo: string;
+    quantidade: number;
+  }>;
+}
+
+export interface AttendanceReasonReport {
+  itens: AttendanceReportItem[];
+  total: number;
+  pagina: number;
+  tamanho: number;
+  motivo_rejeicao_id: number | null;
+  motivo: string;
+  resumo: AttendanceReportSummary;
+  motivos: Array<{ motivo_rejeicao_id: number | null; motivo: string; quantidade: number }>;
 }

@@ -20,8 +20,13 @@ from app.mod_comunicacao.atendimento_schemas import (
     AttendanceIndicators,
     AttendanceInteractionInput,
     AttendanceInvalidate,
+    AttendanceManualCreate,
     AttendancePersonUpdate,
     AttendanceQueue,
+    AttendanceReasonReport,
+    AttendanceReasonReportFilters,
+    AttendanceReport,
+    AttendanceReportFilters,
     AttendanceResponse,
     AttendanceResult,
     AttendanceUpdate,
@@ -105,6 +110,20 @@ async def start_attendance(
     campaign: CampaignHeader = None,
 ) -> AttendanceResponse:
     return await service.start(actor, campaign)
+
+
+@router.post(
+    "/atendimento/manual",
+    response_model=AttendanceResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def start_manual_attendance(
+    payload: AttendanceManualCreate,
+    actor: Operator,
+    service: Annotated[AtendimentoService, Depends(get_attendance_service)],
+    campaign: CampaignHeader = None,
+) -> AttendanceResponse:
+    return await service.start_manual(actor, payload, campaign)
 
 
 @router.get("/atendimento/{attendance_id}", response_model=AttendanceResponse)
@@ -242,6 +261,54 @@ async def attendance_indicators(
             canal=canal,
             situacao=situacao,
             resultado=resultado,
+        ),
+    )
+
+
+@router.get("/indicadores/atendimentos", response_model=AttendanceReport)
+async def attendance_operator_report(
+    actor: Reporter,
+    service: Annotated[AtendimentoService, Depends(get_attendance_service)],
+    campaign: CampaignHeader = None,
+    atendente_usuario_id: int = Query(ge=1),
+    inicio: datetime | None = None,
+    fim: datetime | None = None,
+    pagina: int = Query(default=1, ge=1),
+    tamanho: int = Query(default=20, ge=1, le=100),
+) -> AttendanceReport:
+    return await service.operator_report(
+        actor,
+        campaign,
+        AttendanceReportFilters(
+            inicio=inicio,
+            fim=fim,
+            atendente_usuario_id=atendente_usuario_id,
+            pagina=pagina,
+            tamanho=tamanho,
+        ),
+    )
+
+
+@router.get("/indicadores/rejeicoes", response_model=AttendanceReasonReport)
+async def attendance_reason_report(
+    actor: Reporter,
+    service: Annotated[AtendimentoService, Depends(get_attendance_service)],
+    campaign: CampaignHeader = None,
+    motivo_rejeicao_id: int | None = Query(default=None, ge=1),
+    inicio: datetime | None = None,
+    fim: datetime | None = None,
+    pagina: int = Query(default=1, ge=1),
+    tamanho: int = Query(default=20, ge=1, le=100),
+) -> AttendanceReasonReport:
+    return await service.reason_report(
+        actor,
+        campaign,
+        AttendanceReasonReportFilters(
+            inicio=inicio,
+            fim=fim,
+            motivo_rejeicao_id=motivo_rejeicao_id,
+            pagina=pagina,
+            tamanho=tamanho,
         ),
     )
 

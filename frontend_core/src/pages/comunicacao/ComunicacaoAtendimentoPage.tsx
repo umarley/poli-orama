@@ -5,6 +5,7 @@ import {
   PhoneOutlined,
   PlusOutlined,
   StopOutlined,
+  UserAddOutlined,
   UserOutlined,
 } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -54,6 +55,7 @@ import {
   listOpenAttendances,
   listRejectionReasons,
   startAttendance,
+  startManualAttendance,
   updateAttendance,
   updateAttendanceContact,
   updateAttendancePerson,
@@ -61,6 +63,7 @@ import {
 import type {
   Attendance,
   AttendanceClosePayload,
+  AttendanceManualPayload,
   AttendancePersonUpdate,
   AttendanceStatus,
   CommunicationChannel,
@@ -204,6 +207,14 @@ interface ContactFormValues {
   observacao?: string | null;
 }
 
+interface ManualFormValues {
+  nome_completo: string;
+  telefone: string;
+  email?: string;
+  data_nascimento?: dayjs.Dayjs | null;
+  sexo?: 'M' | 'F' | 'O' | 'N' | null;
+}
+
 type ContactEditor =
   | { type: 'contact'; item: PessoaContato }
   | { type: 'new-contact' };
@@ -232,8 +243,10 @@ export function ComunicacaoAtendimentoPage() {
   const [interactionForm] = Form.useForm<InteractionFormValues>();
   const [contactForm] = Form.useForm<ContactFormValues>();
   const [invalidateForm] = Form.useForm<{ motivo_inativacao: string }>();
+  const [manualForm] = Form.useForm<ManualFormValues>();
   const [closeOpen, setCloseOpen] = useState(false);
   const [invalidateOpen, setInvalidateOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
   const [contactEditor, setContactEditor] = useState<ContactEditor | null>(null);
   const [view, setView] = useState<'atendimento' | 'abertos'>('atendimento');
   const [selectedAttendanceId, setSelectedAttendanceId] = useState<number | null>(
@@ -373,6 +386,29 @@ export function ComunicacaoAtendimentoPage() {
     mutationFn: startAttendance,
     onSuccess: async (result) => {
       AppToast.success(`Atendimento iniciado com ${result.pessoa.nome_completo}.`);
+      selectAttendance(result.id, 'atendimento');
+      await refreshAttendanceQueries();
+    },
+    onError: (error) => AppToast.error(normalizeApiError(error).message),
+  });
+
+  const startManualMutation = useMutation({
+    mutationFn: (values: ManualFormValues) => {
+      const payload: AttendanceManualPayload = {
+        nome_completo: values.nome_completo,
+        telefone: values.telefone,
+        email: values.email?.trim() || null,
+        data_nascimento: values.data_nascimento
+          ? values.data_nascimento.format('YYYY-MM-DD')
+          : null,
+        sexo: values.sexo ?? null,
+      };
+      return startManualAttendance(payload);
+    },
+    onSuccess: async (result) => {
+      AppToast.success(`Atendimento manual iniciado com ${result.pessoa.nome_completo}.`);
+      setManualOpen(false);
+      manualForm.resetFields();
       selectAttendance(result.id, 'atendimento');
       await refreshAttendanceQueries();
     },
@@ -609,6 +645,22 @@ export function ComunicacaoAtendimentoPage() {
             >
               Novo atendimento
             </Button>
+            <Button
+              icon={<UserAddOutlined />}
+              loading={startManualMutation.isPending}
+              disabled={queueFull}
+              title={
+                queueFull
+                  ? `Limite de ${queueLimit} atendimentos simultâneos atingido.`
+                  : undefined
+              }
+              onClick={() => {
+                manualForm.resetFields();
+                setManualOpen(true);
+              }}
+            >
+              Atendimento manual
+            </Button>
             <Button disabled={!active || view !== 'atendimento'} onClick={openCloseModal}>
               Encerrar atendimento
             </Button>
@@ -679,7 +731,7 @@ export function ComunicacaoAtendimentoPage() {
           ) : !queueItems.length ? (
             <Empty
               image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description="Nenhum atendimento aberto. Clique em Novo atendimento para assumir um contato."
+              description="Nenhum atendimento aberto. Clique em Novo atendimento ou Atendimento manual."
             />
           ) : (
             <List
@@ -1182,6 +1234,75 @@ export function ComunicacaoAtendimentoPage() {
           )}
           <Form.Item name="observacao" label="Observações">
             <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="Atendimento manual"
+        open={manualOpen}
+        okText="Cadastrar e atender"
+        confirmLoading={startManualMutation.isPending}
+        onCancel={() => setManualOpen(false)}
+        onOk={() => manualForm.submit()}
+        destroyOnClose
+      >
+        <Typography.Paragraph type="secondary">
+          Cadastre um novo contato. Nome completo e telefone são obrigatórios. O
+          telefone não pode existir no cadastro nem estar em atendimento com outro
+          telefonista.
+        </Typography.Paragraph>
+        <Form
+          form={manualForm}
+          layout="vertical"
+          onFinish={(values) => startManualMutation.mutate(values)}
+        >
+          <Form.Item
+            name="nome_completo"
+            label="Nome completo"
+            rules={[{ required: true, min: 2, message: 'Informe o nome completo.' }]}
+          >
+            <Input maxLength={180} />
+          </Form.Item>
+          <Form.Item
+            name="telefone"
+            label="Telefone"
+            normalize={(value?: string) => (value ? formatPhoneContact(value) : value)}
+            rules={[
+              { required: true, message: 'Informe o telefone.' },
+              {
+                validator: async (_, value?: string) => {
+                  if (!value) return;
+                  if (!isValidPhoneContact(value)) {
+                    throw new Error('Informe um telefone com DDD.');
+                  }
+                },
+              },
+            ]}
+          >
+            <Input inputMode="tel" maxLength={15} placeholder="(00) 00000-0000" />
+          </Form.Item>
+          <Form.Item
+            name="email"
+            label="E-mail"
+            rules={[
+              {
+                validator: async (_, value?: string) => {
+                  if (!value?.trim()) return;
+                  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) {
+                    throw new Error('Informe um e-mail válido.');
+                  }
+                },
+              },
+            ]}
+          >
+            <Input type="email" maxLength={180} />
+          </Form.Item>
+          <Form.Item name="data_nascimento" label="Data de nascimento">
+            <DatePicker format="DD/MM/YYYY" style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="sexo" label="Sexo">
+            <Select allowClear options={sexOptions} />
           </Form.Item>
         </Form>
       </Modal>
