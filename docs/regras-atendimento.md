@@ -96,10 +96,11 @@ Quando o atendimento é encerrado como `sem_resposta` (ou `interrompido`) e o
 eleitor responde depois, o telefonista pode recuperar o **mesmo** registro na
 tela operacional.
 
-A seção **Buscar atendimento anterior** fica entre os botões de ação e as abas.
+A aba **Buscar atendimento** fica ao lado de **Atendimentos abertos**.
 Informe nome (mínimo 2 letras) e/ou telefone (mínimo 8 dígitos). A busca
 `GET /api/v1/comunicacao/atendimento/buscar` lista até 20 atendimentos da
-campanha atual, priorizando `sem_resposta` e `interrompido`.
+campanha atual, priorizando `sem_resposta` e `interrompido`. Ao retomar, a
+tela volta para a aba **Atendimento**.
 
 `POST /api/v1/comunicacao/atendimento/{id}/retomar` reabre o atendimento:
 
