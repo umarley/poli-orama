@@ -169,6 +169,114 @@ def make_mobile_leader_actor() -> RequestActor:
     )
 
 
+def make_phone_operator_actor() -> RequestActor:
+    return RequestActor(
+        tenant_id=10,
+        user_id=21,
+        session_id=31,
+        profiles=("telefonista",),
+        permissions=frozenset(
+            {"cadastro.visualizar", "cadastro.criar", "cadastro.editar"}
+        ),
+        token="token",
+    )
+
+
+@pytest.mark.asyncio
+async def test_phone_operator_cannot_list_people_without_search_filter() -> None:
+    repository = AsyncMock()
+    service = CadastroService(repository)
+
+    with pytest.raises(BusinessRuleError) as error:
+        await service.list_people(
+            make_phone_operator_actor(),
+            ListParams(),
+            PessoaFiltros(),
+        )
+
+    assert error.value.code == "person_search_filter_required"
+    repository.list_people.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_phone_operator_cannot_search_with_one_character() -> None:
+    repository = AsyncMock()
+    service = CadastroService(repository)
+
+    with pytest.raises(BusinessRuleError) as error:
+        await service.list_people(
+            make_phone_operator_actor(),
+            ListParams(query="A"),
+            PessoaFiltros(),
+        )
+
+    assert error.value.code == "person_search_filter_required"
+    repository.list_people.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_phone_operator_can_search_people_with_existing_filters() -> None:
+    repository = AsyncMock()
+    repository.list_people.return_value = ([], 0)
+    service = CadastroService(repository)
+
+    result = await service.list_people(
+        make_phone_operator_actor(),
+        ListParams(query="Ana"),
+        PessoaFiltros(),
+    )
+
+    assert result.total == 0
+    repository.list_people.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_phone_operator_search_is_limited_by_tenant_not_territorial_policy() -> None:
+    repository = AsyncMock()
+    repository.list_people.return_value = ([], 0)
+    service = CadastroService(repository)
+    territorial_access = TerritorialAccess(unrestricted=False, scopes=frozenset())
+
+    await service.list_people(
+        make_phone_operator_actor(),
+        ListParams(query="Umarley"),
+        PessoaFiltros(),
+        territorial_access,
+    )
+
+    assert repository.list_people.await_args.args == (
+        10,
+        ListParams(query="Umarley"),
+        PessoaFiltros(),
+        None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_phone_operator_can_open_tenant_person_without_territorial_policy() -> None:
+    repository = AsyncMock()
+    service = CadastroService(repository)
+    territorial_access = TerritorialAccess(unrestricted=False, scopes=frozenset())
+
+    await service.ensure_person_territorial_access(
+        make_phone_operator_actor(), 42, territorial_access
+    )
+
+    repository.get_person.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_other_profiles_keep_unfiltered_people_listing() -> None:
+    repository = AsyncMock()
+    repository.list_people.return_value = ([], 0)
+    service = CadastroService(repository)
+
+    result = await service.list_people(make_actor(), ListParams(), PessoaFiltros())
+
+    assert result.total == 0
+    repository.list_people.assert_awaited_once()
+
+
 @pytest.mark.asyncio
 async def test_list_people_skips_territorial_filter_for_mobile_leader() -> None:
     repository = AsyncMock()

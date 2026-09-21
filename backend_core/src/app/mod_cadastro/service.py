@@ -82,7 +82,6 @@ from app.schemas.cadastro_operacional import (
     VinculoResumo,
 )
 
-
 SITE_ORIGIN_TAG_NAME = "origem-site"
 SITE_ORIGIN_NOTE = "Cadastro originado pelo site."
 
@@ -98,9 +97,20 @@ class CadastroService:
         filters: PessoaFiltros,
         territorial_access: TerritorialAccess | None = None,
     ) -> Page[PessoaListItem]:
+        if "telefonista" in actor.profiles and not self._has_valid_person_search(params, filters):
+            raise BusinessRuleError(
+                "Informe pelo menos um criterio valido para pesquisar pessoas.",
+                code="person_search_filter_required",
+            )
         filters = self._scope_mobile_leader_filters(actor, filters)
         accessible_ids = None
-        if territorial_access is not None and not self._is_scoped_mobile_leader(actor):
+        # Telefonistas pesquisam no tenant inteiro, mas somente apos a validacao
+        # obrigatoria de filtros acima. O repositorio sempre recebe o tenant_id.
+        if (
+            territorial_access is not None
+            and "telefonista" not in actor.profiles
+            and not self._is_scoped_mobile_leader(actor)
+        ):
             accessible_ids = await TerritorioRepository(
                 self.repository.session
             ).accessible_ids(actor.tenant_id, territorial_access)
@@ -142,12 +152,36 @@ class CadastroService:
             )
         return Page[PessoaListItem].create(items, total, params)
 
+    @staticmethod
+    def _has_valid_person_search(params: ListParams, filters: PessoaFiltros) -> bool:
+        textual_query = (params.query or filters.nome or "").strip()
+        if len(textual_query) >= 2:
+            return True
+        if any(
+            value is not None
+            for value in (
+                filters.tipo_id,
+                filters.lideranca_id,
+                filters.cadastrado_por_lideranca_id,
+                filters.territorio_id,
+                filters.tag_id,
+            )
+        ):
+            return True
+        return any(
+            bool((value or "").strip())
+            for value in (filters.cpf, filters.telefone, filters.origem_cadastro)
+        )
+
     async def ensure_person_territorial_access(
         self,
         actor: RequestActor,
         person_id: int,
         territorial_access: TerritorialAccess,
     ) -> None:
+        # A leitura seguinte continua isolada pelo tenant_id no repositorio.
+        if "telefonista" in actor.profiles:
+            return
         if self._is_scoped_mobile_leader(actor):
             person = await self.repository.get_person(actor.tenant_id, person_id)
             if person is None:
@@ -1270,7 +1304,8 @@ class CadastroService:
         territorial_access: TerritorialAccess | None = None,
     ) -> list[BuscaRapidaItem]:
         accessible_ids = None
-        if territorial_access is not None:
+        # A busca rapida ja exige query com ao menos dois caracteres.
+        if territorial_access is not None and "telefonista" not in actor.profiles:
             accessible_ids = await TerritorioRepository(
                 self.repository.session
             ).accessible_ids(actor.tenant_id, territorial_access)

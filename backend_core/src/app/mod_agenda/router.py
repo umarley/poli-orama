@@ -377,6 +377,20 @@ async def list_events(
     )
 
 
+@router.get(
+    "/candidato/eventos",
+    response_model=list[EventResponse],
+    summary="Lista a agenda do candidato visivel ao usuario na campanha ativa",
+)
+async def list_candidate_events(
+    actor: Annotated[RequestActor, Depends(require_permission("agenda", "visualizar"))],
+    service: Annotated[AgendaService, Depends(get_service)],
+    data_inicio: datetime | None = None,
+    data_fim: datetime | None = None,
+) -> list[dict[str, Any]]:
+    return await service.list_candidate_events(actor, start=data_inicio, end=data_fim)
+
+
 @router.post("/eventos", response_model=EventResponse, status_code=status.HTTP_201_CREATED)
 async def create_event(
     payload: EventInput,

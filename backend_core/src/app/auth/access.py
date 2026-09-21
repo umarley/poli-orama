@@ -33,6 +33,16 @@ _PASSWORD_CHANGE_ALLOWED_PATH_SUFFIXES = (
 )
 _API_KEY_ALLOWED_PATH_SUFFIXES = ("/cadastro/pessoas",)
 _INTEGRATION_PERMISSIONS = frozenset({"cadastro.criar"})
+_SAFE_READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+def ensure_mobile_agenda_read_only(request: Request, login_origin: str, api_prefix: str) -> None:
+    if (
+        login_origin == "app_lider"
+        and request.method.upper() not in _SAFE_READ_METHODS
+        and request.url.path.startswith(f"{api_prefix}/agenda")
+    ):
+        raise AuthorizationError("A agenda e somente para consulta no aplicativo de lider.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,6 +201,7 @@ async def get_current_user(
     permissions = frozenset(
         permission.codigo for permission in await repository.permissions_for_user(user_id)
     )
+    ensure_mobile_agenda_read_only(request, login_origin, settings.api_v1_prefix)
     return RequestActor(
         tenant_id=tenant_id,
         user_id=user_id,

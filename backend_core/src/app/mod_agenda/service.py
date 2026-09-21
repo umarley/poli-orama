@@ -324,6 +324,41 @@ class AgendaService:
             **filters,
         )
 
+    async def list_candidate_events(
+        self,
+        actor: RequestActor,
+        *,
+        start: datetime | None,
+        end: datetime | None,
+    ) -> list[dict[str, Any]]:
+        now = datetime.now(UTC)
+        period_start = start or now - timedelta(days=7)
+        period_end = end or now + timedelta(days=31)
+        if period_end <= period_start:
+            raise BusinessRuleError("O fim do periodo deve ser posterior ao inicio.")
+        if period_end - period_start > timedelta(days=93):
+            raise BusinessRuleError("Consulte no maximo 93 dias de agenda por vez.")
+        campaign_id = await self.repository.active_campaign_id(actor.tenant_id)
+        if campaign_id is None:
+            return []
+        return await self.repository.list_events(
+            actor.tenant_id,
+            start=period_start,
+            end=period_end,
+            territory_id=None,
+            leader_id=None,
+            event_type_id=None,
+            status_id=None,
+            calendar_id=None,
+            candidate_nature=None,
+            community_front=None,
+            calendar_type="agenda_candidato",
+            visibility=None,
+            user_id=actor.user_id,
+            calendar_administrator=False,
+            campaign_id=campaign_id,
+        )
+
     async def create_event(
         self,
         actor: RequestActor,
@@ -336,7 +371,10 @@ class AgendaService:
         if calendar_id is None:
             raise BusinessRuleError("Cadastre uma agenda antes de criar compromissos.")
         await self.ensure_calendar(actor, calendar_id, "criar")
-        payload = payload.model_copy(update={"agenda_id": calendar_id})
+        campaign_id = await self.repository.active_campaign_id(actor.tenant_id)
+        payload = payload.model_copy(
+            update={"agenda_id": calendar_id, "campanha_eleicao_id": campaign_id}
+        )
         await self._validate_event_references(actor, access, payload, administer=True)
         event_id = await self.repository.create_event(actor.tenant_id, actor.user_id, payload)
         item = await self.repository.get_event(actor.tenant_id, event_id)

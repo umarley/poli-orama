@@ -617,6 +617,7 @@ class AgendaRepository:
         visibility: str | None,
         user_id: int,
         calendar_administrator: bool,
+        campaign_id: int | None = None,
     ) -> list[dict[str, Any]]:
         clauses = ["e.tenant_id = :tenant_id", "e.excluido_em IS NULL", "a.ativo"]
         values: dict[str, Any] = {"tenant_id": tenant_id}
@@ -645,6 +646,9 @@ class AgendaRepository:
         if calendar_id:
             clauses.append("e.agenda_id = :calendar_id")
             values["calendar_id"] = calendar_id
+        if campaign_id:
+            clauses.append("e.campanha_eleicao_id = :campaign_id")
+            values["campaign_id"] = campaign_id
         for column, parameter, value in (
             ("natureza_candidato", "candidate_nature", candidate_nature),
             ("frente_comunidade", "community_front", community_front),
@@ -664,6 +668,17 @@ class AgendaRepository:
             values,
         )
         return [dict(row) for row in result.mappings()]
+
+    async def active_campaign_id(self, tenant_id: int) -> int | None:
+        value = await self.session.scalar(
+            text(
+                "SELECT id FROM eleicao.campanha_eleicao "
+                "WHERE tenant_id = :tenant_id AND ativa "
+                "ORDER BY data_ativacao DESC NULLS LAST, id DESC LIMIT 1"
+            ),
+            {"tenant_id": tenant_id},
+        )
+        return int(value) if value is not None else None
 
     async def get_event(self, tenant_id: int, event_id: int) -> dict[str, Any] | None:
         result = await self.session.execute(

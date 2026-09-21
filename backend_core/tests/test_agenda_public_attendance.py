@@ -1,12 +1,64 @@
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
 
+from app.auth.access import RequestActor, TerritorialAccess
 from app.core.errors import BusinessRuleError
-from app.mod_agenda.schemas import PublicAttendanceInput
+from app.mod_agenda.schemas import EventInput, PublicAttendanceInput
 from app.mod_agenda.service import AgendaService
+
+
+def authenticated_actor() -> RequestActor:
+    return RequestActor(
+        tenant_id=7,
+        user_id=9,
+        session_id=3,
+        profiles=("usuario",),
+        permissions=frozenset({"agenda.visualizar"}),
+        token="token",
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("active_campaign_id", [44, None])
+async def test_event_creation_always_uses_the_active_campaign(
+    active_campaign_id: int | None,
+) -> None:
+    repository = SimpleNamespace(
+        session=AsyncMock(),
+        active_campaign_id=AsyncMock(return_value=active_campaign_id),
+        create_event=AsyncMock(return_value=30),
+        get_event=AsyncMock(return_value={"id": 30}),
+        commit=AsyncMock(),
+    )
+    service = AgendaService(repository)  # type: ignore[arg-type]
+    service.ensure_calendar = AsyncMock()  # type: ignore[method-assign]
+    service._validate_event_references = AsyncMock()  # type: ignore[method-assign]
+    service._audit = AsyncMock()  # type: ignore[method-assign]
+    payload = EventInput(
+        agenda_id=12,
+        campanha_eleicao_id=999,
+        titulo="Compromisso",
+        data_inicio=datetime(2026, 9, 22, 13, 0, tzinfo=UTC),
+        responsavel_pessoa_id=20,
+    )
+
+    with patch("app.mod_agenda.service.EventResponse.model_validate", return_value="event"):
+        result = await service.create_event(
+            authenticated_actor(),
+            TerritorialAccess(unrestricted=True, scopes=frozenset()),
+            payload,
+        )
+
+    saved_payload = repository.create_event.await_args.args[2]
+    assert saved_payload.agenda_id == 12
+    assert saved_payload.campanha_eleicao_id == active_campaign_id
+    assert result == "event"
+    repository.active_campaign_id.assert_awaited_once_with(7)
+    repository.commit.assert_awaited_once()
 
 
 class PublicAttendanceRepositoryStub:

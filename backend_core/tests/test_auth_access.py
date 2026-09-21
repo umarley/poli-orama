@@ -5,8 +5,14 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 from sqlalchemy.exc import IntegrityError
+from starlette.requests import Request
 
-from app.auth.access import RequestActor, get_territorial_access, require_permission
+from app.auth.access import (
+    RequestActor,
+    ensure_mobile_agenda_read_only,
+    get_territorial_access,
+    require_permission,
+)
 from app.auth.repository import AuthRepository
 from app.auth.schemas import UserCreate
 from app.auth.service import AuthService
@@ -39,6 +45,26 @@ def test_permission_dependency_rejects_missing_permission() -> None:
 
     with pytest.raises(AuthorizationError):
         asyncio.run(dependency(make_actor("usuarios.visualizar")))
+
+
+def test_mobile_agenda_rejects_mutations_and_allows_reads() -> None:
+    post_request = Request(
+        {"type": "http", "method": "POST", "path": "/api/v1/agenda/eventos", "headers": []}
+    )
+    get_request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/api/v1/agenda/candidato/eventos",
+            "headers": [],
+        }
+    )
+
+    with pytest.raises(AuthorizationError):
+        ensure_mobile_agenda_read_only(post_request, "app_lider", "/api/v1")
+
+    ensure_mobile_agenda_read_only(get_request, "app_lider", "/api/v1")
+    ensure_mobile_agenda_read_only(post_request, "web", "/api/v1")
 
 
 def test_web_actor_with_multiple_profiles_keeps_unrestricted_access() -> None:

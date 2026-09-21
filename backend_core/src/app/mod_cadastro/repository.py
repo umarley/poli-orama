@@ -98,6 +98,8 @@ class CadastroRepository(BaseRepository[Pessoa]):
                     Pessoa.nome_completo.ilike(term),
                     Pessoa.nome_social.ilike(term),
                     Pessoa.apelido.ilike(term),
+                    Pessoa.documentos.any(PessoaDocumento.numero.ilike(term)),
+                    Pessoa.contatos.any(PessoaContato.valor.ilike(term)),
                 )
             )
         if filters.cpf:

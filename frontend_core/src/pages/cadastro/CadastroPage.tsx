@@ -7,6 +7,7 @@ import {
 } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  Alert,
   Button,
   Card,
   Dropdown,
@@ -73,19 +74,27 @@ function formatLeadershipLabel(
 }
 
 export function CadastroPage() {
-  const profiles = useSessionStore((state) => state.user?.profiles ?? []);
+  const user = useSessionStore((state) => state.user);
+  const profiles = user?.profiles ?? [];
+  const permissions = user?.permissions ?? [];
+  const isPhoneOperator = profiles.includes('telefonista');
   const canMergeDuplicates = profiles.some((profile) =>
     ['gestor', 'gestor_saas'].includes(profile),
   );
+  const canCreate = permissions.includes('cadastro.criar');
+  const canDeactivate = permissions.includes('cadastro.excluir');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [form] = Form.useForm<PessoaFilters>();
   const [filters, setFilters] = useState<PessoaFilters>({ page: 1, page_size: 10 });
+  const [hasSearched, setHasSearched] = useState(!isPhoneOperator);
+  const [searchFeedback, setSearchFeedback] = useState<string | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
 
   const pessoasQuery = useQuery({
     queryKey: ['cadastro', 'pessoas', filters],
     queryFn: () => listarPessoas(filters),
+    enabled: !isPhoneOperator || hasSearched,
   });
   const tiposQuery = useQuery({ queryKey: ['cadastro', 'tipos'], queryFn: listarTiposPessoa });
   const estadosCivisQuery = useQuery({
@@ -119,6 +128,33 @@ export function CadastroPage() {
     },
     onError: (error) => AppToast.error(normalizeApiError(error).message),
   });
+
+  const submitSearch = (values: PessoaFilters) => {
+    const query = values.query?.trim() || undefined;
+    const hasStructuredFilter = [
+      values.tipo_id,
+      values.lideranca_id,
+      values.tag_id,
+      values.territorio_id,
+    ].some((value) => value !== undefined && value !== null);
+
+    if (isPhoneOperator && !hasStructuredFilter && (!query || query.length < 2)) {
+      setHasSearched(false);
+      setSearchFeedback('Informe ao menos dois caracteres ou selecione um filtro para pesquisar.');
+      return;
+    }
+
+    setSearchFeedback(null);
+    setHasSearched(true);
+    setFilters({ ...values, query, page: 1, page_size: filters.page_size ?? 10 });
+  };
+
+  const clearSearch = () => {
+    form.resetFields();
+    setSearchFeedback(null);
+    setHasSearched(!isPhoneOperator);
+    setFilters({ page: 1, page_size: 10 });
+  };
 
   const columns: TableProps<PessoaListItem>['columns'] = [
     {
@@ -192,20 +228,24 @@ export function CadastroPage() {
                 label: 'Ver detalhes',
                 onClick: () => navigate(`/cadastro/pessoas/${person.id}`),
               },
-              {
-                key: 'deactivate',
-                danger: true,
-                disabled: !person.ativo,
-                label: (
-                  <Popconfirm
-                    title="Inativar cadastro?"
-                    description="O histórico será preservado."
-                    onConfirm={() => deactivateMutation.mutate(person.id)}
-                  >
-                    <span>Inativar</span>
-                  </Popconfirm>
-                ),
-              },
+              ...(canDeactivate
+                ? [
+                    {
+                      key: 'deactivate',
+                      danger: true,
+                      disabled: !person.ativo,
+                      label: (
+                        <Popconfirm
+                          title="Inativar cadastro?"
+                          description="O histórico será preservado."
+                          onConfirm={() => deactivateMutation.mutate(person.id)}
+                        >
+                          <span>Inativar</span>
+                        </Popconfirm>
+                      ),
+                    },
+                  ]
+                : []),
             ],
           }}
         >
@@ -230,21 +270,16 @@ export function CadastroPage() {
           { label: 'Pessoas e eleitores' },
         ]}
         actions={
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setWizardOpen(true)}>
-            Nova pessoa
-          </Button>
+          canCreate ? (
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setWizardOpen(true)}>
+              Nova pessoa
+            </Button>
+          ) : undefined
         }
       />
 
       <Card size="small">
-        <Form
-          form={form}
-          layout="inline"
-          onFinish={(values) =>
-            setFilters({ ...values, page: 1, page_size: filters.page_size ?? 10 })
-          }
-          className={styles.filters}
-        >
+        <Form form={form} layout="inline" onFinish={submitSearch} className={styles.filters}>
           <Form.Item name="query" className={styles.searchField}>
             <Input
               allowClear
@@ -287,59 +322,65 @@ export function CadastroPage() {
               <Button type="primary" htmlType="submit" loading={pessoasQuery.isFetching}>
                 Filtrar
               </Button>
-              <Button
-                onClick={() => {
-                  form.resetFields();
-                  setFilters({ page: 1, page_size: 10 });
-                }}
-              >
-                Limpar
-              </Button>
+              <Button onClick={clearSearch}>Limpar</Button>
             </Space>
           </Form.Item>
         </Form>
       </Card>
 
-      <div className={styles.tableCard}>
-        <div className={styles.tableHeading}>
-          <div>
-            <strong>Base de pessoas</strong>
-            <Typography.Text type="secondary">
-              {formatInteger(pessoasQuery.data?.total)} registros encontrados
-            </Typography.Text>
-          </div>
-          <Space>
-            <Button onClick={() => navigate('/cadastro/indicacoes')}>Rede de indicações</Button>
-            <Button icon={<UserOutlined />} onClick={() => navigate('/cadastro/validacoes')}>
-              Cadastros pendentes
-            </Button>
-            {canMergeDuplicates ? (
-              <Button
-                icon={<MergeCellsOutlined />}
-                onClick={() => navigate('/cadastro/duplicidades')}
-              >
-                Duplicidades
-              </Button>
-            ) : null}
-          </Space>
-        </div>
-        <BaseTable<PessoaListItem>
-          rowKey="id"
-          columns={columns}
-          dataSource={pessoasQuery.data?.items ?? []}
-          loading={pessoasQuery.isPending}
-          error={pessoasQuery.error ? normalizeApiError(pessoasQuery.error).message : null}
-          onRetry={() => pessoasQuery.refetch()}
-          pagination={{
-            current: filters.page,
-            pageSize: filters.page_size,
-            total: pessoasQuery.data?.total,
-            showSizeChanger: true,
-            onChange: (page, pageSize) =>
-              setFilters((current) => ({ ...current, page, page_size: pageSize })),
-          }}
+      {isPhoneOperator && !hasSearched ? (
+        <Alert
+          type={searchFeedback ? 'warning' : 'info'}
+          showIcon
+          message={
+            searchFeedback ?? 'Utilize os filtros acima para localizar uma pessoa ou eleitor.'
+          }
         />
-      </div>
+      ) : (
+        <div className={styles.tableCard}>
+          <div className={styles.tableHeading}>
+            <div>
+              <strong>Base de pessoas</strong>
+              <Typography.Text type="secondary">
+                {formatInteger(pessoasQuery.data?.total)} registros encontrados
+              </Typography.Text>
+            </div>
+            {!isPhoneOperator ? (
+              <Space>
+                <Button onClick={() => navigate('/cadastro/indicacoes')}>Rede de indicações</Button>
+                <Button icon={<UserOutlined />} onClick={() => navigate('/cadastro/validacoes')}>
+                  Cadastros pendentes
+                </Button>
+                {canMergeDuplicates ? (
+                  <Button
+                    icon={<MergeCellsOutlined />}
+                    onClick={() => navigate('/cadastro/duplicidades')}
+                  >
+                    Duplicidades
+                  </Button>
+                ) : null}
+              </Space>
+            ) : null}
+          </div>
+          <BaseTable<PessoaListItem>
+            rowKey="id"
+            columns={columns}
+            dataSource={pessoasQuery.data?.items ?? []}
+            loading={pessoasQuery.isPending}
+            error={pessoasQuery.error ? normalizeApiError(pessoasQuery.error).message : null}
+            onRetry={() => pessoasQuery.refetch()}
+            locale={{ emptyText: 'Nenhum cadastro encontrado para os critérios informados.' }}
+            pagination={{
+              current: filters.page,
+              pageSize: filters.page_size,
+              total: pessoasQuery.data?.total,
+              showSizeChanger: true,
+              onChange: (page, pageSize) =>
+                setFilters((current) => ({ ...current, page, page_size: pageSize })),
+            }}
+          />
+        </div>
+      )}
 
       <PessoaWizard
         open={wizardOpen}
