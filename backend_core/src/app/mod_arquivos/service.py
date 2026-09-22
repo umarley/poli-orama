@@ -34,6 +34,7 @@ ENTITY_MODULE = {
     "convite": "agenda",
     "tenant": "configuracoes",
     "contrato": "contrato",
+    "anuncio_execucao": "anuncios",
 }
 IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
 PREVIEW_EXTENSIONS = IMAGE_EXTENSIONS | {"pdf"}
@@ -62,6 +63,8 @@ class FileService:
             "etl.visualizar",
             "comunicacao.visualizar",
             "contrato.visualizar",
+            "anuncios.visualizar",
+            "anuncios.execucao.visualizar",
         )
         return await self.repository.list_types(actor.tenant_id, include_inactive)
 
@@ -99,9 +102,10 @@ class FileService:
         content_type: str | None,
         content: bytes,
         photo_only: bool = False,
+        commit: bool = True,
     ) -> AttachmentResponse:
         self._require_entity(actor, entity_type, write=True)
-        await self._require_entity_exists(actor.tenant_id, entity_type, entity_id)
+        await self._require_entity_exists(actor, entity_type, entity_id)
         attachment_type = await self.repository.get_type(actor.tenant_id, type_id)
         if attachment_type is None or not attachment_type["ativo"]:
             raise ResourceNotFoundError("Tipo de anexo", type_id)
@@ -167,12 +171,15 @@ class FileService:
                     "hash_sha256": digest,
                 },
             )
-            await self.repository.commit()
+            if commit:
+                await self.repository.commit()
+            else:
+                await self.repository.session.flush()
         except Exception:
             await self.storage.delete(bucket=stored.bucket, key=stored.key)
             raise
 
-        if extension in PREVIEW_EXTENSIONS:
+        if commit and extension in PREVIEW_EXTENSIONS:
             self._dispatch_extraction(attachment_id, actor.tenant_id)
         item = await self.repository.get_attachment(actor.tenant_id, attachment_id)
         assert item is not None
@@ -182,7 +189,7 @@ class FileService:
         self, actor: RequestActor, entity_type: EntityType, entity_id: int
     ) -> list[AttachmentResponse]:
         self._require_entity(actor, entity_type, write=False)
-        await self._require_entity_exists(actor.tenant_id, entity_type, entity_id)
+        await self._require_entity_exists(actor, entity_type, entity_id)
         return [
             self._response(item)
             for item in await self.repository.list_attachments(
@@ -308,15 +315,26 @@ class FileService:
         if item is None or item["excluido_em"] is not None:
             raise ResourceNotFoundError("Anexo", attachment_id)
         self._require_entity(actor, item["entidade_tipo"], write=write)
-        await self._require_entity_exists(
-            actor.tenant_id, item["entidade_tipo"], item["entidade_id"]
-        )
+        await self._require_entity_exists(actor, item["entidade_tipo"], item["entidade_id"])
         return item
 
     async def _require_entity_exists(
-        self, tenant_id: int, entity_type: EntityType, entity_id: int
+        self, actor: RequestActor, entity_type: EntityType, entity_id: int
     ) -> None:
-        if not await self.repository.entity_exists(tenant_id, entity_type, entity_id):
+        if entity_type == "anuncio_execucao":
+            administrative = bool(
+                {"anuncios.gerenciar", "anuncios.execucao.visualizar"} & actor.permissions
+            )
+            allowed = await self.repository.can_access_anuncio_execution(
+                actor.tenant_id,
+                entity_id,
+                actor.user_id,
+                actor.pessoa_id,
+                administrative=administrative,
+            )
+        else:
+            allowed = await self.repository.entity_exists(actor.tenant_id, entity_type, entity_id)
+        if not allowed:
             raise ResourceNotFoundError(entity_type.capitalize(), entity_id)
 
     @staticmethod
@@ -324,6 +342,19 @@ class FileService:
         if entity_type == "contrato":
             if "tesoureiro" not in actor.profiles:
                 raise AuthorizationError("Perfil obrigatorio: tesoureiro.")
+            return
+        if entity_type == "anuncio_execucao":
+            permissions = (
+                {"anuncios.execucao.registrar", "anuncios.gerenciar"}
+                if write
+                else {
+                    "anuncios.visualizar",
+                    "anuncios.execucao.visualizar",
+                    "anuncios.execucao.registrar",
+                }
+            )
+            if not permissions & actor.permissions:
+                raise AuthorizationError("Permissao obrigatoria para acessar fotos de anuncios.")
             return
         module = ENTITY_MODULE[entity_type]
         if entity_type == "tenant":

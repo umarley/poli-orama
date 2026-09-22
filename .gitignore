@@ -62,6 +62,7 @@
 !/backend_core/tests/test_cadastro_*.py
 !/backend_core/tests/test_agenda_public_attendance.py
 !/backend_core/tests/test_dashboard_*.py
+!/backend_core/tests/test_anuncios_service.py
 !/backend_core/tests/conftest.py
 /backend_core/htmlcov/
 /backend_core/**/__pycache__/

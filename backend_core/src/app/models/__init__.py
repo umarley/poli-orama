@@ -15,6 +15,14 @@ from app.models.agenda import (
     StatusEvento,
     TipoEvento,
 )
+from app.models.anuncio import (
+    MaterialComunicacao,
+    RotaComunicacao,
+    RotaComunicacaoExecucao,
+    RotaComunicacaoMaterialMovimentacao,
+    RotaComunicacaoPonto,
+    RotaComunicacaoPontoMaterial,
+)
 from app.models.arquivo import Anexo, Arquivo, DocumentoExtraido, TipoAnexo
 from app.models.cadastro import (
     Eleitor,
@@ -90,6 +98,12 @@ from app.models.territorio import (
 )
 
 __all__ = [
+    "MaterialComunicacao",
+    "RotaComunicacao",
+    "RotaComunicacaoExecucao",
+    "RotaComunicacaoMaterialMovimentacao",
+    "RotaComunicacaoPonto",
+    "RotaComunicacaoPontoMaterial",
     "Anexo",
     "Arquivo",
     "DocumentoExtraido",

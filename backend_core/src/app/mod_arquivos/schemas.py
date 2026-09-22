@@ -17,6 +17,7 @@ EntityType = Literal[
     "convite",
     "tenant",
     "contrato",
+    "anuncio_execucao",
 ]
 
 

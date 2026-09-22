@@ -114,17 +114,17 @@ class AuthService:
         if user.status != "ativo":
             raise AuthenticationError("Usuario inativo ou bloqueado.")
 
+        profiles = await self.repository.profiles_for_user(user.id)
         if payload.app_lider:
             if not user.habilitado_app_lider:
                 raise AuthenticationError(
                     "Usuario nao habilitado para o app mobile de lideranca."
                 )
-            if user.lideranca_id is None:
+            profile_codes = {profile.codigo for profile in profiles}
+            if user.lideranca_id is None and "motorista_motociclista" not in profile_codes:
                 raise AuthenticationError(
-                    "Usuario sem lideranca vinculada para o app mobile."
+                    "Usuario sem lideranca ou perfil de motorista para o aplicativo."
                 )
-
-        profiles = await self.repository.profiles_for_user(user.id)
         if user.mfa_habilitado:
             if payload.codigo_mfa is None:
                 raise MfaRequiredError()
@@ -493,7 +493,12 @@ class AuthService:
         ip_address: str | None,
         user_agent: str | None,
     ) -> UserResponse:
-        await self._validate_profile_assignment(actor, payload.perfil_ids)
+        profiles = await self._validate_profile_assignment(actor, payload.perfil_ids)
+        self._validate_mobile_access_configuration(
+            enabled=payload.habilitado_app_lider,
+            leadership_id=payload.lideranca_id,
+            profiles=profiles,
+        )
         validate_password_policy(payload.senha, self.settings)
         user = await self.repository.create_user(
             actor.tenant_id, payload, hash_password(payload.senha)
@@ -522,10 +527,24 @@ class AuthService:
         ip_address: str | None,
         user_agent: str | None,
     ) -> UserResponse:
-        if payload.perfil_ids is not None:
-            await self._validate_profile_assignment(actor, payload.perfil_ids)
         user = await self._get_manageable_user(actor, user_id)
         before_profiles = await self.repository.profiles_for_user(user.id)
+        assigned_profiles = before_profiles
+        if payload.perfil_ids is not None:
+            assigned_profiles = await self._validate_profile_assignment(actor, payload.perfil_ids)
+        self._validate_mobile_access_configuration(
+            enabled=(
+                payload.habilitado_app_lider
+                if payload.habilitado_app_lider is not None
+                else user.habilitado_app_lider
+            ),
+            leadership_id=(
+                payload.lideranca_id
+                if "lideranca_id" in payload.model_fields_set
+                else user.lideranca_id
+            ),
+            profiles=assigned_profiles,
+        )
         before = _user_snapshot(user, before_profiles)
         await self.repository.update_user(user, payload)
         if payload.status is not None and payload.status != "ativo":
@@ -709,12 +728,30 @@ class AuthService:
 
     async def _validate_profile_assignment(
         self, actor: RequestActor, profile_ids: list[int]
-    ) -> None:
+    ) -> list[AccessProfile]:
         profiles = await self.repository.available_profiles(actor.tenant_id, profile_ids)
+        if len(profiles) != len(set(profile_ids)):
+            raise BusinessRuleError(
+                "A lista contem perfil inexistente ou indisponivel para o tenant.",
+                code="invalid_profile_assignment",
+            )
         if any(profile.codigo == "gestor_saas" for profile in profiles):
             raise AuthorizationError(
                 "O perfil gestor_saas pertence a identidade global da plataforma e nao pode "
                 "ser atribuido a usuarios de tenants."
+            )
+        return profiles
+
+    @staticmethod
+    def _validate_mobile_access_configuration(
+        *, enabled: bool, leadership_id: int | None, profiles: list[AccessProfile]
+    ) -> None:
+        if not enabled or leadership_id is not None:
+            return
+        if not any(profile.codigo == "motorista_motociclista" for profile in profiles):
+            raise BusinessRuleError(
+                "O acesso ao aplicativo sem lideranca exige o perfil motorista_motociclista.",
+                code="mobile_profile_required",
             )
 
     async def get_territorial_access(

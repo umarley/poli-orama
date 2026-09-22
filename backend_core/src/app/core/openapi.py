@@ -18,6 +18,10 @@ OPENAPI_TAGS = [
     },
     {"name": "Importacao e ETL", "description": "Importacoes, staging e qualidade."},
     {"name": "Agenda", "description": "Agenda e eventos."},
+    {
+        "name": "Anuncios",
+        "description": "Materiais, equipes, rotas e execucao operacional em campo.",
+    },
     {"name": "Demandas", "description": "Demandas e atendimentos."},
     {"name": "Comunicacao", "description": "Interacoes, canais e relacionamento."},
     {"name": "Contratos", "description": "Gestao restrita de contratos da campanha."},

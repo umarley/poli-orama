@@ -11,6 +11,7 @@ import { LoginPage } from '@/pages/auth/LoginPage';
 import { MyProfilePage } from '@/pages/auth/MyProfilePage';
 import { RequiredPasswordChangePage } from '@/pages/auth/RequiredPasswordChangePage';
 import { AgendaPage } from '@/pages/agenda/AgendaPage';
+import { AnunciosPage } from '@/pages/anuncios/AnunciosPage';
 import { EventDetailPage } from '@/pages/agenda/EventDetailPage';
 import { PublicAttendancePage } from '@/pages/agenda/PublicAttendancePage';
 import { CadastroPage } from '@/pages/cadastro/CadastroPage';
@@ -209,6 +210,10 @@ export const router = createBrowserRouter([
       {
         path: 'demandas/:id',
         element: withPermission('demandas.visualizar', <DemandDetailPage />),
+      },
+      {
+        path: 'anuncios',
+        element: withPermission('anuncios.visualizar', <AnunciosPage />),
       },
       {
         path: 'contratos',

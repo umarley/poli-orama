@@ -178,15 +178,6 @@ class UserCreate(BaseModel):
     def normalize_email(cls, value: str) -> str:
         return LoginRequest.normalize_email(value)
 
-    @model_validator(mode="after")
-    def validate_app_lider(self) -> "UserCreate":
-        if self.habilitado_app_lider and self.lideranca_id is None:
-            raise ValueError(
-                "lideranca_id e obrigatorio quando habilitado_app_lider e verdadeiro."
-            )
-        return self
-
-
 class UserUpdate(BaseModel):
     nome: str | None = Field(default=None, min_length=2, max_length=180)
     email: str | None = Field(default=None, min_length=3, max_length=254)

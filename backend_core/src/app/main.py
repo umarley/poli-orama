@@ -14,6 +14,7 @@ from app.core.middleware import RequestContextMiddleware
 from app.core.openapi import OPENAPI_TAGS
 from app.core.router import router as health_router
 from app.mod_agenda.router import router as agenda_router
+from app.mod_anuncios.router import router as anuncios_router
 from app.mod_arquivos.router import router as arquivos_router
 from app.mod_cadastro.router import router as cadastro_router
 from app.mod_callcenter.router import router as callcenter_router
@@ -61,6 +62,7 @@ api_app.include_router(contrato_router, prefix=settings.api_v1_prefix)
 api_app.include_router(territorio_router, prefix=settings.api_v1_prefix)
 api_app.include_router(metas_router, prefix=settings.api_v1_prefix)
 api_app.include_router(agenda_router, prefix=settings.api_v1_prefix)
+api_app.include_router(anuncios_router, prefix=settings.api_v1_prefix)
 api_app.include_router(arquivos_router, prefix=settings.api_v1_prefix)
 api_app.include_router(demandas_router, prefix=settings.api_v1_prefix)
 api_app.include_router(eleicoes_router, prefix=settings.api_v1_prefix)

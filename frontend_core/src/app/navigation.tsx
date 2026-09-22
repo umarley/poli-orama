@@ -20,6 +20,7 @@ import {
   UnorderedListOutlined,
   UserOutlined,
   CommentOutlined,
+  EnvironmentOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 
@@ -115,6 +116,12 @@ export const navigationItems: NavigationItem[] = [
     label: 'Demandas',
     icon: <UnorderedListOutlined />,
     permission: 'demandas.visualizar',
+  },
+  {
+    key: '/anuncios',
+    label: 'Anúncios',
+    icon: <EnvironmentOutlined />,
+    permission: 'anuncios.visualizar',
   },
   {
     key: '/comunicacao',
