@@ -120,11 +120,12 @@ class FileRepository:
                 text(
                     "SELECT EXISTS(SELECT 1 "
                     "FROM anuncio.rota_comunicacao_execucao ex "
-                    "JOIN anuncio.rota_comunicacao r ON r.id=ex.rota_id "
+                    "JOIN anuncio.rota_comunicacao_planejamento pl "
+                    "ON pl.id=ex.planejamento_id AND pl.tenant_id=ex.tenant_id "
                     "WHERE ex.tenant_id=:tenant_id AND ex.id=:execution_id AND ("
-                    ":administrative OR r.usuario_responsavel_id=:user_id OR EXISTS("
+                    ":administrative OR pl.usuario_responsavel_id=:user_id OR EXISTS("
                     "SELECT 1 FROM cadastro.equipe_pessoa ep "
-                    "WHERE ep.tenant_id=r.tenant_id AND ep.equipe_id=r.equipe_id "
+                    "WHERE ep.tenant_id=pl.tenant_id AND ep.equipe_id=pl.equipe_id "
                     "AND ep.pessoa_id=:person_id)))"
                 ),
                 {
