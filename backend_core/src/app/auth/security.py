@@ -209,7 +209,7 @@ def _decode_token(token: str, settings: Settings, *, expected_type: str) -> dict
     except (TypeError, ValueError) as exc:
         raise AuthenticationError("Claims obrigatorias do token sao invalidas.") from exc
     login_origin = payload["origem_login"]
-    if login_origin not in {"web", "app_lider"}:
+    if login_origin not in {"web", "app_lider", "pwa_lider"}:
         raise AuthenticationError("Origem da sessao invalida.")
     payload["origem_login"] = login_origin
     return payload

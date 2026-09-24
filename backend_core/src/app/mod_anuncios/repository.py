@@ -768,6 +768,23 @@ class AnunciosRepository:
         )
         return dict(row) if row else None
 
+    async def get_planning_by_id(self, tenant_id: int, planning_id: int) -> dict[str, Any] | None:
+        row = (
+            (
+                await self.session.execute(
+                    text(
+                        self._planning_summary_select()
+                        + " WHERE pl.tenant_id=:tenant_id AND pl.id=:planning_id "
+                        "GROUP BY pl.id,r.id,e.nome,u.nome"
+                    ),
+                    {"tenant_id": tenant_id, "planning_id": planning_id},
+                )
+            )
+            .mappings()
+            .first()
+        )
+        return dict(row) if row else None
+
     async def planning_is_accessible(
         self, tenant_id: int, planning_id: int, user_id: int, person_id: int | None
     ) -> bool:
@@ -974,32 +991,69 @@ class AnunciosRepository:
         ]
         for execution in executions:
             execution["movimentacoes"] = await self.execution_movements(tenant_id, execution["id"])
-            photo = (
+            attachments = (
                 (
                     await self.session.execute(
                         text(
-                            "SELECT an.id AS anexo_id,an.criado_em FROM arquivo.anexo an "
-                            "JOIN arquivo.arquivo ar ON ar.id=an.arquivo_id "
+                            "SELECT an.id AS anexo_id,an.criado_em,ar.nome_original,ar.mime_type,ar.extensao "
+                            "FROM arquivo.anexo an JOIN arquivo.arquivo ar ON ar.id=an.arquivo_id "
                             "WHERE an.tenant_id=:tenant_id AND an.entidade_tipo='anuncio_execucao' "
                             "AND an.entidade_id=:execution_id AND an.excluido_em IS NULL "
-                            "AND ar.excluido_em IS NULL ORDER BY an.criado_em DESC LIMIT 1"
+                            "AND ar.excluido_em IS NULL ORDER BY an.criado_em,an.id"
                         ),
                         {"tenant_id": tenant_id, "execution_id": execution["id"]},
                     )
                 )
                 .mappings()
-                .first()
+                .all()
             )
-            execution["foto"] = (
+            execution["midias"] = [
                 {
-                    **dict(photo),
-                    "preview_url": f"/api/v1/arquivos/anexos/{photo['anexo_id']}/preview",
-                    "download_url": f"/api/v1/arquivos/anexos/{photo['anexo_id']}/download",
+                    **dict(item),
+                    "tipo": (
+                        "video"
+                        if (item["mime_type"] or "").startswith("video/")
+                        or item["extensao"] in {"mp4", "mov", "m4v", "webm"}
+                        else "foto"
+                    ),
+                    "preview_url": f"/api/v1/arquivos/anexos/{item['anexo_id']}/preview",
+                    "download_url": f"/api/v1/arquivos/anexos/{item['anexo_id']}/download",
                 }
-                if photo
-                else None
+                for item in attachments
+            ]
+            execution["foto"] = next(
+                (
+                    {
+                        "anexo_id": item["anexo_id"],
+                        "criado_em": item["criado_em"],
+                        "preview_url": item["preview_url"],
+                        "download_url": item["download_url"],
+                    }
+                    for item in execution["midias"]
+                    if item["tipo"] == "foto"
+                ),
+                None,
             )
         return executions
+
+    async def get_execution_by_uuid(
+        self, tenant_id: int, execution_uuid: UUID
+    ) -> dict[str, Any] | None:
+        row = (
+            (
+                await self.session.execute(
+                    text(
+                        "SELECT id,uuid_publico,planejamento_id,ponto_id,usuario_id,tipo_operacao "
+                        "FROM anuncio.rota_comunicacao_execucao "
+                        "WHERE tenant_id=:tenant_id AND uuid_publico=:uuid"
+                    ),
+                    {"tenant_id": tenant_id, "uuid": execution_uuid},
+                )
+            )
+            .mappings()
+            .first()
+        )
+        return dict(row) if row else None
 
     async def execution_movements(self, tenant_id: int, execution_id: int) -> list[dict[str, Any]]:
         rows = (

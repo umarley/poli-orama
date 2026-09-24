@@ -38,7 +38,9 @@ class Settings(BaseSettings):
     storage_use_ssl: bool = True
     storage_max_file_mb: int = Field(default=25, ge=1, le=250)
     photo_max_file_mb: int = Field(default=8, ge=1, le=50)
-    storage_allowed_extensions: str = "jpg,jpeg,png,webp,pdf,csv,xlsx,xls,doc,docx,odt,txt"
+    storage_allowed_extensions: str = (
+        "jpg,jpeg,png,webp,mp4,mov,m4v,webm,pdf,csv,xlsx,xls,doc,docx,odt,txt"
+    )
     seaweed_filer_url: str = ""
     seaweed_project_name: str = ""
     seaweed_username: str = ""

@@ -69,6 +69,7 @@ class AuthService:
         *,
         ip_address: str | None,
         user_agent: str | None,
+        login_origin: str | None = None,
     ) -> TokenResponse:
         tenant = await self.repository.resolve_tenant_for_login(payload.tenant_slug)
         if tenant is None:
@@ -151,7 +152,7 @@ class AuthService:
         user_session = await self.repository.create_session(
             tenant_id=tenant.id,
             user_id=user.id,
-            login_origin="app_lider" if payload.app_lider else "web",
+            login_origin=login_origin or ("app_lider" if payload.app_lider else "web"),
             expires_at=session_expires_at,
             device=payload.dispositivo,
             user_agent=user_agent,
@@ -226,7 +227,9 @@ class AuthService:
         ):
             raise AuthenticationError("Sessao invalida ou revogada.")
         now = datetime.now(UTC)
-        if session_is_inactive(user_session.ultimo_uso_em, now, self.settings):
+        if login_origin != "pwa_lider" and session_is_inactive(
+            user_session.ultimo_uso_em, now, self.settings
+        ):
             await self.repository.revoke_session(user_session)
             await self.repository.commit()
             raise AuthenticationError("Sessao expirada por inatividade.")

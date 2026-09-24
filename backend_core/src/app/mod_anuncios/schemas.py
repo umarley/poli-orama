@@ -202,6 +202,12 @@ class ExecutionPhoto(AnuncioSchema):
     criado_em: datetime
 
 
+class ExecutionMedia(ExecutionPhoto):
+    nome_original: str
+    mime_type: str | None = None
+    tipo: Literal["foto", "video"]
+
+
 class MovementResponse(AnuncioSchema):
     id: int
     uuid_publico: UUID
@@ -229,6 +235,7 @@ class ExecutionHistory(AnuncioSchema):
     observacao: str | None
     executado_em: datetime
     foto: ExecutionPhoto | None = None
+    midias: list[ExecutionMedia] = Field(default_factory=list)
     movimentacoes: list[MovementResponse]
 
 

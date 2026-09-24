@@ -1,6 +1,7 @@
 """Regras de negocio, seguranca e auditoria do modulo Anuncios."""
 
 from datetime import date
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -31,6 +32,7 @@ from app.mod_anuncios.schemas import (
     TeamUpdate,
     WithdrawalInput,
 )
+from app.mod_arquivos.schemas import AttachmentResponse
 from app.mod_arquivos.service import FileService
 
 ADMIN_VIEW = "anuncios.visualizar"
@@ -380,11 +382,15 @@ class AnunciosService:
         if route is None or (require_active_route and not route["ativo"]):
             raise ResourceNotFoundError("Rota", payload.rota_id)
 
-    async def app_routes(self, actor: RequestActor, params: ListParams) -> Page[PlanningResponse]:
+    async def app_routes(
+        self, actor: RequestActor, params: ListParams, *, selected_date: date | None = None
+    ) -> Page[PlanningResponse]:
         self._require_driver(actor)
         items, total = await self.repository.list_plannings(
             actor.tenant_id,
             params,
+            start=selected_date,
+            end=selected_date,
             accessible_user_id=actor.user_id,
             accessible_person_id=actor.pessoa_id,
         )
@@ -405,7 +411,7 @@ class AnunciosService:
         point_uuid: UUID,
         payload: InstallationInput,
         *,
-        photo: tuple[str, str | None, bytes],
+        photo: tuple[str, str | None, bytes] | None = None,
     ) -> OperationResponse:
         self._require_driver(actor)
         existing = await self.repository.get_execution_by_key(
@@ -505,7 +511,8 @@ class AnunciosService:
             None,
             payload.model_dump(mode="json"),
         )
-        await self._upload_photo(actor, execution_id, photo, "Foto da instalacao")
+        if photo is not None:
+            await self._upload_photo(actor, execution_id, photo, "Foto da instalacao")
         await self.repository.commit()
         return await self._operation_response(
             actor.tenant_id, point["id"], execution_id, point_status, route_status
@@ -688,6 +695,60 @@ class AnunciosService:
             content=content,
             photo_only=True,
             commit=False,
+        )
+
+    async def upload_execution_media(
+        self,
+        actor: RequestActor,
+        execution_uuid: UUID,
+        media: tuple[str, str | None, bytes],
+    ) -> AttachmentResponse:
+        self._require_driver(actor)
+        execution = await self.repository.get_execution_by_uuid(actor.tenant_id, execution_uuid)
+        if execution is None:
+            raise ResourceNotFoundError("Execucao", execution_uuid)
+        planning = await self.repository.get_planning_by_id(
+            actor.tenant_id, execution["planejamento_id"]
+        )
+        await self._ensure_planning_access(actor, planning)
+        if execution["usuario_id"] != actor.user_id:
+            raise AuthorizationError("Somente o autor pode enviar evidencias desta execucao.")
+        if self.file_service is None:
+            raise RuntimeError("Servico de arquivos nao configurado.")
+        filename, content_type, content = media
+        extension = Path(filename).suffix.lower().removeprefix(".")
+        is_video = bool(content_type and content_type.startswith("video/")) or extension in {
+            "mp4",
+            "mov",
+            "m4v",
+            "webm",
+        }
+        is_image = bool(content_type and content_type.startswith("image/")) or extension in {
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+        }
+        if not is_video and not is_image:
+            raise BusinessRuleError(
+                "A evidencia deve ser uma fotografia ou um video.",
+                code="unsupported_evidence_type",
+            )
+        types = await self.file_service.repository.list_types(actor.tenant_id)
+        code = "video" if is_video else "foto"
+        attachment_type = next((item for item in types if item["codigo"] == code), None)
+        if attachment_type is None:
+            raise BusinessRuleError(f"Tipo de anexo '{code}' nao configurado.")
+        return await self.file_service.upload(
+            actor,
+            entity_type="anuncio_execucao",
+            entity_id=execution["id"],
+            type_id=attachment_type["id"],
+            description="Video da operacao" if is_video else "Foto da operacao",
+            filename=filename,
+            content_type=content_type,
+            content=content,
+            photo_only=False,
         )
 
     async def _idempotent_response(

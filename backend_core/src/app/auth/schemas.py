@@ -82,6 +82,15 @@ class TokenResponse(BaseModel):
     usuario: UserResponse
 
 
+class PwaTokenResponse(BaseModel):
+    """Resposta do PWA: o refresh token e entregue somente em cookie HttpOnly."""
+
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    usuario: UserResponse
+
+
 class RefreshRequest(BaseModel):
     refresh_token: str = Field(min_length=20, max_length=4096)
 
@@ -241,7 +250,7 @@ class SessionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    origem_login: Literal["web", "app_lider"]
+    origem_login: Literal["web", "app_lider", "pwa_lider"]
     dispositivo: str | None
     user_agent: str | None
     ip_origem: str | None

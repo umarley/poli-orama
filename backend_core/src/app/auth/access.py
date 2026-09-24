@@ -38,7 +38,7 @@ _SAFE_READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 def ensure_mobile_agenda_read_only(request: Request, login_origin: str, api_prefix: str) -> None:
     if (
-        login_origin == "app_lider"
+        login_origin in {"app_lider", "pwa_lider"}
         and request.method.upper() not in _SAFE_READ_METHODS
         and request.url.path.startswith(f"{api_prefix}/agenda")
     ):
@@ -64,7 +64,7 @@ class RequestActor:
 
     @property
     def is_mobile_leader_session(self) -> bool:
-        return self.login_origin == "app_lider"
+        return self.login_origin in {"app_lider", "pwa_lider"}
 
     @property
     def is_integration_session(self) -> bool:
@@ -178,7 +178,9 @@ async def get_current_user(
         or not hmac.compare_digest(user_session.token_hash, token_digest(token))
     ):
         raise AuthenticationError("Sessao invalida ou revogada.")
-    if session_is_inactive(user_session.ultimo_uso_em, now, settings):
+    if login_origin != "pwa_lider" and session_is_inactive(
+        user_session.ultimo_uso_em, now, settings
+    ):
         await repository.revoke_session(user_session)
         await repository.commit()
         raise AuthenticationError("Sessao expirada por inatividade.")

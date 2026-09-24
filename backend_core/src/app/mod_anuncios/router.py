@@ -45,6 +45,7 @@ from app.mod_anuncios.schemas import (
 )
 from app.mod_anuncios.service import AnunciosService
 from app.mod_arquivos.repository import FileRepository
+from app.mod_arquivos.schemas import AttachmentResponse
 from app.mod_arquivos.service import FileService
 
 router = APIRouter(prefix="/anuncios", tags=["Anuncios"])
@@ -286,8 +287,9 @@ async def app_routes(
     actor: Annotated[RequestActor, Depends(get_current_user)],
     service: Annotated[AnunciosService, Depends(get_service)],
     params: Annotated[ListParams, Depends(list_params)],
+    data: Annotated[date | None, Query()] = None,
 ) -> Page[PlanningResponse]:
-    return await service.app_routes(actor, params)
+    return await service.app_routes(actor, params, selected_date=data)
 
 
 @router.get("/app/rotas/{route_uuid}", response_model=PlanningDetail)
@@ -328,15 +330,34 @@ async def install_point(
     actor: Annotated[RequestActor, Depends(get_current_user)],
     service: Annotated[AnunciosService, Depends(get_service)],
     dados: Annotated[str, Form()],
-    foto: Annotated[UploadFile, File()],
     point_uuid: UUID,
+    foto: Annotated[UploadFile | None, File()] = None,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> OperationResponse:
     payload = InstallationInput.model_validate_json(dados)
     _validate_idempotency_header(payload.chave_idempotencia, idempotency_key)
-    photo = await _read_photo(foto, required=True)
-    assert photo is not None
+    photo = await _read_photo(foto, required=False)
     return await service.install(actor, point_uuid, payload, photo=photo)
+
+
+@router.post(
+    "/app/execucoes/{execution_uuid}/midias",
+    response_model=AttachmentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_execution_media(
+    actor: Annotated[RequestActor, Depends(get_current_user)],
+    service: Annotated[AnunciosService, Depends(get_service)],
+    execution_uuid: UUID,
+    arquivo: Annotated[UploadFile, File()],
+) -> AttachmentResponse:
+    limit = get_settings().storage_max_file_mb * 1024 * 1024
+    content = await arquivo.read(limit + 1)
+    return await service.upload_execution_media(
+        actor,
+        execution_uuid,
+        (arquivo.filename or "evidencia", arquivo.content_type, content),
+    )
 
 
 @router.post(

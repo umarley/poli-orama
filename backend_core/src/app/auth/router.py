@@ -19,6 +19,7 @@ from app.auth.schemas import (
     MfaSetupRequest,
     MfaSetupResponse,
     ProfileResponse,
+    PwaTokenResponse,
     RefreshRequest,
     ResetPasswordRequest,
     ResetPasswordResponse,
@@ -35,9 +36,28 @@ from app.auth.schemas import (
 from app.auth.service import AuthService
 from app.core.config import get_settings
 from app.core.database import get_session
+from app.core.errors import AuthenticationError
 from app.core.pagination import ListParams, Page, list_params
 
 router = APIRouter()
+PWA_REFRESH_COOKIE = "elocivico_pwa_refresh"
+
+
+def _set_pwa_refresh_cookie(response: Response, refresh_token: str) -> None:
+    settings = get_settings()
+    response.set_cookie(
+        key=PWA_REFRESH_COOKIE,
+        value=refresh_token,
+        max_age=settings.refresh_token_days * 24 * 60 * 60,
+        httponly=True,
+        secure=settings.environment in {"staging", "production"},
+        samesite="lax",
+        path="/api/v1/auth",
+    )
+
+
+def _pwa_response(tokens: TokenResponse) -> PwaTokenResponse:
+    return PwaTokenResponse.model_validate(tokens.model_dump(exclude={"refresh_token"}))
 
 
 def get_public_auth_service(
@@ -90,6 +110,28 @@ async def login_mobile(
 
 
 @router.post(
+    "/auth/login/pwa",
+    response_model=PwaTokenResponse,
+    tags=["Autenticacao"],
+    summary="Autentica usuario do PWA com refresh token em cookie HttpOnly",
+)
+async def login_pwa(
+    payload: LoginRequest,
+    request: Request,
+    response: Response,
+    service: Annotated[AuthService, Depends(get_public_auth_service)],
+) -> PwaTokenResponse:
+    tokens = await service.login(
+        payload.model_copy(update={"app_lider": True}),
+        ip_address=_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+        login_origin="pwa_lider",
+    )
+    _set_pwa_refresh_cookie(response, tokens.refresh_token)
+    return _pwa_response(tokens)
+
+
+@router.post(
     "/auth/refresh",
     response_model=TokenResponse,
     tags=["Autenticacao"],
@@ -100,6 +142,41 @@ async def refresh(
     service: Annotated[AuthService, Depends(get_public_auth_service)],
 ) -> TokenResponse:
     return await service.refresh(payload.refresh_token)
+
+
+@router.post(
+    "/auth/refresh/pwa",
+    response_model=PwaTokenResponse,
+    tags=["Autenticacao"],
+    summary="Renova a sessao persistente do PWA",
+)
+async def refresh_pwa(
+    request: Request,
+    response: Response,
+    service: Annotated[AuthService, Depends(get_public_auth_service)],
+) -> PwaTokenResponse:
+    refresh_token = request.cookies.get(PWA_REFRESH_COOKIE)
+    if not refresh_token:
+        raise AuthenticationError("Sessao persistente nao encontrada.")
+    tokens = await service.refresh(refresh_token)
+    _set_pwa_refresh_cookie(response, tokens.refresh_token)
+    return _pwa_response(tokens)
+
+
+@router.post(
+    "/auth/refresh/pwa/migrate",
+    response_model=PwaTokenResponse,
+    tags=["Autenticacao"],
+    summary="Migra uma sessao PWA antiga para cookie HttpOnly",
+)
+async def migrate_pwa_refresh(
+    payload: RefreshRequest,
+    response: Response,
+    service: Annotated[AuthService, Depends(get_public_auth_service)],
+) -> PwaTokenResponse:
+    tokens = await service.refresh(payload.refresh_token)
+    _set_pwa_refresh_cookie(response, tokens.refresh_token)
+    return _pwa_response(tokens)
 
 
 @router.post(
@@ -130,6 +207,7 @@ async def switch_tenant(
 )
 async def logout(
     request: Request,
+    response: Response,
     actor: Annotated[RequestActor, Depends(get_current_user)],
     service: Annotated[AuthService, Depends(get_auth_service)],
 ) -> Response:
@@ -138,7 +216,15 @@ async def logout(
         ip_address=_client_ip(request),
         user_agent=request.headers.get("user-agent"),
     )
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    response.delete_cookie(
+        PWA_REFRESH_COOKIE,
+        path="/api/v1/auth",
+        secure=get_settings().environment in {"staging", "production"},
+        httponly=True,
+        samesite="lax",
+    )
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response
 
 
 @router.get(
