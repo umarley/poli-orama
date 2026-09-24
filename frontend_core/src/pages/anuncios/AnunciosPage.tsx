@@ -31,6 +31,7 @@ import {
   Typography,
 } from 'antd';
 import type { TableProps } from 'antd';
+import dayjs from 'dayjs';
 import { useEffect, useState } from 'react';
 import {
   CircleMarker,
@@ -580,7 +581,11 @@ function RoutesTable({
 }) {
   const columns: TableProps<RouteRecord>['columns'] = [
     { title: 'Rota', dataIndex: 'nome' },
-    { title: 'Data', dataIndex: 'data_execucao' },
+    {
+      title: 'Data',
+      dataIndex: 'data_execucao',
+      render: (value: string) => dayjs(value).format('DD/MM/YYYY'),
+    },
     {
       title: 'Atribuição',
       render: (_, item) => item.usuario_responsavel_nome ?? item.equipe_nome ?? '—',

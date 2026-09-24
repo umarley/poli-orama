@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import pytest
@@ -9,6 +10,7 @@ from pydantic import ValidationError
 from app.auth.access import RequestActor
 from app.core.errors import AuthorizationError, BusinessRuleError, ResourceNotFoundError
 from app.core.pagination import ListParams
+from app.mod_anuncios.repository import AnunciosRepository
 from app.mod_anuncios.router import _validate_idempotency_header, router
 from app.mod_anuncios.schemas import (
     InstallationInput,
@@ -296,6 +298,95 @@ def test_same_route_template_can_feed_multiple_plannings() -> None:
     assert route.nome == "Centro"
     assert first.rota_id == second.rota_id == 17
     assert first.data_execucao != second.data_execucao
+
+
+class ScalarRows:
+    def __init__(self, values: list[int]) -> None:
+        self.values = values
+
+    def scalars(self) -> "ScalarRows":
+        return self
+
+    def all(self) -> list[int]:
+        return self.values
+
+
+@pytest.mark.asyncio
+async def test_planning_sync_ignores_routes_without_unstarted_plannings() -> None:
+    session = SimpleNamespace(execute=AsyncMock(return_value=ScalarRows([])))
+    repository = AnunciosRepository(session)  # type: ignore[arg-type]
+
+    await repository.synchronize_unstarted_plannings(7, 17, 11, sync_points=True)
+
+    session.execute.assert_awaited_once()
+    selection = str(session.execute.await_args.args[0])
+    assert "pl.status IN ('PLANEJADA','LIBERADA')" in selection
+    assert "NOT EXISTS" in selection
+    assert "rota_comunicacao_execucao" in selection
+
+
+@pytest.mark.asyncio
+async def test_planning_sync_updates_snapshot_points_and_materials() -> None:
+    session = SimpleNamespace(
+        execute=AsyncMock(
+            side_effect=[
+                ScalarRows([19]),
+                None,
+                ScalarRows([19]),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            ]
+        )
+    )
+    repository = AnunciosRepository(session)  # type: ignore[arg-type]
+
+    await repository.synchronize_unstarted_plannings(7, 17, 11, sync_points=True)
+
+    statements = [str(call.args[0]) for call in session.execute.await_args_list]
+    assert len(statements) == 9
+    assert "FOR UPDATE OF pp" in statements[1]
+    assert "FOR UPDATE OF pl" in statements[2]
+    assert "rota_nome=r.nome" in statements[3]
+    assert "DELETE FROM anuncio.rota_comunicacao_planejamento_ponto pp" in statements[4]
+    assert "endereco=rp.endereco" in statements[5]
+    assert "INSERT INTO anuncio.rota_comunicacao_planejamento_ponto" in statements[6]
+    assert "DELETE FROM anuncio.rota_comunicacao_planejamento_ponto_material" in statements[7]
+    assert "INSERT INTO anuncio.rota_comunicacao_planejamento_ponto_material" in statements[8]
+    for call in session.execute.await_args_list[1:]:
+        assert call.args[1]["planning_ids"] == [19]
+
+
+@pytest.mark.asyncio
+async def test_planning_sync_revalidates_execution_after_locking_points() -> None:
+    session = SimpleNamespace(
+        execute=AsyncMock(side_effect=[ScalarRows([19]), None, ScalarRows([])])
+    )
+    repository = AnunciosRepository(session)  # type: ignore[arg-type]
+
+    await repository.synchronize_unstarted_plannings(7, 17, 11, sync_points=True)
+
+    assert session.execute.await_count == 3
+    revalidation = str(session.execute.await_args_list[2].args[0])
+    assert "NOT EXISTS" in revalidation
+    assert "FOR UPDATE OF pl" in revalidation
+
+
+@pytest.mark.asyncio
+async def test_planning_header_sync_does_not_rebuild_points_when_points_were_not_edited() -> None:
+    session = SimpleNamespace(
+        execute=AsyncMock(side_effect=[ScalarRows([19]), None, ScalarRows([19]), None])
+    )
+    repository = AnunciosRepository(session)  # type: ignore[arg-type]
+
+    await repository.synchronize_unstarted_plannings(7, 17, 11, sync_points=False)
+
+    assert session.execute.await_count == 4
+    statement = str(session.execute.await_args_list[3].args[0])
+    assert "rota_nome=r.nome" in statement
 
 
 @pytest.mark.asyncio

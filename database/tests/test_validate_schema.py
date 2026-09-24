@@ -71,6 +71,14 @@ class ValidateSchemaTests(unittest.TestCase):
         self.assertIn("coordenador_territorial", sql)
         self.assertIn("ix_resultados_eleicoes_eleicao_turno", sql)
 
+    def test_anuncio_attachment_migration_allows_execution_photos(self) -> None:
+        migration = DEFAULT_MIGRATION.parent / "065 - anexo_execucao_anuncio.sql"
+        sql = migration.read_text(encoding="utf-8")
+
+        self.assertIn("anexo_entidade_tipo_check", sql)
+        self.assertIn("'anuncio_execucao'", sql)
+        self.assertIn("'contrato'", sql)
+
 
 if __name__ == "__main__":
     unittest.main()

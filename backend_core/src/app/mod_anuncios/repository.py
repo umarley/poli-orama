@@ -414,6 +414,14 @@ class AnunciosRepository:
             )
         if payload.pontos is not None:
             await self.replace_route_points(tenant_id, route_id, payload.pontos)
+        synchronized_fields = {"nome", "descricao", "territorio_id", "pontos"}
+        if payload.model_fields_set & synchronized_fields:
+            await self.synchronize_unstarted_plannings(
+                tenant_id,
+                route_id,
+                user_id,
+                sync_points=payload.pontos is not None,
+            )
 
     async def replace_route_points(
         self, tenant_id: int, route_id: int, points: list[RoutePointInput]
@@ -453,6 +461,149 @@ class AnunciosRepository:
                     ),
                     {"tenant_id": tenant_id, "point_id": point_id, **material.model_dump()},
                 )
+
+    async def synchronize_unstarted_plannings(
+        self,
+        tenant_id: int,
+        route_id: int,
+        user_id: int,
+        *,
+        sync_points: bool,
+    ) -> None:
+        """Atualiza snapshots que ainda nao possuem nenhuma execucao operacional."""
+        planning_ids = list(
+            (
+                await self.session.execute(
+                    text(
+                        "SELECT pl.id FROM anuncio.rota_comunicacao_planejamento pl "
+                        "WHERE pl.tenant_id=:tenant_id AND pl.rota_id=:route_id "
+                        "AND pl.status IN ('PLANEJADA','LIBERADA') AND NOT EXISTS ("
+                        "SELECT 1 FROM anuncio.rota_comunicacao_execucao ex "
+                        "WHERE ex.tenant_id=pl.tenant_id AND ex.planejamento_id=pl.id)"
+                    ),
+                    {"tenant_id": tenant_id, "route_id": route_id},
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not planning_ids:
+            return
+
+        planning_ids_parameter: Any = bindparam("planning_ids", expanding=True)
+        values = {
+            "tenant_id": tenant_id,
+            "route_id": route_id,
+            "user_id": user_id,
+            "planning_ids": planning_ids,
+        }
+        # Mantem a mesma ordem de bloqueio usada pela execucao mobile: primeiro o
+        # ponto e depois o planejamento. A elegibilidade e revalidada apos o lock.
+        await self.session.execute(
+            text(
+                "SELECT pp.id FROM anuncio.rota_comunicacao_planejamento_ponto pp "
+                "WHERE pp.tenant_id=:tenant_id AND pp.planejamento_id IN :planning_ids "
+                "FOR UPDATE OF pp"
+            ).bindparams(planning_ids_parameter),
+            values,
+        )
+        planning_ids = list(
+            (
+                await self.session.execute(
+                    text(
+                        "SELECT pl.id FROM anuncio.rota_comunicacao_planejamento pl "
+                        "WHERE pl.tenant_id=:tenant_id AND pl.id IN :planning_ids "
+                        "AND pl.status IN ('PLANEJADA','LIBERADA') AND NOT EXISTS ("
+                        "SELECT 1 FROM anuncio.rota_comunicacao_execucao ex "
+                        "WHERE ex.tenant_id=pl.tenant_id AND ex.planejamento_id=pl.id) "
+                        "FOR UPDATE OF pl"
+                    ).bindparams(planning_ids_parameter),
+                    values,
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not planning_ids:
+            return
+        values["planning_ids"] = planning_ids
+        await self.session.execute(
+            text(
+                "UPDATE anuncio.rota_comunicacao_planejamento pl SET "
+                "rota_nome=r.nome,rota_descricao=r.descricao,territorio_id=r.territorio_id,"
+                "territorio_nome=(SELECT t.nome FROM territorio.territorio t "
+                "WHERE t.tenant_id=r.tenant_id AND t.id=r.territorio_id),"
+                "atualizado_por=:user_id,atualizado_em=now() "
+                "FROM anuncio.rota_comunicacao r "
+                "WHERE pl.tenant_id=:tenant_id AND pl.id IN :planning_ids "
+                "AND r.tenant_id=pl.tenant_id AND r.id=:route_id"
+            ).bindparams(planning_ids_parameter),
+            values,
+        )
+        if not sync_points:
+            return
+
+        await self.session.execute(
+            text(
+                "DELETE FROM anuncio.rota_comunicacao_planejamento_ponto pp "
+                "WHERE pp.tenant_id=:tenant_id AND pp.planejamento_id IN :planning_ids "
+                "AND NOT EXISTS (SELECT 1 FROM anuncio.rota_comunicacao_ponto rp "
+                "WHERE rp.tenant_id=:tenant_id AND rp.rota_id=:route_id "
+                "AND rp.ordem=pp.ordem)"
+            ).bindparams(planning_ids_parameter),
+            values,
+        )
+        await self.session.execute(
+            text(
+                "UPDATE anuncio.rota_comunicacao_planejamento_ponto pp SET "
+                "rota_ponto_origem_id=rp.id,descricao_local=rp.descricao_local,"
+                "endereco=rp.endereco,latitude_planejada=rp.latitude_planejada,"
+                "longitude_planejada=rp.longitude_planejada,observacao=rp.observacao,"
+                "atualizado_em=now() FROM anuncio.rota_comunicacao_ponto rp "
+                "WHERE pp.tenant_id=:tenant_id AND pp.planejamento_id IN :planning_ids "
+                "AND rp.tenant_id=pp.tenant_id AND rp.rota_id=:route_id "
+                "AND rp.ordem=pp.ordem"
+            ).bindparams(planning_ids_parameter),
+            values,
+        )
+        await self.session.execute(
+            text(
+                "INSERT INTO anuncio.rota_comunicacao_planejamento_ponto"
+                "(tenant_id,planejamento_id,rota_id,rota_ponto_origem_id,ordem,"
+                "descricao_local,endereco,latitude_planejada,longitude_planejada,observacao) "
+                "SELECT pl.tenant_id,pl.id,:route_id,rp.id,rp.ordem,rp.descricao_local,"
+                "rp.endereco,rp.latitude_planejada,rp.longitude_planejada,rp.observacao "
+                "FROM anuncio.rota_comunicacao_planejamento pl "
+                "JOIN anuncio.rota_comunicacao_ponto rp "
+                "ON rp.tenant_id=pl.tenant_id AND rp.rota_id=:route_id "
+                "WHERE pl.tenant_id=:tenant_id AND pl.id IN :planning_ids "
+                "AND NOT EXISTS (SELECT 1 FROM anuncio.rota_comunicacao_planejamento_ponto pp "
+                "WHERE pp.tenant_id=pl.tenant_id AND pp.planejamento_id=pl.id "
+                "AND pp.ordem=rp.ordem)"
+            ).bindparams(planning_ids_parameter),
+            values,
+        )
+        await self.session.execute(
+            text(
+                "DELETE FROM anuncio.rota_comunicacao_planejamento_ponto_material pm "
+                "USING anuncio.rota_comunicacao_planejamento_ponto pp "
+                "WHERE pm.tenant_id=:tenant_id AND pm.ponto_id=pp.id "
+                "AND pp.tenant_id=pm.tenant_id AND pp.planejamento_id IN :planning_ids"
+            ).bindparams(planning_ids_parameter),
+            values,
+        )
+        await self.session.execute(
+            text(
+                "INSERT INTO anuncio.rota_comunicacao_planejamento_ponto_material"
+                "(tenant_id,ponto_id,material_id,quantidade_planejada) "
+                "SELECT pp.tenant_id,pp.id,rpm.material_id,rpm.quantidade_planejada "
+                "FROM anuncio.rota_comunicacao_planejamento_ponto pp "
+                "JOIN anuncio.rota_comunicacao_ponto_material rpm "
+                "ON rpm.tenant_id=pp.tenant_id AND rpm.ponto_id=pp.rota_ponto_origem_id "
+                "WHERE pp.tenant_id=:tenant_id AND pp.planejamento_id IN :planning_ids"
+            ).bindparams(planning_ids_parameter),
+            values,
+        )
 
     async def get_route_detail(self, tenant_id: int, route_uuid: UUID) -> dict[str, Any] | None:
         route = await self.get_route(tenant_id, route_uuid)
