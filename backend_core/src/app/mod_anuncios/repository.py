@@ -1009,7 +1009,10 @@ class AnunciosRepository:
             )
             execution["midias"] = [
                 {
-                    **dict(item),
+                    "anexo_id": item["anexo_id"],
+                    "criado_em": item["criado_em"],
+                    "nome_original": item["nome_original"],
+                    "mime_type": item["mime_type"],
                     "tipo": (
                         "video"
                         if (item["mime_type"] or "").startswith("video/")

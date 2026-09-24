@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from decimal import Decimal
 from types import SimpleNamespace
@@ -13,6 +14,7 @@ from app.core.pagination import ListParams
 from app.mod_anuncios.repository import AnunciosRepository
 from app.mod_anuncios.router import _validate_idempotency_header, router
 from app.mod_anuncios.schemas import (
+    ExecutionHistory,
     InstallationInput,
     InstallationMaterial,
     PlanningCreate,
@@ -309,6 +311,67 @@ class ScalarRows:
 
     def all(self) -> list[int]:
         return self.values
+
+
+class MappingRows:
+    def __init__(self, values: list[dict[str, object]]) -> None:
+        self.values = values
+
+    def mappings(self) -> "MappingRows":
+        return self
+
+    def __iter__(self) -> Iterator[dict[str, object]]:
+        return iter(self.values)
+
+    def all(self) -> list[dict[str, object]]:
+        return self.values
+
+
+@pytest.mark.asyncio
+async def test_point_history_does_not_expose_extension_used_to_classify_media() -> None:
+    now = datetime.now(UTC)
+    execution_uuid = uuid4()
+    session = SimpleNamespace(
+        execute=AsyncMock(
+            side_effect=[
+                MappingRows(
+                    [
+                        {
+                            "id": 31,
+                            "uuid_publico": execution_uuid,
+                            "tipo_operacao": "INSTALACAO",
+                            "usuario_id": 11,
+                            "usuario_nome": "Motorista",
+                            "latitude": Decimal("-15.1"),
+                            "longitude": Decimal("-47.9"),
+                            "precisao": None,
+                            "observacao": None,
+                            "executado_em": now,
+                        }
+                    ]
+                ),
+                MappingRows([]),
+                MappingRows(
+                    [
+                        {
+                            "anexo_id": 71,
+                            "criado_em": now,
+                            "nome_original": "registro.jpg",
+                            "mime_type": "image/jpeg",
+                            "extensao": "jpg",
+                        }
+                    ]
+                ),
+            ]
+        )
+    )
+    repository = AnunciosRepository(session)  # type: ignore[arg-type]
+
+    history = await repository.point_history(7, 13)
+    validated = ExecutionHistory.model_validate(history[0])
+
+    assert validated.midias[0].tipo == "foto"
+    assert "extensao" not in history[0]["midias"][0]
 
 
 @pytest.mark.asyncio
