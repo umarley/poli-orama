@@ -67,6 +67,16 @@ export interface Movement {
   registrado_em: string;
 }
 
+export interface ExecutionMedia {
+  anexo_id: number;
+  preview_url: string;
+  download_url: string;
+  criado_em: string;
+  nome_original: string;
+  mime_type: string | null;
+  tipo: 'foto' | 'video';
+}
+
 export interface ExecutionHistory {
   id: number;
   uuid_publico: string;
@@ -84,6 +94,7 @@ export interface ExecutionHistory {
     download_url: string;
     criado_em: string;
   } | null;
+  midias: ExecutionMedia[];
   movimentacoes: Movement[];
 }
 

@@ -14,8 +14,6 @@ import {
   Alert,
   Button,
   Card,
-  Descriptions,
-  Drawer,
   Empty,
   Form,
   Input,
@@ -33,6 +31,7 @@ import {
 import type { TableProps } from 'antd';
 import dayjs from 'dayjs';
 import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   CircleMarker,
   MapContainer,
@@ -55,7 +54,6 @@ import {
   deactivateMaterial,
   deactivateTeam,
   getDashboard,
-  getRoute,
   getRouteTemplate,
   listMaterials,
   listRoutes,
@@ -71,7 +69,6 @@ import type {
   DashboardData,
   MaterialRecord,
   PointStatus,
-  RouteDetail,
   RouteInput,
   RouteRecord,
   RouteTemplateDetail,
@@ -119,11 +116,12 @@ function handleError(error: unknown) {
 
 export function AnunciosPage() {
   const client = useQueryClient();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [materialModal, setMaterialModal] = useState<MaterialRecord | 'new' | null>(null);
   const [teamModal, setTeamModal] = useState<TeamRecord | 'new' | null>(null);
   const [routeModal, setRouteModal] = useState<RouteTemplateDetail | 'new' | null>(null);
   const [planningModal, setPlanningModal] = useState<RouteRecord | number | 'new' | null>(null);
-  const [routeDetail, setRouteDetail] = useState<RouteDetail | null>(null);
   const [includeInactive, setIncludeInactive] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
   const [filters, setFilters] = useState<Record<string, string | number | undefined>>({
@@ -164,15 +162,6 @@ export function AnunciosPage() {
 
   const refresh = async () => {
     await client.invalidateQueries({ queryKey: ['anuncios'] });
-  };
-
-  const openRoute = async (uuid: string) => {
-    try {
-      const detail = await getRoute(uuid);
-      setRouteDetail(detail);
-    } catch (error) {
-      handleError(error);
-    }
   };
 
   const releaseRoute = async (route: RouteRecord) => {
@@ -216,6 +205,13 @@ export function AnunciosPage() {
       />
 
       <Tabs
+        activeKey={searchParams.get('aba') ?? 'dashboard'}
+        onChange={(key) => {
+          const next = new URLSearchParams(searchParams);
+          if (key === 'dashboard') next.delete('aba');
+          else next.set('aba', key);
+          setSearchParams(next, { replace: true });
+        }}
         items={[
           {
             key: 'dashboard',
@@ -248,7 +244,7 @@ export function AnunciosPage() {
                 users={users.data?.items ?? []}
                 loading={routes.isPending}
                 error={routes.error}
-                onView={(route) => void openRoute(route.uuid_publico)}
+                onView={(route) => navigate(`/anuncios/planejamentos/${route.uuid_publico}`)}
                 onEdit={(route) => setPlanningModal(route)}
                 onRelease={(route) => void releaseRoute(route)}
                 onCancel={(route) => void cancelRoute(route)}
@@ -337,7 +333,6 @@ export function AnunciosPage() {
         onClose={() => setPlanningModal(null)}
         onChanged={refresh}
       />
-      <RouteDetailDrawer current={routeDetail} onClose={() => setRouteDetail(null)} />
     </div>
   );
 }
@@ -1648,111 +1643,6 @@ function MapClick({ onPick }: { onPick: (lat: number, lng: number) => void }) {
     click: ({ latlng }) => onPick(Number(latlng.lat.toFixed(7)), Number(latlng.lng.toFixed(7))),
   });
   return null;
-}
-
-function RouteDetailDrawer({
-  current,
-  onClose,
-}: {
-  current: RouteDetail | null;
-  onClose: () => void;
-}) {
-  return (
-    <Drawer open={current !== null} width={720} title={current?.nome} onClose={onClose}>
-      {current ? (
-        <Space direction="vertical" size={16} style={{ width: '100%' }}>
-          <Descriptions
-            bordered
-            column={2}
-            size="small"
-            items={[
-              { key: 'date', label: 'Data', children: current.data_execucao },
-              {
-                key: 'status',
-                label: 'Status',
-                children: <Tag color={statusColors[current.status]}>{current.status}</Tag>,
-              },
-              { key: 'team', label: 'Equipe', children: current.equipe_nome ?? '—' },
-              {
-                key: 'user',
-                label: 'Responsável',
-                children: current.usuario_responsavel_nome ?? '—',
-              },
-              { key: 'territory', label: 'Território', children: current.territorio_nome ?? '—' },
-              {
-                key: 'progress',
-                label: 'Progresso',
-                children: `${current.pontos_concluidos}/${current.total_pontos}`,
-              },
-              {
-                key: 'notes',
-                label: 'Observações da execução',
-                children: current.observacao ?? '—',
-                span: 2,
-              },
-            ]}
-          />
-          {current.pontos.map((point) => (
-            <Card
-              key={point.uuid_publico}
-              title={`${point.ordem}. ${point.descricao_local}`}
-              extra={<Tag color={statusColors[point.status]}>{point.status}</Tag>}
-            >
-              <Typography.Paragraph>
-                {point.endereco ?? 'Sem endereço informado'}
-              </Typography.Paragraph>
-              <Space wrap>
-                {point.materiais.map((material) => (
-                  <Tag key={material.id}>
-                    {material.material_nome}: planejado {material.quantidade_planejada} · instalado{' '}
-                    {material.quantidade_instalada} · recolhido {material.quantidade_recolhida} ·
-                    extraviado {material.quantidade_extraviada} · pendente{' '}
-                    {material.quantidade_pendente}
-                  </Tag>
-                ))}
-              </Space>
-              <Typography.Title level={5}>Histórico</Typography.Title>
-              {point.historico.length ? (
-                point.historico.map((execution) => (
-                  <div className={styles.history} key={execution.uuid_publico}>
-                    <strong>
-                      {new Date(execution.executado_em).toLocaleString('pt-BR')} —{' '}
-                      {execution.tipo_operacao === 'INSTALACAO' ? 'Instalação' : 'Retirada'}
-                    </strong>
-                    <div>Usuário: {execution.usuario_nome}</div>
-                    <div>
-                      Localização real: {execution.latitude}, {execution.longitude}
-                      {execution.precisao ? ` · precisão ${execution.precisao} m` : ''}
-                    </div>
-                    {execution.movimentacoes.map((movement) => (
-                      <div key={movement.id}>
-                        {movement.tipo_movimentacao}: {movement.material_nome} ·{' '}
-                        {movement.quantidade}
-                      </div>
-                    ))}
-                    {execution.observacao ? (
-                      <Typography.Paragraph>{execution.observacao}</Typography.Paragraph>
-                    ) : null}
-                    {execution.foto ? (
-                      <AuthenticatedImage
-                        url={execution.foto.preview_url}
-                        alt={`Foto de ${execution.tipo_operacao.toLowerCase()}`}
-                      />
-                    ) : null}
-                  </div>
-                ))
-              ) : (
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="Sem execução registrada."
-                />
-              )}
-            </Card>
-          ))}
-        </Space>
-      ) : null}
-    </Drawer>
-  );
 }
 
 function AuthenticatedImage({ url, alt }: { url: string; alt: string }) {

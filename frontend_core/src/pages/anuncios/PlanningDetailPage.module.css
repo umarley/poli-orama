@@ -1,0 +1,189 @@
+.root {
+  display: grid;
+  gap: 20px;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.summaryCard :global(.ant-card-body) {
+  display: grid;
+  gap: 8px;
+  height: 100%;
+}
+
+.summaryCard :global(.ant-typography) {
+  margin: 0;
+}
+
+.summaryValue {
+  margin-top: 10px;
+  font-size: 18px;
+}
+
+.fullHeightCard {
+  height: 100%;
+}
+
+.mapLegend {
+  margin-bottom: 12px;
+}
+
+.map {
+  width: 100%;
+  height: 500px;
+  overflow: hidden;
+  border: 1px solid #d9d9d9;
+  border-radius: 12px;
+}
+
+.pointNumberTooltip {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #fff;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.pointNumberTooltip::before {
+  display: none;
+}
+
+.mediaGroups {
+  display: grid;
+  gap: 22px;
+}
+
+.mediaGroup {
+  display: grid;
+  gap: 14px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.mediaGroup:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.mediaGroupHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.mediaGroupHeader :global(.ant-typography) {
+  margin: 0;
+}
+
+.mediaGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.mediaCard {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #e8e8e8;
+  border-radius: 12px;
+  background: #fafafa;
+}
+
+.mediaViewport {
+  display: flex;
+  min-height: 220px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #141414;
+}
+
+.mediaViewport :global(.ant-image) {
+  width: 100%;
+}
+
+.image,
+.video {
+  display: block;
+  width: 100%;
+  height: 260px;
+  object-fit: contain;
+}
+
+.mediaMetadata {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 10px;
+  align-items: center;
+  padding: 12px;
+}
+
+.mediaMetadata > :last-child {
+  grid-column: 1 / -1;
+}
+
+.pointHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.pointDetails {
+  width: 100%;
+}
+
+.materialGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.execution {
+  display: grid;
+  gap: 7px;
+  padding-bottom: 10px;
+}
+
+.execution :global(.ant-typography) {
+  margin: 0;
+}
+
+.movements {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+@media (max-width: 992px) {
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 576px) {
+  .summaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .map {
+    height: 380px;
+  }
+
+  .mediaGroupHeader {
+    flex-direction: column;
+  }
+
+  .mediaGrid,
+  .materialGrid {
+    grid-template-columns: 1fr;
+  }
+}
