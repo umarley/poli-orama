@@ -51,7 +51,9 @@ def _set_pwa_refresh_cookie(response: Response, refresh_token: str) -> None:
         max_age=settings.refresh_token_days * 24 * 60 * 60,
         httponly=True,
         secure=settings.environment in {"staging", "production"},
-        samesite="lax",
+        # O PWA tambem e publicado em dominios alternativos. Em producao, o
+        # refresh precisa acompanhar requisicoes CORS com credentials.
+        samesite="none" if settings.environment in {"staging", "production"} else "lax",
         path="/api/v1/auth",
     )
 
@@ -211,6 +213,7 @@ async def logout(
     actor: Annotated[RequestActor, Depends(get_current_user)],
     service: Annotated[AuthService, Depends(get_auth_service)],
 ) -> Response:
+    settings = get_settings()
     await service.logout(
         actor,
         ip_address=_client_ip(request),
@@ -219,9 +222,9 @@ async def logout(
     response.delete_cookie(
         PWA_REFRESH_COOKIE,
         path="/api/v1/auth",
-        secure=get_settings().environment in {"staging", "production"},
+        secure=settings.environment in {"staging", "production"},
         httponly=True,
-        samesite="lax",
+        samesite="none" if settings.environment in {"staging", "production"} else "lax",
     )
     response.status_code = status.HTTP_204_NO_CONTENT
     return response

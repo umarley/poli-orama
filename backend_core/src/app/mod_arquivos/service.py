@@ -102,6 +102,7 @@ class FileService:
         content_type: str | None,
         content: bytes,
         photo_only: bool = False,
+        allowed_extensions: set[str] | None = None,
         commit: bool = True,
     ) -> AttachmentResponse:
         self._require_entity(actor, entity_type, write=True)
@@ -113,7 +114,11 @@ class FileService:
             raise BusinessRuleError("O tipo informado deve ser foto.", code="invalid_photo_type")
 
         clean_name, extension = self.validate_file(
-            filename, content_type, content, photo_only=photo_only
+            filename,
+            content_type,
+            content,
+            photo_only=photo_only,
+            allowed_extensions=allowed_extensions,
         )
         if entity_type == "contrato" and extension not in PREVIEW_EXTENSIONS:
             raise BusinessRuleError(
@@ -254,11 +259,14 @@ class FileService:
         content: bytes,
         *,
         photo_only: bool = False,
+        allowed_extensions: set[str] | None = None,
     ) -> tuple[str, str]:
         clean_name = sanitize_filename(filename)
         extension = Path(clean_name).suffix.lower().removeprefix(".")
         allowed = (
-            IMAGE_EXTENSIONS
+            {value.lower().removeprefix(".") for value in allowed_extensions}
+            if allowed_extensions is not None
+            else IMAGE_EXTENSIONS
             if photo_only
             else {
                 value.strip().lower().removeprefix(".")

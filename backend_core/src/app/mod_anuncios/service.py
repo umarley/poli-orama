@@ -42,6 +42,7 @@ TEAM_MANAGE = "anuncios.equipe.gerenciar"
 ROUTE_MANAGE = "anuncios.rota.gerenciar"
 EXECUTION_VIEW = "anuncios.execucao.visualizar"
 EXECUTION_REGISTER = "anuncios.execucao.registrar"
+EVIDENCE_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "mp4", "mov", "m4v", "webm"}
 
 
 class AnunciosService:
@@ -749,6 +750,7 @@ class AnunciosService:
             content_type=content_type,
             content=content,
             photo_only=False,
+            allowed_extensions=EVIDENCE_EXTENSIONS,
         )
 
     async def _idempotent_response(
