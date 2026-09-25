@@ -29,11 +29,14 @@ from app.mod_anuncios.schemas import (
     MaterialCreate,
     MaterialResponse,
     MaterialUpdate,
+    OperationalExportRequest,
     OperationResponse,
     PlanningCreate,
     PlanningDetail,
     PlanningResponse,
     PlanningUpdate,
+    PollingPlaceMapItem,
+    PollingPlaceSectionItem,
     RouteCreate,
     RouteDetail,
     RouteResponse,
@@ -47,6 +50,7 @@ from app.mod_anuncios.service import AnunciosService
 from app.mod_arquivos.repository import FileRepository
 from app.mod_arquivos.schemas import AttachmentResponse
 from app.mod_arquivos.service import FileService
+from app.schemas.electoral_zones import ElectoralZoneMapItem
 
 router = APIRouter(prefix="/anuncios", tags=["Anuncios"])
 
@@ -279,6 +283,72 @@ async def dashboard(
         route_id=rota_id,
         territory_id=territorio_id,
         status=status_rota,
+    )
+
+
+@router.post("/operacao/exportacoes")
+async def export_operational_data(
+    payload: OperationalExportRequest,
+    actor: Annotated[RequestActor, Depends(get_current_user)],
+    service: Annotated[AnunciosService, Depends(get_service)],
+) -> Response:
+    content, media_type, filename = await service.export_operational_data(actor, payload)
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/mapa/locais-votacao", response_model=list[PollingPlaceMapItem])
+async def polling_places_map(
+    actor: Annotated[RequestActor, Depends(get_current_user)],
+    service: Annotated[AnunciosService, Depends(get_service)],
+    sul: float = Query(ge=-90, le=90),
+    oeste: float = Query(ge=-180, le=180),
+    norte: float = Query(ge=-90, le=90),
+    leste: float = Query(ge=-180, le=180),
+    limite: int = Query(default=1000, ge=1, le=2000),
+) -> list[PollingPlaceMapItem]:
+    return await service.list_polling_places_for_map(
+        actor,
+        south=sul,
+        west=oeste,
+        north=norte,
+        east=leste,
+        limit=limite,
+    )
+
+
+@router.get(
+    "/mapa/locais-votacao/{polling_place_id}/secoes",
+    response_model=list[PollingPlaceSectionItem],
+)
+async def polling_place_sections(
+    actor: Annotated[RequestActor, Depends(get_current_user)],
+    service: Annotated[AnunciosService, Depends(get_service)],
+    polling_place_id: int = Path(ge=1),
+) -> list[PollingPlaceSectionItem]:
+    return await service.list_polling_place_sections(actor, polling_place_id)
+
+
+@router.get("/mapa/zonas-eleitorais", response_model=list[ElectoralZoneMapItem])
+async def electoral_zone_meshes(
+    actor: Annotated[RequestActor, Depends(get_current_user)],
+    service: Annotated[AnunciosService, Depends(get_service)],
+    sul: float = Query(ge=-90, le=90),
+    oeste: float = Query(ge=-180, le=180),
+    norte: float = Query(ge=-90, le=90),
+    leste: float = Query(ge=-180, le=180),
+    limite: int = Query(default=200, ge=1, le=500),
+) -> list[ElectoralZoneMapItem]:
+    return await service.list_electoral_zone_meshes(
+        actor,
+        south=sul,
+        west=oeste,
+        north=norte,
+        east=leste,
+        limit=limite,
     )
 
 

@@ -24,6 +24,18 @@ class AnuncioSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
 
+class OperationalExportRequest(AnuncioSchema):
+    formato: Literal["csv", "xlsx"]
+    data_inicio: date | None = None
+    data_fim: date | None = None
+    equipe_id: int | None = Field(default=None, ge=1)
+    usuario_id: int | None = Field(default=None, ge=1)
+    material_id: int | None = Field(default=None, ge=1)
+    rota_id: int | None = Field(default=None, ge=1)
+    territorio_id: int | None = Field(default=None, ge=1)
+    status: RouteStatus | None = None
+
+
 class MaterialCreate(AnuncioSchema):
     nome: str = Field(min_length=2, max_length=120)
     descricao: str | None = None
@@ -416,3 +428,19 @@ class DashboardResponse(AnuncioSchema):
     totais: DashboardTotals
     por_material: list[DashboardBreakdown]
     pontos: list[dict[str, object]]
+
+
+class PollingPlaceMapItem(AnuncioSchema):
+    id: int
+    nome: str
+    endereco: str | None
+    latitude: Decimal
+    longitude: Decimal
+    municipio: str
+    numero_zona: int | None
+
+
+class PollingPlaceSectionItem(AnuncioSchema):
+    id: int
+    numero_secao: int
+    agregada_em: int | None

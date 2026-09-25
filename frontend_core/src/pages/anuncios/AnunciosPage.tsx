@@ -2,6 +2,7 @@ import {
   ArrowDownOutlined,
   ArrowUpOutlined,
   DeleteOutlined,
+  DownloadOutlined,
   EditOutlined,
   EnvironmentOutlined,
   EyeOutlined,
@@ -14,6 +15,9 @@ import {
   Alert,
   Button,
   Card,
+  Checkbox,
+  Collapse,
+  Dropdown,
   Empty,
   Form,
   Input,
@@ -22,6 +26,7 @@ import {
   Popconfirm,
   Select,
   Space,
+  Spin,
   Statistic,
   Switch,
   Tabs,
@@ -30,11 +35,13 @@ import {
 } from 'antd';
 import type { TableProps } from 'antd';
 import dayjs from 'dayjs';
+import L from 'leaflet';
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   CircleMarker,
   MapContainer,
+  Marker,
   Popup,
   TileLayer,
   Tooltip as LeafletTooltip,
@@ -46,6 +53,8 @@ import 'leaflet/dist/leaflet.css';
 import { BaseTable } from '@/components/data/BaseTable';
 import { AppToast } from '@/components/feedback/AppToast';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { ElectoralZoneMeshes, MapViewportReporter } from '@/components/maps/ElectoralZoneMeshes';
+import type { MapBounds } from '@/components/maps/ElectoralZoneMeshes';
 import {
   createMaterial,
   createPlanning,
@@ -53,9 +62,13 @@ import {
   createTeam,
   deactivateMaterial,
   deactivateTeam,
+  exportOperationalData,
   getDashboard,
   getRouteTemplate,
   listMaterials,
+  listElectoralZoneMeshes,
+  listPollingPlacesForMap,
+  listPollingPlaceSections,
   listRoutes,
   listRouteTemplates,
   listTeams,
@@ -68,6 +81,7 @@ import type { TeamPayload } from '@/modules/anuncios/anuncios-service';
 import type {
   DashboardData,
   MaterialRecord,
+  PollingPlaceMapItem,
   PointStatus,
   RouteInput,
   RouteRecord,
@@ -80,6 +94,7 @@ import { listarTerritorios } from '@/modules/territorios/territorios-service';
 import { listUsers } from '@/modules/users/user-service';
 import { normalizeApiError } from '@/services/api/api-error';
 import { httpClient } from '@/services/api/http-client';
+import escolaIconUrl from '@/assets/icons/escola.png';
 
 import styles from './AnunciosPage.module.css';
 
@@ -106,6 +121,13 @@ const markerColors: Record<PointStatus, string> = {
   COM_EXTRAVIO: '#f5222d',
   NAO_EXECUTADO: '#fa541c',
 };
+
+const pollingPlaceIcon = L.icon({
+  iconUrl: escolaIconUrl,
+  iconSize: [32, 32],
+  iconAnchor: [16, 32],
+  popupAnchor: [0, -30],
+});
 
 type MaterialForm = { nome: string; descricao?: string; ativo?: boolean };
 type RouteForm = RouteTemplateInput;
@@ -360,6 +382,13 @@ function DashboardPanel({
   routes: RouteTemplateRecord[];
   territories: Array<{ id: number; nome: string }>;
 }) {
+  const [showPollingPlaces, setShowPollingPlaces] = useState(false);
+  const [showElectoralZones, setShowElectoralZones] = useState(false);
+  const exportData = useMutation({
+    mutationFn: (format: 'csv' | 'xlsx') => exportOperationalData(filters, format),
+    onSuccess: () => AppToast.success('Arquivo da operação gerado.'),
+    onError: handleError,
+  });
   const options = (items: Array<{ id: number; nome: string }>) =>
     items.map((item) => ({ value: item.id, label: item.nome }));
   const totals = data?.totais;
@@ -377,7 +406,26 @@ function DashboardPanel({
   ] as const;
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Card title="Filtros operacionais">
+      <Card
+        title="Filtros operacionais"
+        extra={
+          <Dropdown
+            trigger={['click']}
+            disabled={exportData.isPending}
+            menu={{
+              items: [
+                { key: 'xlsx', label: 'Excel (.xlsx)' },
+                { key: 'csv', label: 'CSV (.csv)' },
+              ],
+              onClick: ({ key }) => exportData.mutate(key as 'csv' | 'xlsx'),
+            }}
+          >
+            <Button icon={<DownloadOutlined />} loading={exportData.isPending}>
+              Exportar dados
+            </Button>
+          </Dropdown>
+        }
+      >
         <div className={styles.filters}>
           <Input
             type="date"
@@ -447,8 +495,33 @@ function DashboardPanel({
           </Card>
         ))}
       </div>
-      <Card title="Mapa operacional" extra="Atualização automática a cada 30 segundos">
-        <OperationalMap points={data?.pontos ?? []} />
+      <Card
+        title="Mapa operacional"
+        extra={
+          <Space size="middle" wrap>
+            <Checkbox
+              checked={showPollingPlaces}
+              onChange={(event) => setShowPollingPlaces(event.target.checked)}
+            >
+              Exibir locais de votação
+            </Checkbox>
+            <Checkbox
+              checked={showElectoralZones}
+              onChange={(event) => setShowElectoralZones(event.target.checked)}
+            >
+              Exibir malhas das zonas eleitorais
+            </Checkbox>
+            <Typography.Text type="secondary">
+              Atualização automática a cada 30 segundos
+            </Typography.Text>
+          </Space>
+        }
+      >
+        <OperationalMap
+          points={data?.pontos ?? []}
+          showPollingPlaces={showPollingPlaces}
+          showElectoralZones={showElectoralZones}
+        />
       </Card>
       <Card title="Materiais por tipo">
         <BaseTable
@@ -467,81 +540,210 @@ function DashboardPanel({
   );
 }
 
-function OperationalMap({ points }: { points: DashboardData['pontos'] }) {
+function PollingPlacePopup({ place }: { place: PollingPlaceMapItem }) {
+  const [sectionsExpanded, setSectionsExpanded] = useState(false);
+  const sections = useQuery({
+    queryKey: ['anuncios', 'polling-place-sections', place.id],
+    queryFn: () => listPollingPlaceSections(place.id),
+    enabled: sectionsExpanded,
+    staleTime: 5 * 60_000,
+  });
+
+  return (
+    <div className={styles.pollingPlacePopup}>
+      <strong>{place.nome}</strong>
+      {place.endereco ? <div>Endereço: {place.endereco}</div> : null}
+      <div>Município: {place.municipio}</div>
+      {place.numero_zona !== null ? <div>Zona eleitoral: {place.numero_zona}</div> : null}
+      <Collapse
+        ghost
+        size="small"
+        onChange={(keys) => setSectionsExpanded(keys.length > 0)}
+        items={[
+          {
+            key: 'sections',
+            label: 'Seções eleitorais',
+            children: sections.isPending ? (
+              <Spin size="small" />
+            ) : sections.isError ? (
+              <Typography.Text type="danger">Não foi possível carregar as seções.</Typography.Text>
+            ) : sections.data?.length ? (
+              <ul className={styles.sectionList}>
+                {sections.data.map((section) => (
+                  <li key={section.id}>
+                    Seção {String(section.numero_secao).padStart(3, '0')}
+                    {section.agregada_em !== null ? ` (agregada em ${section.agregada_em})` : ''}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <Typography.Text type="secondary">Nenhuma seção vinculada.</Typography.Text>
+            ),
+          },
+        ]}
+      />
+    </div>
+  );
+}
+
+function OperationalPointPopup({ point }: { point: DashboardData['pontos'][number] }) {
+  return (
+    <>
+      <strong>{point.descricao_local}</strong>
+      <br />
+      Rota: {point.rota_nome}
+      <br />
+      Equipe: {point.equipe_nome ?? 'Atribuição individual'}
+      <br />
+      Responsável: {point.usuario_nome ?? 'Equipe'}
+      <br />
+      Executor: {point.executor_nome ?? 'Ainda não executado'}
+      {point.executado_em ? (
+        <>
+          <br />
+          Horário: {new Date(point.executado_em).toLocaleString('pt-BR')}
+        </>
+      ) : null}
+      <br />
+      Materiais: {point.materiais ?? 'Não informados'}
+      <br />
+      Instalado: {point.instalado}
+      <br />
+      Recolhido: {point.recolhido}
+      <br />
+      Extraviado: {point.extraviado}
+      <br />
+      Status: {point.status.replaceAll('_', ' ')}
+      {point.latitude_planejada !== null ? (
+        <>
+          <br />
+          Planejado: {point.latitude_planejada}, {point.longitude_planejada}
+        </>
+      ) : null}
+      {point.latitude_execucao !== null ? (
+        <>
+          <br />
+          Registrado: {point.latitude_execucao}, {point.longitude_execucao}
+        </>
+      ) : null}
+      {point.anexo_id ? (
+        <AuthenticatedImage
+          url={`/api/v1/arquivos/anexos/${point.anexo_id}/preview`}
+          alt={`Foto de ${point.descricao_local}`}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function OperationalMap({
+  points,
+  showPollingPlaces,
+  showElectoralZones,
+}: {
+  points: DashboardData['pontos'];
+  showPollingPlaces: boolean;
+  showElectoralZones: boolean;
+}) {
+  const [bounds, setBounds] = useState<MapBounds | null>(null);
   const mapped = points.filter(
     (point) =>
       (point.latitude_execucao !== null && point.longitude_execucao !== null) ||
       (point.latitude_planejada !== null && point.longitude_planejada !== null),
   );
-  if (!mapped.length) return <Empty description="Nenhum ponto com coordenadas no período." />;
-  const center: [number, number] = [
-    Number(mapped[0].latitude_execucao ?? mapped[0].latitude_planejada),
-    Number(mapped[0].longitude_execucao ?? mapped[0].longitude_planejada),
-  ];
+  const pollingPlaces = useQuery({
+    queryKey: ['anuncios', 'polling-places-map', bounds],
+    queryFn: () => listPollingPlacesForMap(bounds!),
+    enabled: showPollingPlaces && bounds !== null,
+    staleTime: 60_000,
+  });
+  const electoralZones = useQuery({
+    queryKey: ['anuncios', 'electoral-zone-meshes', bounds],
+    queryFn: () => listElectoralZoneMeshes(bounds!),
+    enabled: showElectoralZones && bounds !== null,
+    staleTime: 5 * 60_000,
+  });
+  if (!mapped.length && !showPollingPlaces && !showElectoralZones) {
+    return <Empty description="Nenhum ponto com coordenadas no período." />;
+  }
+  const center: [number, number] = mapped.length
+    ? [
+        Number(mapped[0].latitude_execucao ?? mapped[0].latitude_planejada),
+        Number(mapped[0].longitude_execucao ?? mapped[0].longitude_planejada),
+      ]
+    : [-14.235, -51.9253];
   return (
-    <MapContainer center={center} zoom={12} className={styles.map}>
-      <TileLayer
-        attribution="&copy; OpenStreetMap contributors"
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
-      {mapped.map((point) => (
-        <CircleMarker
-          key={point.uuid_publico}
-          center={[
-            Number(point.latitude_execucao ?? point.latitude_planejada),
-            Number(point.longitude_execucao ?? point.longitude_planejada),
-          ]}
-          radius={10}
-          pathOptions={{ color: markerColors[point.status], fillOpacity: 0.85 }}
-        >
-          <Popup>
-            <strong>{point.descricao_local}</strong>
-            <br />
-            Rota: {point.rota_nome}
-            <br />
-            Equipe: {point.equipe_nome ?? 'Atribuição individual'}
-            <br />
-            Responsável: {point.usuario_nome ?? 'Equipe'}
-            <br />
-            Executor: {point.executor_nome ?? 'Ainda não executado'}
-            {point.executado_em ? (
-              <>
-                <br />
-                Horário: {new Date(point.executado_em).toLocaleString('pt-BR')}
-              </>
-            ) : null}
-            <br />
-            Materiais: {point.materiais ?? 'Não informados'}
-            <br />
-            Instalado: {point.instalado}
-            <br />
-            Recolhido: {point.recolhido}
-            <br />
-            Extraviado: {point.extraviado}
-            <br />
-            Status: {point.status.replaceAll('_', ' ')}
-            {point.latitude_planejada !== null ? (
-              <>
-                <br />
-                Planejado: {point.latitude_planejada}, {point.longitude_planejada}
-              </>
-            ) : null}
-            {point.latitude_execucao !== null ? (
-              <>
-                <br />
-                Registrado: {point.latitude_execucao}, {point.longitude_execucao}
-              </>
-            ) : null}
-            {point.anexo_id ? (
-              <AuthenticatedImage
-                url={`/api/v1/arquivos/anexos/${point.anexo_id}/preview`}
-                alt={`Foto de ${point.descricao_local}`}
-              />
-            ) : null}
-          </Popup>
-        </CircleMarker>
-      ))}
-    </MapContainer>
+    <>
+      <MapContainer center={center} zoom={mapped.length ? 12 : 4} className={styles.map}>
+        <TileLayer
+          attribution="&copy; OpenStreetMap contributors"
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        <MapViewportReporter onChange={setBounds} />
+        {showElectoralZones ? <ElectoralZoneMeshes zones={electoralZones.data ?? []} /> : null}
+        {mapped
+          .filter(
+            (point) => point.latitude_planejada !== null && point.longitude_planejada !== null,
+          )
+          .map((point) => (
+            <CircleMarker
+              key={`${point.uuid_publico}-planned`}
+              center={[Number(point.latitude_planejada), Number(point.longitude_planejada)]}
+              radius={8}
+              pathOptions={{ color: '#595959', fillColor: '#ffffff', fillOpacity: 0.9, weight: 3 }}
+            >
+              <Popup>
+                <OperationalPointPopup point={point} />
+              </Popup>
+            </CircleMarker>
+          ))}
+        {mapped
+          .filter((point) => point.latitude_execucao !== null && point.longitude_execucao !== null)
+          .map((point) => (
+            <CircleMarker
+              key={`${point.uuid_publico}-executed`}
+              center={[Number(point.latitude_execucao), Number(point.longitude_execucao)]}
+              radius={10}
+              pathOptions={{ color: markerColors[point.status], fillOpacity: 0.85 }}
+            >
+              <Popup>
+                <OperationalPointPopup point={point} />
+              </Popup>
+            </CircleMarker>
+          ))}
+        {showPollingPlaces
+          ? pollingPlaces.data?.map((place) => (
+              <Marker
+                key={place.id}
+                position={[Number(place.latitude), Number(place.longitude)]}
+                icon={pollingPlaceIcon}
+              >
+                <Popup>
+                  <PollingPlacePopup place={place} />
+                </Popup>
+              </Marker>
+            ))
+          : null}
+      </MapContainer>
+      <div className={styles.mapLegend} aria-label="Legenda do mapa">
+        <span>
+          <i className={styles.plannedLegend} /> Local planejado
+        </span>
+        <span>
+          <i className={styles.executedLegend} /> Local executado
+        </span>
+        <span>
+          <img src={escolaIconUrl} alt="" /> Local de votação
+        </span>
+        <span>
+          <i className={styles.electoralZoneLegend} /> Zona eleitoral
+        </span>
+        {(showPollingPlaces && pollingPlaces.isFetching) ||
+        (showElectoralZones && electoralZones.isFetching) ? (
+          <Spin size="small" />
+        ) : null}
+      </div>
+    </>
   );
 }
 

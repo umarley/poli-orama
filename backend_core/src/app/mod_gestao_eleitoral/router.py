@@ -1,6 +1,6 @@
 from typing import Annotated, Literal, TypeVar
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.access import (
@@ -14,6 +14,8 @@ from app.mod_gestao_eleitoral.repository import GestaoEleitoralRepository
 from app.mod_gestao_eleitoral.schemas import (
     CandidateOption,
     ElectionOption,
+    ElectoralZoneResult,
+    MapExportRequest,
     MapResponse,
     NamedOption,
     NumericOption,
@@ -22,6 +24,7 @@ from app.mod_gestao_eleitoral.schemas import (
     ResultadoFilters,
 )
 from app.mod_gestao_eleitoral.service import GestaoEleitoralService
+from app.schemas.electoral_zones import ElectoralZoneMapItem
 
 router = APIRouter(prefix="/gestao-eleitoral", tags=["Gestao eleitoral"])
 
@@ -147,6 +150,56 @@ async def map_points(
     modo: Annotated[Literal["secao", "zona"], Query()] = "secao",
 ) -> MapResponse:
     return await service.map_points(actor, access, query, modo)
+
+
+@router.post("/mapa/exportacoes")
+async def export_map(
+    payload: MapExportRequest,
+    actor: Viewer,
+    access: Access,
+    service: Service,
+) -> Response:
+    content, media_type, filename = await service.export_map(actor, access, payload)
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/mapa/zonas-eleitorais/malhas", response_model=list[ElectoralZoneMapItem])
+async def electoral_zone_meshes(
+    actor: Viewer,
+    access: Access,
+    service: Service,
+    query: Filter,
+    sul: Annotated[float, Query(ge=-90, le=90)],
+    oeste: Annotated[float, Query(ge=-180, le=180)],
+    norte: Annotated[float, Query(ge=-90, le=90)],
+    leste: Annotated[float, Query(ge=-180, le=180)],
+    limite: Annotated[int, Query(ge=1, le=500)] = 200,
+) -> list[ElectoralZoneMapItem]:
+    rows = await service.electoral_zone_meshes(
+        actor,
+        access,
+        query,
+        south=sul,
+        west=oeste,
+        north=norte,
+        east=leste,
+        limit=limite,
+    )
+    return [ElectoralZoneMapItem.model_validate(row) for row in rows]
+
+
+@router.get("/mapa/zonas-eleitorais/resultados", response_model=list[ElectoralZoneResult])
+async def electoral_zone_results(
+    actor: Viewer,
+    access: Access,
+    service: Service,
+    query: Filter,
+) -> list[ElectoralZoneResult]:
+    return await service.electoral_zone_results(actor, access, query)
 
 
 @router.get("/distribuicao/{dimensao}", response_model=PaginatedDistribution)

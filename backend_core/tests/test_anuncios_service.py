@@ -1,11 +1,13 @@
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
+from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import pytest
+from openpyxl import load_workbook
 from pydantic import ValidationError
 
 from app.auth.access import RequestActor
@@ -17,6 +19,7 @@ from app.mod_anuncios.schemas import (
     ExecutionHistory,
     InstallationInput,
     InstallationMaterial,
+    OperationalExportRequest,
     PlanningCreate,
     PointMaterialInput,
     RouteCreate,
@@ -661,12 +664,229 @@ def test_main_administrative_and_app_endpoints_are_registered() -> None:
         ("POST", "/anuncios/planejamentos"),
         ("PATCH", "/anuncios/planejamentos/{planning_uuid}"),
         ("GET", "/anuncios/dashboard"),
+        ("POST", "/anuncios/operacao/exportacoes"),
+        ("GET", "/anuncios/mapa/locais-votacao"),
+        ("GET", "/anuncios/mapa/locais-votacao/{polling_place_id}/secoes"),
+        ("GET", "/anuncios/mapa/zonas-eleitorais"),
         ("GET", "/anuncios/app/rotas"),
         ("POST", "/anuncios/app/pontos/{point_uuid}/instalar"),
         ("POST", "/anuncios/app/pontos/{point_uuid}/retirar"),
     } <= registered
 
 
+@pytest.mark.asyncio
+async def test_polling_places_map_validates_bounds_and_returns_global_data() -> None:
+    repository = SimpleNamespace(
+        session=SimpleNamespace(),
+        list_polling_places_for_map=AsyncMock(
+            return_value=[
+                {
+                    "id": 3,
+                    "nome": "Escola Municipal",
+                    "endereco": "Rua Central, 10",
+                    "latitude": Decimal("-16.6800000"),
+                    "longitude": Decimal("-49.2500000"),
+                    "municipio": "Goiânia",
+                    "numero_zona": 133,
+                }
+            ]
+        ),
+    )
+    instance = AnunciosService(repository)  # type: ignore[arg-type]
+    actor = RequestActor(
+        tenant_id=7,
+        user_id=11,
+        session_id=3,
+        pessoa_id=21,
+        profiles=("administrador",),
+        permissions=frozenset({"anuncios.visualizar"}),
+        token="test",
+        login_origin="web",
+    )
+
+    result = await instance.list_polling_places_for_map(
+        actor, south=-17, west=-50, north=-16, east=-49, limit=1000
+    )
+
+    assert result[0].nome == "Escola Municipal"
+    repository.list_polling_places_for_map.assert_awaited_once_with(
+        south=-17, west=-50, north=-16, east=-49, limit=1000
+    )
+    with pytest.raises(BusinessRuleError, match="limites geograficos"):
+        await instance.list_polling_places_for_map(
+            actor, south=-16, west=-50, north=-17, east=-49, limit=1000
+        )
+
+
+@pytest.mark.asyncio
+async def test_electoral_zone_meshes_return_valid_convex_hulls() -> None:
+    repository = SimpleNamespace(
+        session=SimpleNamespace(),
+        list_electoral_zone_meshes=AsyncMock(
+            return_value=[
+                {
+                    "id": 9,
+                    "numero_zona": 133,
+                    "municipio": "Goiânia",
+                    "quantidade_locais": 3,
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [
+                            [
+                                [-49.26, -16.69],
+                                [-49.24, -16.68],
+                                [-49.25, -16.67],
+                                [-49.26, -16.69],
+                            ]
+                        ],
+                    },
+                }
+            ]
+        ),
+    )
+    instance = AnunciosService(repository)  # type: ignore[arg-type]
+    actor = RequestActor(
+        tenant_id=7,
+        user_id=11,
+        session_id=3,
+        pessoa_id=21,
+        profiles=("administrador",),
+        permissions=frozenset({"anuncios.visualizar"}),
+        token="test",
+        login_origin="web",
+    )
+
+    result = await instance.list_electoral_zone_meshes(
+        actor, south=-17, west=-50, north=-16, east=-49, limit=200
+    )
+
+    assert result[0].numero_zona == 133
+    assert result[0].geometry.type == "Polygon"
+    assert result[0].quantidade_locais == 3
+
+
 def test_idempotency_header_must_match_form_payload() -> None:
     with pytest.raises(BusinessRuleError, match="Idempotency-Key"):
         _validate_idempotency_header("payload-key", "another-key")
+
+
+def test_operational_export_reuses_all_dashboard_filters() -> None:
+    where, values = AnunciosRepository._operational_filters(
+        7,
+        start=date(2026, 9, 25),
+        end=date(2026, 9, 26),
+        team_id=2,
+        user_id=3,
+        material_id=4,
+        route_id=5,
+        territory_id=6,
+        status="EM_EXECUCAO",
+    )
+
+    assert "pl.tenant_id=:tenant_id" in where
+    assert "pl.data_execucao BETWEEN :start AND :end" in where
+    assert "pl.equipe_id=:team_id" in where
+    assert "pl.usuario_responsavel_id=:user_id" in where
+    assert "pm.material_id=:material_id" in where
+    assert "pl.rota_id=:route_id" in where
+    assert "pl.territorio_id=:territory_id" in where
+    assert "pl.status=:status" in where
+    assert values == {
+        "tenant_id": 7,
+        "start": date(2026, 9, 25),
+        "end": date(2026, 9, 26),
+        "team_id": 2,
+        "user_id": 3,
+        "material_id": 4,
+        "route_id": 5,
+        "territory_id": 6,
+        "status": "EM_EXECUCAO",
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("file_format", "media_type"),
+    [
+        ("csv", "text/csv; charset=utf-8"),
+        ("xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+    ],
+)
+async def test_operational_export_generates_file_and_audits(
+    file_format: str, media_type: str
+) -> None:
+    rows = [
+        {
+            "Data da execução": date(2026, 9, 25),
+            "Rota": "Rota Centro",
+            "Equipe": "Equipe 02",
+            "Usuário responsável": "João",
+            "Território": "Centro",
+            "Ponto/local": "Praça Cívica",
+            "Endereço": "Rua 1",
+            "Material": "Wind Banner",
+            "Quantidade planejada": 10,
+            "Quantidade instalada": 8,
+            "Quantidade recolhida": 5,
+            "Quantidade extraviada": 1,
+            "Status da rota": "EM_EXECUCAO",
+            "Status do ponto": "COM_EXTRAVIO",
+            "Data/hora da instalação": None,
+            "Executor da instalação": None,
+            "Data/hora do recolhimento": None,
+            "Executor do recolhimento": None,
+            "Observação do planejamento": None,
+            "Observação do ponto": "Próximo à entrada",
+            "Observação da instalação": None,
+            "Observação do recolhimento": "Uma unidade extraviada",
+            "Latitude": Decimal("-16.6800000"),
+            "Longitude": Decimal("-49.2500000"),
+        }
+    ]
+    repository = SimpleNamespace(
+        session=SimpleNamespace(),
+        export_operational_rows=AsyncMock(return_value=rows),
+        commit=AsyncMock(),
+    )
+    instance = AnunciosService(repository)  # type: ignore[arg-type]
+    instance.audit = SimpleNamespace(record_export=AsyncMock())  # type: ignore[assignment]
+    actor = RequestActor(
+        tenant_id=7,
+        user_id=11,
+        session_id=3,
+        profiles=("administrador",),
+        permissions=frozenset({"anuncios.visualizar"}),
+        token="test",
+    )
+    payload = OperationalExportRequest(
+        formato=file_format,
+        data_inicio=date(2026, 9, 25),
+        data_fim=date(2026, 9, 25),
+        equipe_id=2,
+        material_id=4,
+    )
+
+    content, actual_media_type, filename = await instance.export_operational_data(actor, payload)
+
+    repository.export_operational_rows.assert_awaited_once_with(
+        7,
+        start=date(2026, 9, 25),
+        end=date(2026, 9, 25),
+        team_id=2,
+        user_id=None,
+        material_id=4,
+        route_id=None,
+        territory_id=None,
+        status=None,
+    )
+    instance.audit.record_export.assert_awaited_once()
+    repository.commit.assert_awaited_once()
+    assert actual_media_type == media_type
+    assert filename.endswith(f".{file_format}")
+    if file_format == "csv":
+        assert content.startswith(b"\xef\xbb\xbf")
+        assert "Praça Cívica" in content.decode("utf-8-sig")
+    else:
+        sheet = load_workbook(BytesIO(content), read_only=True).active
+        assert sheet["H1"].value == "Material"
+        assert sheet["I2"].value == 10

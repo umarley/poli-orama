@@ -1,4 +1,5 @@
 import { httpClient } from '@/services/api/http-client';
+import type { ElectoralZoneMesh, MapBounds } from '@/components/maps/ElectoralZoneMeshes';
 
 import type {
   CandidateOption,
@@ -7,6 +8,7 @@ import type {
   ElectoralFilters,
   ElectoralMap,
   ElectoralPanel,
+  ElectoralZoneResult,
   MapMode,
   NamedOption,
   NumericOption,
@@ -27,14 +29,19 @@ export function omitElectoralFilters(
   return next;
 }
 
-export function serializeElectoralParams(filters: ElectoralFilters, extra: Record<string, unknown> = {}) {
+export function serializeElectoralParams(
+  filters: ElectoralFilters,
+  extra: Record<string, unknown> = {},
+) {
   const params: Record<string, unknown> = { ...extra };
-  (Object.entries(filters) as Array<[keyof ElectoralFilters, ElectoralFilters[keyof ElectoralFilters]]>).forEach(
-    ([key, value]) => {
-      if (!Array.isArray(value) || value.length === 0) return;
-      params[key] = value;
-    },
-  );
+  (
+    Object.entries(filters) as Array<
+      [keyof ElectoralFilters, ElectoralFilters[keyof ElectoralFilters]]
+    >
+  ).forEach(([key, value]) => {
+    if (!Array.isArray(value) || value.length === 0) return;
+    params[key] = value;
+  });
   return {
     params,
     paramsSerializer: {
@@ -135,15 +142,63 @@ export async function getElectoralMap(filters: ElectoralFilters, modo: MapMode) 
   return data;
 }
 
+export async function exportElectoralMap(
+  filters: ElectoralFilters,
+  modo: MapMode,
+  formato: 'csv' | 'xlsx',
+) {
+  const response = await httpClient.post<Blob>(
+    `${base}/mapa/exportacoes`,
+    { formato, modo, filtros: filters },
+    { responseType: 'blob', ...slowRequest },
+  );
+  const url = URL.createObjectURL(response.data);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `analise-eleitoral-mapa-${new Date().toISOString().slice(0, 10)}.${formato}`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+export async function getElectoralZoneMeshes(filters: ElectoralFilters, bounds: MapBounds) {
+  const { data } = await httpClient.get<ElectoralZoneMesh[]>(
+    `${base}/mapa/zonas-eleitorais/malhas`,
+    {
+      ...serializeElectoralParams(filters, {
+        sul: bounds.south,
+        oeste: bounds.west,
+        norte: bounds.north,
+        leste: bounds.east,
+      }),
+      ...slowRequest,
+    },
+  );
+  return data;
+}
+
+export async function getElectoralZoneResults(filters: ElectoralFilters) {
+  const { data } = await httpClient.get<ElectoralZoneResult[]>(
+    `${base}/mapa/zonas-eleitorais/resultados`,
+    {
+      ...serializeElectoralParams(filters),
+      ...slowRequest,
+    },
+  );
+  return data;
+}
+
 export async function getElectoralDistribution(
   dimension: DistributionDimension,
   filters: ElectoralFilters,
   page: number,
   pageSize: number,
 ) {
-  const { data } = await httpClient.get<PaginatedDistribution>(`${base}/distribuicao/${dimension}`, {
-    ...serializeElectoralParams(filters, { page, page_size: pageSize }),
-    ...slowRequest,
-  });
+  const { data } = await httpClient.get<PaginatedDistribution>(
+    `${base}/distribuicao/${dimension}`,
+    {
+      ...serializeElectoralParams(filters, { page, page_size: pageSize }),
+      ...slowRequest,
+    },
+  );
   return data;
 }

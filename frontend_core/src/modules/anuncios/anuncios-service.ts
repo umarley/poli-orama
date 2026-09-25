@@ -1,9 +1,12 @@
 import type { PaginatedResponse } from '@/types/api';
 import { httpClient } from '@/services/api/http-client';
 
+import type { ElectoralZoneMesh, MapBounds } from '@/components/maps/ElectoralZoneMeshes';
 import type {
   DashboardData,
   MaterialRecord,
+  PollingPlaceMapItem,
+  PollingPlaceSectionItem,
   RouteDetail,
   RouteInput,
   RouteRecord,
@@ -115,5 +118,59 @@ export async function updateRouteTemplate(uuid: string, payload: Partial<RouteTe
 
 export async function getDashboard(params: Record<string, string | number | undefined>) {
   const { data } = await httpClient.get<DashboardData>(`${base}/dashboard`, { params });
+  return data;
+}
+
+export async function exportOperationalData(
+  filters: Record<string, string | number | undefined>,
+  formato: 'csv' | 'xlsx',
+) {
+  const response = await httpClient.post<Blob>(
+    `${base}/operacao/exportacoes`,
+    { ...filters, formato },
+    { responseType: 'blob', timeout: 60_000 },
+  );
+  const url = URL.createObjectURL(response.data);
+  const anchor = document.createElement('a');
+  const now = new Date();
+  const date = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+  ].join('-');
+  anchor.href = url;
+  anchor.download = `operacao-anuncios-${date}.${formato}`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+export async function listPollingPlacesForMap(bounds: MapBounds) {
+  const { data } = await httpClient.get<PollingPlaceMapItem[]>(`${base}/mapa/locais-votacao`, {
+    params: {
+      sul: bounds.south,
+      oeste: bounds.west,
+      norte: bounds.north,
+      leste: bounds.east,
+    },
+  });
+  return data;
+}
+
+export async function listPollingPlaceSections(pollingPlaceId: number) {
+  const { data } = await httpClient.get<PollingPlaceSectionItem[]>(
+    `${base}/mapa/locais-votacao/${pollingPlaceId}/secoes`,
+  );
+  return data;
+}
+
+export async function listElectoralZoneMeshes(bounds: MapBounds) {
+  const { data } = await httpClient.get<ElectoralZoneMesh[]>(`${base}/mapa/zonas-eleitorais`, {
+    params: {
+      sul: bounds.south,
+      oeste: bounds.west,
+      norte: bounds.north,
+      leste: bounds.east,
+    },
+  });
   return data;
 }

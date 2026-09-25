@@ -30,6 +30,12 @@ class ResultadoFilters(GestaoEleitoralSchema):
         return [cargo.strip() for cargo in self.ds_cargo if cargo and cargo.strip()]
 
 
+class MapExportRequest(GestaoEleitoralSchema):
+    formato: Literal["csv", "xlsx"]
+    modo: Literal["secao", "zona"] = "secao"
+    filtros: ResultadoFilters
+
+
 class ElectionOption(GestaoEleitoralSchema):
     aa_eleicao: int | None
     cd_eleicao: int | None
@@ -114,6 +120,21 @@ class MapResponse(GestaoEleitoralSchema):
     modo: Literal["secao", "zona"]
     pontos: list[MapPoint]
     truncado: bool
+
+
+class ElectoralZoneCandidateVotes(GestaoEleitoralSchema):
+    candidato: str
+    votos: int
+
+
+class ElectoralZoneResult(GestaoEleitoralSchema):
+    id: int
+    numero_zona: int
+    municipio: str | None
+    quantidade_locais: int
+    quantidade_secoes: int
+    total_votos: int
+    candidatos: list[ElectoralZoneCandidateVotes]
 
 
 class PaginatedDistribution(GestaoEleitoralSchema):

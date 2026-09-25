@@ -93,6 +93,19 @@ export interface ElectoralMap {
   truncado: boolean;
 }
 
+export interface ElectoralZoneResult {
+  id: number;
+  numero_zona: number;
+  municipio: string | null;
+  quantidade_locais: number;
+  quantidade_secoes: number;
+  total_votos: number;
+  candidatos: Array<{
+    candidato: string;
+    votos: number;
+  }>;
+}
+
 export interface PaginatedDistribution {
   items: DistributionItem[];
   total: number;

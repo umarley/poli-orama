@@ -237,3 +237,19 @@ export interface DashboardData {
     extraviado: number;
   }>;
 }
+
+export interface PollingPlaceMapItem {
+  id: number;
+  nome: string;
+  endereco: string | null;
+  latitude: string;
+  longitude: string;
+  municipio: string;
+  numero_zona: number | null;
+}
+
+export interface PollingPlaceSectionItem {
+  id: number;
+  numero_secao: number;
+  agregada_em: number | null;
+}

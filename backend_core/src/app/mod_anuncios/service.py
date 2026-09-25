@@ -1,11 +1,14 @@
 """Regras de negocio, seguranca e auditoria do modulo Anuncios."""
 
+import csv
+import io
 from datetime import date
 from pathlib import Path
 from typing import Any
 from uuid import UUID
 
 from fastapi.encoders import jsonable_encoder
+from openpyxl import Workbook
 
 from app.audit.service import AuditService
 from app.auth.access import RequestActor
@@ -18,11 +21,14 @@ from app.mod_anuncios.schemas import (
     MaterialCreate,
     MaterialResponse,
     MaterialUpdate,
+    OperationalExportRequest,
     OperationResponse,
     PlanningCreate,
     PlanningDetail,
     PlanningResponse,
     PlanningUpdate,
+    PollingPlaceMapItem,
+    PollingPlaceSectionItem,
     RouteCreate,
     RouteDetail,
     RouteResponse,
@@ -34,6 +40,7 @@ from app.mod_anuncios.schemas import (
 )
 from app.mod_arquivos.schemas import AttachmentResponse
 from app.mod_arquivos.service import FileService
+from app.schemas.electoral_zones import ElectoralZoneMapItem
 
 ADMIN_VIEW = "anuncios.visualizar"
 ADMIN_MANAGE = "anuncios.gerenciar"
@@ -813,6 +820,136 @@ class AnunciosService:
             raise BusinessRuleError("A data final deve ser igual ou posterior a inicial.")
         data = await self.repository.dashboard(actor.tenant_id, start=start, end=end, **filters)
         return DashboardResponse.model_validate(data)
+
+    async def export_operational_data(
+        self, actor: RequestActor, payload: OperationalExportRequest
+    ) -> tuple[bytes, str, str]:
+        self._require_any(actor, ADMIN_VIEW, ADMIN_MANAGE, EXECUTION_VIEW)
+        start = payload.data_inicio or date.today()
+        end = payload.data_fim or date.today()
+        if end < start:
+            raise BusinessRuleError("A data final deve ser igual ou posterior a inicial.")
+        rows = await self.repository.export_operational_rows(
+            actor.tenant_id,
+            start=start,
+            end=end,
+            team_id=payload.equipe_id,
+            user_id=payload.usuario_id,
+            material_id=payload.material_id,
+            route_id=payload.rota_id,
+            territory_id=payload.territorio_id,
+            status=payload.status,
+        )
+        columns = list(rows[0]) if rows else self._operational_export_columns()
+        if payload.formato == "xlsx":
+            content = self._xlsx(columns, rows)
+            media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        else:
+            content = self._csv(columns, rows)
+            media_type = "text/csv; charset=utf-8"
+        await self.audit.record_export(
+            tenant_id=actor.tenant_id,
+            user_id=actor.user_id,
+            entity="operacao_anuncios",
+            filters=jsonable_encoder(payload.model_dump(exclude={"formato"})),
+            record_count=len(rows),
+            file_format=payload.formato,
+            purpose="Exportação dos dados da operação de anúncios",
+        )
+        await self.repository.commit()
+        filename = f"operacao-anuncios-{date.today().isoformat()}.{payload.formato}"
+        return content, media_type, filename
+
+    @staticmethod
+    def _operational_export_columns() -> list[str]:
+        return [
+            "Data da execução",
+            "Rota",
+            "Equipe",
+            "Usuário responsável",
+            "Território",
+            "Ponto/local",
+            "Endereço",
+            "Material",
+            "Quantidade planejada",
+            "Quantidade instalada",
+            "Quantidade recolhida",
+            "Quantidade extraviada",
+            "Status da rota",
+            "Status do ponto",
+            "Data/hora da instalação",
+            "Executor da instalação",
+            "Data/hora do recolhimento",
+            "Executor do recolhimento",
+            "Observação do planejamento",
+            "Observação do ponto",
+            "Observação da instalação",
+            "Observação do recolhimento",
+            "Latitude",
+            "Longitude",
+        ]
+
+    @staticmethod
+    def _csv(columns: list[str], rows: list[dict[str, Any]]) -> bytes:
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=columns)
+        writer.writeheader()
+        writer.writerows(rows)
+        return output.getvalue().encode("utf-8-sig")
+
+    @staticmethod
+    def _xlsx(columns: list[str], rows: list[dict[str, Any]]) -> bytes:
+        workbook = Workbook(write_only=True)
+        sheet = workbook.create_sheet("Operação de anúncios")
+        sheet.append(columns)
+        for row in rows:
+            sheet.append([row.get(column) for column in columns])
+        output = io.BytesIO()
+        workbook.save(output)
+        return output.getvalue()
+
+    async def list_polling_places_for_map(
+        self,
+        actor: RequestActor,
+        *,
+        south: float,
+        west: float,
+        north: float,
+        east: float,
+        limit: int,
+    ) -> list[PollingPlaceMapItem]:
+        self._require_any(actor, ADMIN_VIEW, ADMIN_MANAGE, EXECUTION_VIEW)
+        if south >= north or west >= east:
+            raise BusinessRuleError("Os limites geograficos informados sao invalidos.")
+        rows = await self.repository.list_polling_places_for_map(
+            south=south, west=west, north=north, east=east, limit=limit
+        )
+        return [PollingPlaceMapItem.model_validate(row) for row in rows]
+
+    async def list_polling_place_sections(
+        self, actor: RequestActor, polling_place_id: int
+    ) -> list[PollingPlaceSectionItem]:
+        self._require_any(actor, ADMIN_VIEW, ADMIN_MANAGE, EXECUTION_VIEW)
+        rows = await self.repository.list_polling_place_sections(polling_place_id)
+        return [PollingPlaceSectionItem.model_validate(row) for row in rows]
+
+    async def list_electoral_zone_meshes(
+        self,
+        actor: RequestActor,
+        *,
+        south: float,
+        west: float,
+        north: float,
+        east: float,
+        limit: int,
+    ) -> list[ElectoralZoneMapItem]:
+        self._require_any(actor, ADMIN_VIEW, ADMIN_MANAGE, EXECUTION_VIEW)
+        if south >= north or west >= east:
+            raise BusinessRuleError("Os limites geograficos informados sao invalidos.")
+        rows = await self.repository.list_electoral_zone_meshes(
+            south=south, west=west, north=north, east=east, limit=limit
+        )
+        return [ElectoralZoneMapItem.model_validate(row) for row in rows]
 
     async def _ensure_planning_access(
         self, actor: RequestActor, planning: dict[str, Any] | None

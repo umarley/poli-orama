@@ -1,14 +1,25 @@
 from __future__ import annotations
 
+import csv
+import io
+from datetime import date
 from typing import Any
 
+from fastapi.encoders import jsonable_encoder
+from openpyxl import Workbook
+
+from app.audit.service import AuditService
 from app.auth.access import RequestActor, TerritorialAccess
+from app.core.errors import BusinessRuleError
 from app.mod_gestao_eleitoral.repository import GestaoEleitoralRepository, TerritorialScope
 from app.mod_gestao_eleitoral.schemas import (
     CandidateOption,
     DistributionItem,
     ElectionOption,
+    ElectoralZoneCandidateVotes,
+    ElectoralZoneResult,
     IndicatorSummary,
+    MapExportRequest,
     MapPoint,
     MapResponse,
     NamedOption,
@@ -188,9 +199,7 @@ class GestaoEleitoralService:
         scope = await self.territorial_scope(actor, access)
         indicators = await self.repository.indicators(filters, scope)
         total_votes = int(indicators.get("total_votos") or 0)
-        ranking_rows = (
-            await self.repository.ranking(filters, scope) if filters.cargos else []
-        )
+        ranking_rows = await self.repository.ranking(filters, scope) if filters.cargos else []
         comparison_rows = await self.repository.comparison(filters, scope)
         by_candidate = len(filters.votaveis) > 1
         municipio_rows, _ = await self.repository.distribution(
@@ -245,9 +254,7 @@ class GestaoEleitoralService:
                 continue
             votes = int(row.get("votos") or 0)
             candidate = str(row.get("candidato") or "").strip() or None
-            candidates = [
-                str(name) for name in (row.get("candidatos") or []) if name
-            ]
+            candidates = [str(name) for name in (row.get("candidatos") or []) if name]
             if candidate and candidate not in candidates:
                 candidates = [candidate, *candidates]
             series_total = totals.get(candidate or "", 0)
@@ -260,9 +267,7 @@ class GestaoEleitoralService:
                     local_votacao=row.get("local_votacao"),
                     municipio=row.get("municipio"),
                     votos=votes,
-                    percentual=(
-                        round((votes * 100 / series_total), 2) if series_total else 0.0
-                    ),
+                    percentual=(round((votes * 100 / series_total), 2) if series_total else 0.0),
                     candidato=candidate,
                     candidatos=candidates,
                 )
@@ -272,6 +277,127 @@ class GestaoEleitoralService:
             pontos=points,
             truncado=any(int(row.get("ordem") or 0) >= limit for row in rows),
         )
+
+    async def export_map(
+        self,
+        actor: RequestActor,
+        access: TerritorialAccess,
+        payload: MapExportRequest,
+    ) -> tuple[bytes, str, str]:
+        scope = await self.territorial_scope(actor, access)
+        rows = await self.repository.export_map_rows(payload.filtros, scope, payload.modo)
+        columns = list(rows[0]) if rows else self._map_export_columns(payload.modo)
+        if payload.formato == "xlsx":
+            content = self._xlsx(columns, rows)
+            media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        else:
+            content = self._csv(columns, rows)
+            media_type = "text/csv; charset=utf-8"
+        await AuditService(self.repository.session).record_export(
+            tenant_id=actor.tenant_id,
+            user_id=actor.user_id,
+            entity="gestao_eleitoral_mapa",
+            filters=jsonable_encoder(
+                {"modo": payload.modo, **payload.filtros.model_dump(exclude_none=True)}
+            ),
+            record_count=len(rows),
+            file_format=payload.formato,
+            purpose="Exportação da análise eleitoral no mapa",
+        )
+        await self.repository.commit()
+        filename = f"analise-eleitoral-mapa-{date.today().isoformat()}.{payload.formato}"
+        return content, media_type, filename
+
+    @staticmethod
+    def _map_export_columns(mode: str) -> list[str]:
+        columns = [
+            "Eleição",
+            "Ano",
+            "Turno",
+            "Cargo",
+            "Candidato",
+            "Número do candidato",
+            "UF",
+            "Município",
+            "Zona eleitoral",
+        ]
+        if mode != "zona":
+            columns.extend(["Local de votação", "Seção eleitoral"])
+        return [*columns, "Quantidade de votos", "Latitude", "Longitude"]
+
+    @staticmethod
+    def _csv(columns: list[str], rows: list[dict[str, Any]]) -> bytes:
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=columns)
+        writer.writeheader()
+        writer.writerows(rows)
+        return output.getvalue().encode("utf-8-sig")
+
+    @staticmethod
+    def _xlsx(columns: list[str], rows: list[dict[str, Any]]) -> bytes:
+        workbook = Workbook(write_only=True)
+        sheet = workbook.create_sheet("Análise eleitoral")
+        sheet.append(columns)
+        for row in rows:
+            sheet.append([row.get(column) for column in columns])
+        output = io.BytesIO()
+        workbook.save(output)
+        return output.getvalue()
+
+    async def electoral_zone_meshes(
+        self,
+        actor: RequestActor,
+        access: TerritorialAccess,
+        filters: ResultadoFilters,
+        *,
+        south: float,
+        west: float,
+        north: float,
+        east: float,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        if south >= north or west >= east:
+            raise BusinessRuleError("Os limites geograficos informados sao invalidos.")
+        scope = await self.territorial_scope(actor, access)
+        return await self.repository.electoral_zone_meshes(
+            filters,
+            scope,
+            south=south,
+            west=west,
+            north=north,
+            east=east,
+            limit=limit,
+        )
+
+    async def electoral_zone_results(
+        self,
+        actor: RequestActor,
+        access: TerritorialAccess,
+        filters: ResultadoFilters,
+    ) -> list[ElectoralZoneResult]:
+        scope = await self.territorial_scope(actor, access)
+        rows = await self.repository.electoral_zone_results(filters, scope)
+        grouped: dict[int, dict[str, Any]] = {}
+        for row in rows:
+            zone_id = int(row["id"])
+            item = grouped.setdefault(
+                zone_id,
+                {
+                    "id": zone_id,
+                    "numero_zona": int(row["numero_zona"]),
+                    "municipio": row.get("municipio"),
+                    "quantidade_locais": int(row.get("quantidade_locais") or 0),
+                    "quantidade_secoes": int(row.get("quantidade_secoes") or 0),
+                    "total_votos": 0,
+                    "candidatos": [],
+                },
+            )
+            votes = int(row.get("votos") or 0)
+            item["total_votos"] += votes
+            item["candidatos"].append(
+                ElectoralZoneCandidateVotes(candidato=str(row["candidato"]), votos=votes)
+            )
+        return [ElectoralZoneResult.model_validate(item) for item in grouped.values()]
 
     async def paginated_distribution(
         self,

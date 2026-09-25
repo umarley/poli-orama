@@ -2,17 +2,20 @@ import {
   BankOutlined,
   BarChartOutlined,
   ClearOutlined,
+  DownloadOutlined,
   EnvironmentOutlined,
   GlobalOutlined,
   TeamOutlined,
   TrophyOutlined,
 } from '@ant-design/icons';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   Alert,
   Button,
   Card,
+  Checkbox,
   Col,
+  Dropdown,
   Empty,
   Progress,
   Radio,
@@ -30,13 +33,22 @@ import { Link, useSearchParams } from 'react-router-dom';
 import 'leaflet/dist/leaflet.css';
 
 import { BaseTable } from '@/components/data/BaseTable';
+import { AppToast } from '@/components/feedback/AppToast';
 import { LocalizedStatistic as Statistic } from '@/components/data/LocalizedStatistic';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { buildElectoralHeatSeries, buildSectionMarkers } from '@/modules/gestao-eleitoral/electoral-heatmap';
+import { ElectoralZoneMeshes, MapViewportReporter } from '@/components/maps/ElectoralZoneMeshes';
+import type { ElectoralZoneMesh, MapBounds } from '@/components/maps/ElectoralZoneMeshes';
+import {
+  buildElectoralHeatSeries,
+  buildSectionMarkers,
+} from '@/modules/gestao-eleitoral/electoral-heatmap';
 import {
   getElectoralDistribution,
+  exportElectoralMap,
   getElectoralMap,
   getElectoralPanel,
+  getElectoralZoneMeshes,
+  getElectoralZoneResults,
   listElectoralElections,
   listElectoralMunicipalities,
   listElectoralOffices,
@@ -101,7 +113,8 @@ function distributionLabel(item: DistributionItem) {
 }
 
 function DistributionBars({ items }: { items: DistributionItem[] }) {
-  if (!items.length) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Sem dados no recorte." />;
+  if (!items.length)
+    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Sem dados no recorte." />;
   return (
     <div className={styles.bars}>
       {items.map((item) => {
@@ -130,6 +143,8 @@ export function GestaoEleitoralAnalisePage() {
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [mapMode, setMapMode] = useState<MapMode>('secao');
   const [mapView, setMapView] = useState<MapView>('calor');
+  const [showElectoralZones, setShowElectoralZones] = useState(false);
+  const [mapBounds, setMapBounds] = useState<MapBounds | null>(null);
   const [tableDimension, setTableDimension] = useState<DistributionDimension>('municipio');
   const [tablePage, setTablePage] = useState(1);
 
@@ -141,9 +156,11 @@ export function GestaoEleitoralAnalisePage() {
   const updateFilters = (patch: ElectoralFilters, clear: Array<keyof ElectoralFilters> = []) => {
     setFilters((current) => {
       const next = { ...current, ...patch };
-      (Object.entries(patch) as Array<[keyof ElectoralFilters, unknown]>).forEach(([key, value]) => {
-        if (Array.isArray(value) && value.length === 0) delete next[key];
-      });
+      (Object.entries(patch) as Array<[keyof ElectoralFilters, unknown]>).forEach(
+        ([key, value]) => {
+          if (Array.isArray(value) && value.length === 0) delete next[key];
+        },
+      );
       clear.forEach((key) => {
         delete next[key];
       });
@@ -223,10 +240,40 @@ export function GestaoEleitoralAnalisePage() {
     queryFn: () => getElectoralMap(filters, mapAggregation),
     enabled: electionSelected && tab === 'mapa' && hasItems(filters.nm_votaveis),
   });
+  const zoneMeshFilters = omitElectoralFilters(
+    filters,
+    'eleicao_chaves',
+    'nm_votaveis',
+    'ds_cargo',
+  );
+  const zoneMeshes = useQuery({
+    queryKey: [
+      'gestao-eleitoral',
+      'mapa',
+      'zonas-eleitorais',
+      'malhas',
+      zoneMeshFilters,
+      mapBounds,
+    ],
+    queryFn: () => getElectoralZoneMeshes(zoneMeshFilters, mapBounds!),
+    enabled: showElectoralZones && tab === 'mapa' && mapBounds !== null,
+    staleTime: 5 * 60_000,
+  });
+  const zoneResults = useQuery({
+    queryKey: ['gestao-eleitoral', 'mapa', 'zonas-eleitorais', 'resultados', filters],
+    queryFn: () => getElectoralZoneResults(filters),
+    enabled:
+      showElectoralZones && electionSelected && hasItems(filters.nm_votaveis) && tab === 'mapa',
+  });
   const table = useQuery({
     queryKey: ['gestao-eleitoral', 'tabela', tableDimension, filters, tablePage],
     queryFn: () => getElectoralDistribution(tableDimension, filters, tablePage, 20),
     enabled: electionSelected && tab === 'tabelas',
+  });
+  const mapExport = useMutation({
+    mutationFn: (format: 'csv' | 'xlsx') => exportElectoralMap(filters, mapAggregation, format),
+    onSuccess: () => AppToast.success('Arquivo da análise eleitoral gerado.'),
+    onError: (error) => AppToast.error(normalizeApiError(error).message),
   });
 
   const selectedElectionKeys = filters.eleicao_chaves ?? [];
@@ -245,7 +292,7 @@ export function GestaoEleitoralAnalisePage() {
 
   const panelError = panel.error ? normalizeApiError(panel.error).message : null;
   const data = panel.data;
-  const mapPoints = mapData.data?.pontos ?? [];
+  const mapPoints = useMemo(() => mapData.data?.pontos ?? [], [mapData.data?.pontos]);
   const heatSeries = useMemo(
     () => buildElectoralHeatSeries(mapPoints, filters.nm_votaveis ?? []),
     [mapPoints, filters.nm_votaveis],
@@ -255,6 +302,13 @@ export function GestaoEleitoralAnalisePage() {
     [mapPoints, filters.nm_votaveis],
   );
   const candidateSelected = hasItems(filters.nm_votaveis);
+  const electoralZoneMeshes = useMemo(() => {
+    const resultsByZone = new Map((zoneResults.data ?? []).map((item) => [item.id, item]));
+    return (zoneMeshes.data ?? []).flatMap((mesh): ElectoralZoneMesh[] => {
+      const result = resultsByZone.get(mesh.id);
+      return result ? [{ ...mesh, ...result, geometry: mesh.geometry }] : [];
+    });
+  }, [zoneMeshes.data, zoneResults.data]);
 
   return (
     <div className={styles.page}>
@@ -314,7 +368,10 @@ export function GestaoEleitoralAnalisePage() {
             placeholder="Cargo disputado"
             disabled={!electionSelected}
             value={filters.ds_cargo}
-            options={(offices.data ?? []).map((item) => ({ value: item.valor, label: item.rotulo }))}
+            options={(offices.data ?? []).map((item) => ({
+              value: item.valor,
+              label: item.rotulo,
+            }))}
             onChange={(value: string[]) => updateFilters({ ds_cargo: value }, ['nm_votaveis'])}
           />
           <Select
@@ -344,7 +401,12 @@ export function GestaoEleitoralAnalisePage() {
             value={filters.sg_uf}
             options={(states.data ?? []).map((item) => ({ value: item.valor, label: item.rotulo }))}
             onChange={(value: string[]) =>
-              updateFilters({ sg_uf: value }, ['cd_municipio', 'nr_zona', 'nr_local_votacao', 'nr_secao'])
+              updateFilters({ sg_uf: value }, [
+                'cd_municipio',
+                'nr_zona',
+                'nr_local_votacao',
+                'nr_secao',
+              ])
             }
           />
           <Select
@@ -399,7 +461,10 @@ export function GestaoEleitoralAnalisePage() {
             placeholder="Seção eleitoral"
             disabled={!hasItems(filters.nr_zona) && !hasItems(filters.nr_local_votacao)}
             value={filters.nr_secao}
-            options={(sections.data ?? []).map((item) => ({ value: item.valor, label: item.rotulo }))}
+            options={(sections.data ?? []).map((item) => ({
+              value: item.valor,
+              label: item.rotulo,
+            }))}
             onChange={(value: number[]) => updateFilters({ nr_secao: value })}
           />
         </div>
@@ -550,7 +615,9 @@ export function GestaoEleitoralAnalisePage() {
             label: 'Mapa',
             children: (
               <Card
-                title={mapView === 'calor' ? 'Mapa de calor da votação' : 'Mapa por seção eleitoral'}
+                title={
+                  mapView === 'calor' ? 'Mapa de calor da votação' : 'Mapa por seção eleitoral'
+                }
                 extra={
                   <Space wrap size={8}>
                     <Radio.Group
@@ -573,6 +640,34 @@ export function GestaoEleitoralAnalisePage() {
                         ]}
                       />
                     )}
+                    <Checkbox
+                      checked={showElectoralZones}
+                      onChange={(event) => setShowElectoralZones(event.target.checked)}
+                    >
+                      Exibir malhas das zonas eleitorais
+                    </Checkbox>
+                    {showElectoralZones && (zoneMeshes.isFetching || zoneResults.isFetching) ? (
+                      <Spin size="small" />
+                    ) : null}
+                    <Dropdown
+                      trigger={['click']}
+                      disabled={!candidateSelected || mapExport.isPending}
+                      menu={{
+                        items: [
+                          { key: 'xlsx', label: 'Excel (.xlsx)' },
+                          { key: 'csv', label: 'CSV (.csv)' },
+                        ],
+                        onClick: ({ key }) => mapExport.mutate(key as 'csv' | 'xlsx'),
+                      }}
+                    >
+                      <Button
+                        icon={<DownloadOutlined />}
+                        loading={mapExport.isPending}
+                        disabled={!candidateSelected}
+                      >
+                        Exportar dados
+                      </Button>
+                    </Dropdown>
                   </Space>
                 }
               >
@@ -598,7 +693,7 @@ export function GestaoEleitoralAnalisePage() {
                   <Spin spinning>
                     <div className={styles.mapWrap} />
                   </Spin>
-                ) : !mapPoints.length ? (
+                ) : !mapPoints.length && !showElectoralZones ? (
                   <Empty description="Não há coordenadas para os locais de votação deste recorte." />
                 ) : (
                   <div className={styles.mapWrap}>
@@ -613,6 +708,10 @@ export function GestaoEleitoralAnalisePage() {
                         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                       />
                       <MapFitBounds points={mapPoints} />
+                      <MapViewportReporter onChange={setMapBounds} />
+                      {showElectoralZones ? (
+                        <ElectoralZoneMeshes zones={electoralZoneMeshes} />
+                      ) : null}
                       {mapView === 'calor' ? (
                         <ElectoralHeatmapLayers series={heatSeries} mapMode={mapAggregation} />
                       ) : (
@@ -630,19 +729,22 @@ export function GestaoEleitoralAnalisePage() {
                           >
                             <Popup>
                               <Space direction="vertical" size={2}>
-                                <strong>{marker.point.municipio ?? 'Município não informado'}</strong>
+                                <strong>
+                                  {marker.point.municipio ?? 'Município não informado'}
+                                </strong>
                                 <span>
                                   Candidato:{' '}
-                                  {marker.point.candidato
-                                    ?? marker.point.candidatos[0]
-                                    ?? 'Não informado'}
+                                  {marker.point.candidato ??
+                                    marker.point.candidatos[0] ??
+                                    'Não informado'}
                                 </span>
                                 <span>Zona eleitoral: {marker.point.zona ?? '—'}</span>
                                 <span>Seção: {marker.point.secao ?? '—'}</span>
                                 <span>Local: {marker.point.local_votacao ?? '—'}</span>
                                 <span>Votos: {formatInteger(marker.point.votos)}</span>
                                 <span>
-                                  Participação do candidato: {formatPercent(marker.point.percentual)}
+                                  Participação do candidato:{' '}
+                                  {formatPercent(marker.point.percentual)}
                                 </span>
                               </Space>
                             </Popup>
@@ -723,10 +825,26 @@ export function GestaoEleitoralAnalisePage() {
                     showSizeChanger: false,
                   }}
                   columns={[
-                    { title: 'Local', dataIndex: 'rotulo', sorter: (a, b) => a.rotulo.localeCompare(b.rotulo) },
-                    { title: 'Município', dataIndex: 'municipio', render: (value: string | null) => value ?? '—' },
-                    { title: 'Zona', dataIndex: 'zona', render: (value: number | null) => value ?? '—' },
-                    { title: 'Seção', dataIndex: 'secao', render: (value: number | null) => value ?? '—' },
+                    {
+                      title: 'Local',
+                      dataIndex: 'rotulo',
+                      sorter: (a, b) => a.rotulo.localeCompare(b.rotulo),
+                    },
+                    {
+                      title: 'Município',
+                      dataIndex: 'municipio',
+                      render: (value: string | null) => value ?? '—',
+                    },
+                    {
+                      title: 'Zona',
+                      dataIndex: 'zona',
+                      render: (value: number | null) => value ?? '—',
+                    },
+                    {
+                      title: 'Seção',
+                      dataIndex: 'secao',
+                      render: (value: number | null) => value ?? '—',
+                    },
                     {
                       title: 'Votos',
                       dataIndex: 'votos',

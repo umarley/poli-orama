@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.electoral_zone_meshes import list_electoral_zone_meshes
 from app.mod_gestao_eleitoral.schemas import ResultadoFilters
 
 BASE_FROM = """
@@ -55,6 +56,9 @@ class GestaoEleitoralRepository:
     async def _one(self, query: str, values: dict[str, Any]) -> dict[str, Any]:
         row = (await self.session.execute(text(query), values)).mappings().one()
         return dict(row)
+
+    async def commit(self) -> None:
+        await self.session.commit()
 
     def _filters(
         self,
@@ -167,9 +171,7 @@ class GestaoEleitoralRepository:
         return ufs, sorted(set(municipios))
 
     async def list_elections(self, scope: TerritorialScope) -> list[dict[str, Any]]:
-        where, values = self._filters(
-            ResultadoFilters(), scope, include_candidates=False
-        )
+        where, values = self._filters(ResultadoFilters(), scope, include_candidates=False)
         return await self._all(
             f"""
             SELECT DISTINCT ON (re.aa_eleicao, re.cd_eleicao, re.nr_turno)
@@ -504,9 +506,7 @@ class GestaoEleitoralRepository:
             candidate_group = ", re.nm_votavel"
         else:
             candidate_select = "NULL::text AS candidato"
-            candidate_agg = (
-                "ARRAY_REMOVE(ARRAY_AGG(DISTINCT re.nm_votavel), NULL) AS candidatos"
-            )
+            candidate_agg = "ARRAY_REMOVE(ARRAY_AGG(DISTINCT re.nm_votavel), NULL) AS candidatos"
             partition = "1"
             candidate_group = ""
         if mode == "zona":
@@ -521,8 +521,7 @@ class GestaoEleitoralRepository:
                        re.nr_secao AS secao,
                        COALESCE(MAX(lv.nome), MAX(re.nm_local_votacao)) AS local_votacao,"""
             group_by = (
-                f"re.cd_municipio, re.nr_zona, re.nr_secao, re.nr_local_votacao"
-                f"{candidate_group}"
+                f"re.cd_municipio, re.nr_zona, re.nr_secao, re.nr_local_votacao{candidate_group}"
             )
         return await self._all(
             f"""
@@ -550,6 +549,127 @@ class GestaoEleitoralRepository:
             FROM agregados
             WHERE ordem <= CAST(:limit AS INTEGER)
             ORDER BY votos DESC
+            """,
+            values,
+        )
+
+    async def export_map_rows(
+        self,
+        filters: ResultadoFilters,
+        scope: TerritorialScope,
+        mode: str,
+    ) -> list[dict[str, Any]]:
+        where, values = self._filters(filters, scope)
+        common_select = """
+                   MAX(re.ds_eleicao) AS "Eleição",
+                   re.aa_eleicao AS "Ano",
+                   re.nr_turno AS "Turno",
+                   re.ds_cargo AS "Cargo",
+                   re.nm_votavel AS "Candidato",
+                   re.nr_votavel AS "Número do candidato",
+                   re.sg_uf AS "UF",
+                   COALESCE(MAX(m.nome), MAX(re.nm_municipio)) AS "Município",
+                   re.nr_zona AS "Zona eleitoral", """
+        if mode == "zona":
+            detail_select = """
+                   SUM(re.qt_votos)::bigint AS "Quantidade de votos",
+                   AVG(COALESCE(lv.latitude, m.latitude)) AS "Latitude",
+                   AVG(COALESCE(lv.longitude, m.longitude)) AS "Longitude"
+            """
+            group_by = """
+                re.aa_eleicao, re.cd_eleicao, re.nr_turno, re.ds_cargo,
+                re.nm_votavel, re.nr_votavel, re.sg_uf, re.cd_municipio, re.nr_zona
+            """
+        else:
+            detail_select = """
+                   COALESCE(MAX(lv.nome), MAX(re.nm_local_votacao)) AS "Local de votação",
+                   re.nr_secao AS "Seção eleitoral",
+                   SUM(re.qt_votos)::bigint AS "Quantidade de votos",
+                   AVG(COALESCE(lv.latitude, m.latitude)) AS "Latitude",
+                   AVG(COALESCE(lv.longitude, m.longitude)) AS "Longitude"
+            """
+            group_by = """
+                re.aa_eleicao, re.cd_eleicao, re.nr_turno, re.ds_cargo,
+                re.nm_votavel, re.nr_votavel, re.sg_uf, re.cd_municipio,
+                re.nr_zona, re.nr_local_votacao, re.nr_secao
+            """
+        return await self._all(
+            f"""
+            SELECT {common_select}
+                   {detail_select}
+            {BASE_FROM}
+            WHERE {where}
+              AND COALESCE(lv.latitude, m.latitude) IS NOT NULL
+              AND COALESCE(lv.longitude, m.longitude) IS NOT NULL
+            GROUP BY {group_by}
+            HAVING SUM(re.qt_votos) > 0
+            ORDER BY re.aa_eleicao DESC NULLS LAST, re.nr_turno, re.ds_cargo,
+                     re.nm_votavel, re.sg_uf, "Município", re.nr_zona
+            """,
+            values,
+        )
+
+    async def electoral_zone_meshes(
+        self,
+        filters: ResultadoFilters,
+        scope: TerritorialScope,
+        *,
+        south: float,
+        west: float,
+        north: float,
+        east: float,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        return await list_electoral_zone_meshes(
+            self.session,
+            south=south,
+            west=west,
+            north=north,
+            east=east,
+            limit=limit,
+            ufs=filters.ufs,
+            municipality_tse_codes=list(filters.cd_municipio),
+            zone_numbers=list(filters.nr_zona),
+            polling_place_codes=list(filters.nr_local_votacao),
+            section_numbers=list(filters.nr_secao),
+            scope_unrestricted=scope.unrestricted,
+            scope_ufs=scope.ufs,
+            scope_municipalities_ibge=scope.municipios_ibge,
+            scope_zone_ids=scope.zonas_ids,
+            scope_section_ids=scope.secoes_ids,
+        )
+
+    async def electoral_zone_results(
+        self, filters: ResultadoFilters, scope: TerritorialScope
+    ) -> list[dict[str, Any]]:
+        where, values = self._filters(filters, scope)
+        return await self._all(
+            f"""
+            WITH filtered AS (
+              SELECT ze.id, re.nr_zona, COALESCE(m.nome,re.nm_municipio) AS municipio,
+                     lv.id AS local_id, se.id AS secao_id,
+                     re.nm_votavel AS candidato, re.qt_votos
+              {BASE_FROM}
+              WHERE {where}
+                AND ze.id IS NOT NULL
+                AND re.nm_votavel IS NOT NULL
+            ), zone_counts AS (
+              SELECT id,nr_zona,MAX(municipio) AS municipio,
+                     COUNT(DISTINCT local_id)::int AS quantidade_locais,
+                     COUNT(DISTINCT secao_id)::int AS quantidade_secoes
+              FROM filtered
+              GROUP BY id,nr_zona
+            ), candidate_votes AS (
+              SELECT id,candidato,SUM(qt_votos)::bigint AS votos
+              FROM filtered
+              GROUP BY id,candidato
+            )
+            SELECT z.id,z.nr_zona AS numero_zona,z.municipio,
+                   z.quantidade_locais,z.quantidade_secoes,
+                   c.candidato,c.votos
+            FROM zone_counts z
+            JOIN candidate_votes c ON c.id=z.id
+            ORDER BY z.id,c.votos DESC,c.candidato
             """,
             values,
         )

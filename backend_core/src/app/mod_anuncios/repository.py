@@ -10,6 +10,7 @@ from sqlalchemy import bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.pagination import ListParams
+from app.electoral_zone_meshes import list_electoral_zone_meshes
 from app.mod_anuncios.schemas import (
     MaterialCreate,
     MaterialUpdate,
@@ -1277,23 +1278,18 @@ class AnunciosRepository:
         territory_id: int | None,
         status: str | None,
     ) -> dict[str, Any]:
-        clauses = ["pl.tenant_id=:tenant_id", "pl.data_execucao BETWEEN :start AND :end"]
-        values: dict[str, Any] = {"tenant_id": tenant_id, "start": start, "end": end}
-        filters = (
-            (team_id, "pl.equipe_id=:team_id", "team_id"),
-            (user_id, "pl.usuario_responsavel_id=:user_id", "user_id"),
-            (route_id, "pl.rota_id=:route_id", "route_id"),
-            (territory_id, "pl.territorio_id=:territory_id", "territory_id"),
-            (status, "pl.status=:status", "status"),
+        where, values = self._operational_filters(
+            tenant_id,
+            start=start,
+            end=end,
+            team_id=team_id,
+            user_id=user_id,
+            material_id=material_id,
+            route_id=route_id,
+            territory_id=territory_id,
+            status=status,
         )
-        for value, expression, name in filters:
-            if value is not None:
-                clauses.append(expression)
-                values[name] = value
-        if material_id is not None:
-            clauses.append("pm.material_id=:material_id")
-            values["material_id"] = material_id
-        where = " AND ".join(clauses)
+
         totals = (
             (
                 await self.session.execute(
@@ -1398,6 +1394,208 @@ class AnunciosRepository:
             "por_material": [dict(row) for row in material_rows],
             "pontos": [dict(row) for row in point_rows],
         }
+
+    @staticmethod
+    def _operational_filters(
+        tenant_id: int,
+        *,
+        start: date,
+        end: date,
+        team_id: int | None,
+        user_id: int | None,
+        material_id: int | None,
+        route_id: int | None,
+        territory_id: int | None,
+        status: str | None,
+    ) -> tuple[str, dict[str, Any]]:
+        clauses = ["pl.tenant_id=:tenant_id", "pl.data_execucao BETWEEN :start AND :end"]
+        values: dict[str, Any] = {"tenant_id": tenant_id, "start": start, "end": end}
+        filters = (
+            (team_id, "pl.equipe_id=:team_id", "team_id"),
+            (user_id, "pl.usuario_responsavel_id=:user_id", "user_id"),
+            (route_id, "pl.rota_id=:route_id", "route_id"),
+            (territory_id, "pl.territorio_id=:territory_id", "territory_id"),
+            (status, "pl.status=:status", "status"),
+        )
+        for value, expression, name in filters:
+            if value is not None:
+                clauses.append(expression)
+                values[name] = value
+        if material_id is not None:
+            clauses.append("pm.material_id=:material_id")
+            values["material_id"] = material_id
+        return " AND ".join(clauses), values
+
+    async def export_operational_rows(
+        self,
+        tenant_id: int,
+        *,
+        start: date,
+        end: date,
+        team_id: int | None,
+        user_id: int | None,
+        material_id: int | None,
+        route_id: int | None,
+        territory_id: int | None,
+        status: str | None,
+    ) -> list[dict[str, Any]]:
+        where, values = self._operational_filters(
+            tenant_id,
+            start=start,
+            end=end,
+            team_id=team_id,
+            user_id=user_id,
+            material_id=material_id,
+            route_id=route_id,
+            territory_id=territory_id,
+            status=status,
+        )
+        rows = (
+            (
+                await self.session.execute(
+                    text(
+                        'SELECT pl.data_execucao AS "Data da execução",'
+                        'pl.rota_nome AS "Rota",e.nome AS "Equipe",'
+                        'u.nome AS "Usuário responsável",pl.territorio_nome AS "Território",'
+                        'p.descricao_local AS "Ponto/local",p.endereco AS "Endereço",'
+                        'm.nome AS "Material",pm.quantidade_planejada AS "Quantidade planejada",'
+                        'pm.quantidade_instalada AS "Quantidade instalada",'
+                        'pm.quantidade_recolhida AS "Quantidade recolhida",'
+                        'pm.quantidade_extraviada AS "Quantidade extraviada",'
+                        'pl.status AS "Status da rota",p.status AS "Status do ponto",'
+                        'inst.registrado_em AS "Data/hora da instalação",'
+                        'inst.executor AS "Executor da instalação",'
+                        'ret.registrado_em AS "Data/hora do recolhimento",'
+                        'ret.executor AS "Executor do recolhimento",'
+                        'pl.observacao AS "Observação do planejamento",'
+                        'p.observacao AS "Observação do ponto",'
+                        'inst.observacao AS "Observação da instalação",'
+                        'ret.observacao AS "Observação do recolhimento",'
+                        'COALESCE(last_mv.latitude,p.latitude_planejada) AS "Latitude",'
+                        'COALESCE(last_mv.longitude,p.longitude_planejada) AS "Longitude" '
+                        'FROM anuncio.rota_comunicacao_planejamento pl '
+                        'JOIN anuncio.rota_comunicacao_planejamento_ponto p '
+                        'ON p.planejamento_id=pl.id AND p.tenant_id=pl.tenant_id '
+                        'JOIN anuncio.rota_comunicacao_planejamento_ponto_material pm '
+                        'ON pm.ponto_id=p.id AND pm.tenant_id=pl.tenant_id '
+                        'JOIN anuncio.material_comunicacao m '
+                        'ON m.id=pm.material_id AND m.tenant_id=pl.tenant_id '
+                        'LEFT JOIN cadastro.equipe e '
+                        'ON e.id=pl.equipe_id AND e.tenant_id=pl.tenant_id '
+                        'LEFT JOIN auth.usuario u '
+                        'ON u.id=pl.usuario_responsavel_id AND u.tenant_id=pl.tenant_id '
+                        'LEFT JOIN LATERAL (SELECT mv.registrado_em,eu.nome AS executor,'
+                        'COALESCE(mv.observacao,xe.observacao) AS observacao '
+                        'FROM anuncio.rota_comunicacao_material_movimentacao mv '
+                        'JOIN anuncio.rota_comunicacao_execucao xe '
+                        'ON xe.id=mv.execucao_id AND xe.tenant_id=mv.tenant_id '
+                        'JOIN auth.usuario eu ON eu.id=mv.usuario_id AND eu.tenant_id=mv.tenant_id '
+                        "WHERE mv.tenant_id=pl.tenant_id AND mv.ponto_id=p.id "
+                        "AND mv.material_id=pm.material_id AND mv.tipo_movimentacao='INSTALACAO' "
+                        'ORDER BY mv.registrado_em DESC,mv.id DESC LIMIT 1) inst ON TRUE '
+                        'LEFT JOIN LATERAL (SELECT mv.registrado_em,eu.nome AS executor,'
+                        'COALESCE(mv.observacao,xe.observacao) AS observacao '
+                        'FROM anuncio.rota_comunicacao_material_movimentacao mv '
+                        'JOIN anuncio.rota_comunicacao_execucao xe '
+                        'ON xe.id=mv.execucao_id AND xe.tenant_id=mv.tenant_id '
+                        'JOIN auth.usuario eu ON eu.id=mv.usuario_id AND eu.tenant_id=mv.tenant_id '
+                        "WHERE mv.tenant_id=pl.tenant_id AND mv.ponto_id=p.id "
+                        "AND mv.material_id=pm.material_id AND mv.tipo_movimentacao IN "
+                        "('RECOLHIMENTO','EXTRAVIO') "
+                        'ORDER BY mv.registrado_em DESC,mv.id DESC LIMIT 1) ret ON TRUE '
+                        'LEFT JOIN LATERAL (SELECT mv.latitude,mv.longitude '
+                        'FROM anuncio.rota_comunicacao_material_movimentacao mv '
+                        'WHERE mv.tenant_id=pl.tenant_id AND mv.ponto_id=p.id '
+                        'AND mv.material_id=pm.material_id '
+                        'ORDER BY mv.registrado_em DESC,mv.id DESC LIMIT 1) last_mv ON TRUE '
+                        f"WHERE {where} "
+                        'ORDER BY pl.data_execucao,pl.rota_nome,p.ordem,m.nome'
+                    ),
+                    values,
+                )
+            )
+            .mappings()
+            .all()
+        )
+        return [dict(row) for row in rows]
+
+    async def list_polling_places_for_map(
+        self,
+        *,
+        south: float,
+        west: float,
+        north: float,
+        east: float,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        rows = (
+            (
+                await self.session.execute(
+                    text(
+                        "SELECT lv.id,lv.nome,"
+                        "NULLIF(concat_ws(', ', NULLIF(lv.logradouro, ''), "
+                        "NULLIF(lv.numero, ''), NULLIF(lv.complemento, ''), "
+                        "NULLIF(lv.cep, '')), '') AS endereco,"
+                        "lv.latitude,lv.longitude,m.nome AS municipio,ze.numero_zona "
+                        "FROM global.local_votacao lv "
+                        "JOIN global.municipio m ON m.codigo_ibge=lv.codigo_municipio_ibge "
+                        "LEFT JOIN global.zona_eleitoral ze ON ze.id=lv.zona_eleitoral_id "
+                        "WHERE lv.situacao='ativo' AND lv.latitude IS NOT NULL "
+                        "AND lv.longitude IS NOT NULL "
+                        "AND lv.latitude BETWEEN :south AND :north "
+                        "AND lv.longitude BETWEEN :west AND :east "
+                        "ORDER BY lv.nome,lv.id LIMIT :limit"
+                    ),
+                    {
+                        "south": south,
+                        "west": west,
+                        "north": north,
+                        "east": east,
+                        "limit": limit,
+                    },
+                )
+            )
+            .mappings()
+            .all()
+        )
+        return [dict(row) for row in rows]
+
+    async def list_polling_place_sections(self, polling_place_id: int) -> list[dict[str, Any]]:
+        rows = (
+            (
+                await self.session.execute(
+                    text(
+                        "SELECT se.id,se.numero_secao,se.agregada_em "
+                        "FROM global.secao_eleitoral se "
+                        "JOIN global.local_votacao lv ON lv.id=se.local_votacao_id "
+                        "WHERE lv.id=:polling_place_id AND lv.situacao='ativo' "
+                        "ORDER BY se.numero_secao,se.id"
+                    ),
+                    {"polling_place_id": polling_place_id},
+                )
+            )
+            .mappings()
+            .all()
+        )
+        return [dict(row) for row in rows]
+
+    async def list_electoral_zone_meshes(
+        self,
+        *,
+        south: float,
+        west: float,
+        north: float,
+        east: float,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        return await list_electoral_zone_meshes(
+            self.session,
+            south=south,
+            west=west,
+            north=north,
+            east=east,
+            limit=limit,
+        )
 
     async def flush(self) -> None:
         await self.session.flush()
