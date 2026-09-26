@@ -284,7 +284,7 @@ class AtendimentoRepository:
         )
 
     async def pick_eligible_person(self, tenant_id: int) -> int | None:
-        """Sorteia pessoa ativa sem atendimento aberto.
+        """Escolhe a pessoa ativa mais recente sem atendimento aberto.
 
         Quem ja foi encerrado como concluido ou numero_invalido nao volta a
         fila. Interrompido e sem_resposta permanecem elegiveis.
@@ -307,7 +307,7 @@ class AtendimentoRepository:
                                 OR a.situacao IN ('concluido', 'numero_invalido')
                            )
                    )
-                 ORDER BY random()
+                 ORDER BY p.criado_em DESC, p.id DESC
                  LIMIT 1
                  FOR UPDATE SKIP LOCKED
                 """
