@@ -140,6 +140,23 @@ export interface RouteDetail extends RouteRecord {
   pontos: RoutePoint[];
 }
 
+export interface InstallationInput {
+  chave_idempotencia: string;
+  latitude: number;
+  longitude: number;
+  precisao?: number;
+  capturado_em: string;
+  observacao?: string;
+  materiais: Array<{ material_id: number; quantidade: number }>;
+}
+
+export interface OperationResponse {
+  execucao: ExecutionHistory;
+  ponto_status: PointStatus;
+  rota_status: RouteStatus;
+  idempotente: boolean;
+}
+
 export interface PointInput {
   ordem: number;
   descricao_local: string;

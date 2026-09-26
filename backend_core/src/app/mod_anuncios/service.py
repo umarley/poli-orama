@@ -421,7 +421,7 @@ class AnunciosService:
         *,
         photo: tuple[str, str | None, bytes] | None = None,
     ) -> OperationResponse:
-        self._require_driver(actor)
+        self._require_execution_actor(actor)
         existing = await self.repository.get_execution_by_key(
             actor.tenant_id, actor.user_id, payload.chave_idempotencia
         )
@@ -440,7 +440,7 @@ class AnunciosService:
                 actor, point_uuid, existing, expected_type="INSTALACAO"
             )
         planning = await self.repository.get_planning(actor.tenant_id, point["planejamento_uuid"])
-        await self._ensure_planning_access(actor, planning)
+        await self._ensure_execution_planning_access(actor, planning)
         assert planning is not None
         if planning["status"] not in {"LIBERADA", "EM_EXECUCAO"}:
             raise BusinessRuleError(
@@ -534,7 +534,7 @@ class AnunciosService:
         *,
         photo: tuple[str, str | None, bytes] | None = None,
     ) -> OperationResponse:
-        self._require_driver(actor)
+        self._require_execution_actor(actor)
         existing = await self.repository.get_execution_by_key(
             actor.tenant_id, actor.user_id, payload.chave_idempotencia
         )
@@ -553,7 +553,7 @@ class AnunciosService:
                 actor, point_uuid, existing, expected_type="RETIRADA"
             )
         planning = await self.repository.get_planning(actor.tenant_id, point["planejamento_uuid"])
-        await self._ensure_planning_access(actor, planning)
+        await self._ensure_execution_planning_access(actor, planning)
         assert planning is not None
         if planning["status"] != "EM_EXECUCAO":
             raise BusinessRuleError(
@@ -711,14 +711,14 @@ class AnunciosService:
         execution_uuid: UUID,
         media: tuple[str, str | None, bytes],
     ) -> AttachmentResponse:
-        self._require_driver(actor)
+        self._require_execution_actor(actor)
         execution = await self.repository.get_execution_by_uuid(actor.tenant_id, execution_uuid)
         if execution is None:
             raise ResourceNotFoundError("Execucao", execution_uuid)
         planning = await self.repository.get_planning_by_id(
             actor.tenant_id, execution["planejamento_id"]
         )
-        await self._ensure_planning_access(actor, planning)
+        await self._ensure_execution_planning_access(actor, planning)
         if execution["usuario_id"] != actor.user_id:
             raise AuthorizationError("Somente o autor pode enviar evidencias desta execucao.")
         if self.file_service is None:
@@ -772,7 +772,7 @@ class AnunciosService:
         if point is None:
             raise ResourceNotFoundError("Ponto", point_uuid)
         planning = await self.repository.get_planning(actor.tenant_id, point["planejamento_uuid"])
-        await self._ensure_planning_access(actor, planning)
+        await self._ensure_execution_planning_access(actor, planning)
         if existing["ponto_id"] != point["id"] or existing["tipo_operacao"] != expected_type:
             raise BusinessRuleError(
                 "A chave de idempotencia ja foi utilizada em outra operacao.",
@@ -965,6 +965,18 @@ class AnunciosService:
                 "Planejamento", planning["uuid_publico"] if planning else "indisponivel"
             )
 
+    async def _ensure_execution_planning_access(
+        self, actor: RequestActor, planning: dict[str, Any] | None
+    ) -> None:
+        if planning is None:
+            raise ResourceNotFoundError("Planejamento", "indisponivel")
+        # Gestores e coordenadores operam pela tela administrativa e podem
+        # registrar a execucao dos planejamentos visiveis no tenant. O motorista
+        # continua limitado as rotas atribuidas diretamente ou pela equipe.
+        if {"gestor", "coordenador_territorial"} & set(actor.profiles):
+            return
+        await self._ensure_planning_access(actor, planning)
+
     @staticmethod
     def _require_driver(actor: RequestActor) -> None:
         if "motorista_motociclista" not in actor.profiles:
@@ -972,6 +984,16 @@ class AnunciosService:
         permission = EXECUTION_REGISTER
         if permission not in actor.permissions:
             raise AuthorizationError(f"Permissao obrigatoria: {permission}.")
+
+    @staticmethod
+    def _require_execution_actor(actor: RequestActor) -> None:
+        allowed_profiles = {"motorista_motociclista", "gestor", "coordenador_territorial"}
+        if not allowed_profiles & set(actor.profiles):
+            raise AuthorizationError(
+                "Perfil obrigatorio: motorista_motociclista, gestor ou coordenador_territorial."
+            )
+        if EXECUTION_REGISTER not in actor.permissions:
+            raise AuthorizationError(f"Permissao obrigatoria: {EXECUTION_REGISTER}.")
 
     @staticmethod
     def _require_any(actor: RequestActor, *permissions: str) -> None:

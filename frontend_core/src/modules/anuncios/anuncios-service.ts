@@ -4,7 +4,9 @@ import { httpClient } from '@/services/api/http-client';
 import type { ElectoralZoneMesh, MapBounds } from '@/components/maps/ElectoralZoneMeshes';
 import type {
   DashboardData,
+  InstallationInput,
   MaterialRecord,
+  OperationResponse,
   PollingPlaceMapItem,
   PollingPlaceSectionItem,
   RouteDetail,
@@ -91,6 +93,31 @@ export async function createPlanning(payload: RouteInput) {
 
 export async function updateRoute(uuid: string, payload: Partial<RouteInput>) {
   const { data } = await httpClient.patch<RouteDetail>(`${base}/planejamentos/${uuid}`, payload);
+  return data;
+}
+
+export async function installPlanningPoint(
+  pointUuid: string,
+  payload: InstallationInput,
+  primaryPhoto: File,
+) {
+  const form = new FormData();
+  form.append('dados', JSON.stringify(payload));
+  form.append('foto', primaryPhoto);
+  const { data } = await httpClient.post<OperationResponse>(
+    `${base}/app/pontos/${pointUuid}/instalar`,
+    form,
+    { headers: { 'Idempotency-Key': payload.chave_idempotencia } },
+  );
+  return data;
+}
+
+export async function uploadExecutionMedia(executionUuid: string, file: File) {
+  const form = new FormData();
+  form.append('arquivo', file);
+  const { data } = await httpClient.post(`${base}/app/execucoes/${executionUuid}/midias`, form, {
+    timeout: 120_000,
+  });
   return data;
 }
 

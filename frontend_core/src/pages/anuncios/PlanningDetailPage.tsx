@@ -1,11 +1,13 @@
 import {
   ArrowLeftOutlined,
   CameraOutlined,
+  CheckCircleOutlined,
   EnvironmentOutlined,
+  InboxOutlined,
   PlayCircleOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   Alert,
   Button,
@@ -14,7 +16,11 @@ import {
   Collapse,
   Descriptions,
   Empty,
+  Form,
   Image,
+  Input,
+  InputNumber,
+  Modal,
   Progress,
   Row,
   Skeleton,
@@ -22,9 +28,11 @@ import {
   Tag,
   Timeline,
   Typography,
+  Upload,
 } from 'antd';
+import type { UploadFile } from 'antd';
 import dayjs from 'dayjs';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CircleMarker,
   MapContainer,
@@ -33,12 +41,19 @@ import {
   TileLayer,
   Tooltip as LeafletTooltip,
   useMap,
+  useMapEvents,
 } from 'react-leaflet';
 import { useNavigate, useParams } from 'react-router-dom';
 import 'leaflet/dist/leaflet.css';
 
 import { PageHeader } from '@/components/layout/PageHeader';
-import { getRoute, listTeams } from '@/modules/anuncios/anuncios-service';
+import { AppToast } from '@/components/feedback/AppToast';
+import {
+  getRoute,
+  installPlanningPoint,
+  listTeams,
+  uploadExecutionMedia,
+} from '@/modules/anuncios/anuncios-service';
 import type {
   ExecutionHistory,
   ExecutionMedia,
@@ -49,6 +64,7 @@ import type {
 } from '@/modules/anuncios/types';
 import { normalizeApiError } from '@/services/api/api-error';
 import { httpClient } from '@/services/api/http-client';
+import { useSessionStore } from '@/stores/session-store';
 
 import styles from './PlanningDetailPage.module.css';
 
@@ -110,6 +126,7 @@ function executionMedia(execution: ExecutionHistory): ExecutionMedia[] {
 export function PlanningDetailPage() {
   const { uuid = '' } = useParams();
   const navigate = useNavigate();
+  const user = useSessionStore((state) => state.user);
   const planning = useQuery({
     queryKey: ['anuncios', 'planejamento', uuid],
     queryFn: () => getRoute(uuid),
@@ -123,6 +140,10 @@ export function PlanningDetailPage() {
   });
   const item = planning.data;
   const team = teams.data?.items.find((candidate) => candidate.id === item?.equipe_id);
+  const canRegisterExecution = Boolean(
+    user?.permissions.includes('anuncios.execucao.registrar') &&
+    user.profiles.some((profile) => ['gestor', 'coordenador_territorial'].includes(profile)),
+  );
 
   if (planning.error) {
     return (
@@ -297,7 +318,12 @@ export function PlanningDetailPage() {
       <PlanningMediaSection planning={item} />
 
       <Card title={`Pontos previstos na rota (${item.pontos.length})`}>
-        <PointsSection points={item.pontos} />
+        <PointsSection
+          points={item.pontos}
+          planningStatus={item.status}
+          canRegisterExecution={canRegisterExecution}
+          onExecuted={() => void planning.refetch()}
+        />
       </Card>
     </div>
   );
@@ -525,7 +551,17 @@ function AuthenticatedMedia({ media }: { media: ExecutionMedia }) {
   );
 }
 
-function PointsSection({ points }: { points: RoutePoint[] }) {
+function PointsSection({
+  points,
+  planningStatus,
+  canRegisterExecution,
+  onExecuted,
+}: {
+  points: RoutePoint[];
+  planningStatus: RouteStatus;
+  canRegisterExecution: boolean;
+  onExecuted: () => void;
+}) {
   const items = useMemo(
     () =>
       [...points]
@@ -540,17 +576,58 @@ function PointsSection({ points }: { points: RoutePoint[] }) {
               <Tag color={statusColors[point.status]}>{statusLabel(point.status)}</Tag>
             </div>
           ),
-          children: <PointDetails point={point} />,
+          children: (
+            <PointDetails
+              point={point}
+              planningStatus={planningStatus}
+              canRegisterExecution={canRegisterExecution}
+              onExecuted={onExecuted}
+            />
+          ),
         })),
-    [points],
+    [canRegisterExecution, onExecuted, planningStatus, points],
   );
 
   return <Collapse items={items} defaultActiveKey={items[0]?.key ? [items[0].key] : []} />;
 }
 
-function PointDetails({ point }: { point: RoutePoint }) {
+function PointDetails({
+  point,
+  planningStatus,
+  canRegisterExecution,
+  onExecuted,
+}: {
+  point: RoutePoint;
+  planningStatus: RouteStatus;
+  canRegisterExecution: boolean;
+  onExecuted: () => void;
+}) {
+  const [executionOpen, setExecutionOpen] = useState(false);
+  const canInstall =
+    canRegisterExecution &&
+    ['LIBERADA', 'EM_EXECUCAO'].includes(planningStatus) &&
+    ['PENDENTE', 'EM_EXECUCAO'].includes(point.status) &&
+    point.materiais.some((material) => material.quantidade_pendente > 0);
+
   return (
     <Space direction="vertical" size={20} className={styles.pointDetails}>
+      {canInstall ? (
+        <Alert
+          type="info"
+          showIcon
+          message="Este ponto está disponível para execução"
+          description="Registre o local efetivo, as quantidades instaladas e as evidências da instalação."
+          action={
+            <Button
+              type="primary"
+              icon={<CheckCircleOutlined />}
+              onClick={() => setExecutionOpen(true)}
+            >
+              Registrar execução
+            </Button>
+          }
+        />
+      ) : null}
       <Descriptions size="small" bordered column={{ xs: 1, md: 2 }}>
         <Descriptions.Item label="Endereço" span={2}>
           {point.endereco || 'Não informado'}
@@ -612,8 +689,275 @@ function PointDetails({ point }: { point: RoutePoint }) {
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Sem execução registrada." />
         )}
       </div>
+
+      <ExecutionModal
+        point={point}
+        open={executionOpen}
+        onCancel={() => setExecutionOpen(false)}
+        onExecuted={onExecuted}
+      />
     </Space>
   );
+}
+
+interface ExecutionFormValues {
+  materiais: Record<string, number>;
+  observacao?: string;
+}
+
+interface SelectedLocation {
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+}
+
+function ExecutionModal({
+  point,
+  open,
+  onCancel,
+  onExecuted,
+}: {
+  point: RoutePoint;
+  open: boolean;
+  onCancel: () => void;
+  onExecuted: () => void;
+}) {
+  const [form] = Form.useForm<ExecutionFormValues>();
+  const [files, setFiles] = useState<UploadFile[]>([]);
+  const [location, setLocation] = useState<SelectedLocation>();
+  const [locationError, setLocationError] = useState('');
+  const [locating, setLocating] = useState(false);
+  const idempotencyKey = useRef(crypto.randomUUID());
+  const plannedLatitude = coordinate(point.latitude_planejada);
+  const plannedLongitude = coordinate(point.longitude_planejada);
+  const mapCenter: [number, number] =
+    plannedLatitude !== null && plannedLongitude !== null
+      ? [plannedLatitude, plannedLongitude]
+      : [-15.7797, -47.9297];
+
+  const save = useMutation({
+    mutationFn: async (values: ExecutionFormValues) => {
+      if (!location) throw new Error('Indique no mapa o local efetivo da instalação.');
+      const materials = point.materiais.flatMap((material) => {
+        const quantity = Number(values.materiais?.[String(material.material_id)] ?? 0);
+        return quantity > 0 ? [{ material_id: material.material_id, quantidade: quantity }] : [];
+      });
+      if (!materials.length) throw new Error('Informe ao menos uma quantidade maior que zero.');
+      const primaryPhoto = files.find((file) => file.type?.startsWith('image/'))?.originFileObj;
+      if (!primaryPhoto) throw new Error('Anexe ao menos uma fotografia da instalação.');
+
+      const operation = await installPlanningPoint(
+        point.uuid_publico,
+        {
+          chave_idempotencia: idempotencyKey.current,
+          latitude: location.latitude,
+          longitude: location.longitude,
+          precisao: location.accuracy,
+          capturado_em: new Date().toISOString(),
+          observacao: values.observacao?.trim() || undefined,
+          materiais: materials,
+        },
+        primaryPhoto,
+      );
+      const additionalFiles = files.flatMap((file) =>
+        file.originFileObj && file.originFileObj !== primaryPhoto ? [file.originFileObj] : [],
+      );
+      const uploads = await Promise.allSettled(
+        additionalFiles.map((file) => uploadExecutionMedia(operation.execucao.uuid_publico, file)),
+      );
+      return { failedUploads: uploads.filter((result) => result.status === 'rejected').length };
+    },
+    onSuccess: ({ failedUploads }) => {
+      AppToast.success('Execução do ponto registrada com sucesso.');
+      if (failedUploads) {
+        AppToast.error(
+          `${failedUploads} mídia(s) não puderam ser enviadas. A execução e as demais evidências foram preservadas.`,
+        );
+      }
+      form.resetFields();
+      setFiles([]);
+      setLocation(undefined);
+      setLocationError('');
+      idempotencyKey.current = crypto.randomUUID();
+      onCancel();
+      onExecuted();
+    },
+    onError: (error) => AppToast.error(normalizeApiError(error).message),
+  });
+
+  const useCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setLocationError('A geolocalização não está disponível neste navegador.');
+      return;
+    }
+    setLocating(true);
+    setLocationError('');
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        setLocation({
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+          accuracy: coords.accuracy,
+        });
+        setLocating(false);
+      },
+      () => {
+        setLocationError(
+          'Não foi possível obter sua localização. Autorize o navegador ou marque o ponto no mapa.',
+        );
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
+    );
+  };
+
+  return (
+    <Modal
+      open={open}
+      width="min(920px, 96vw)"
+      title={`Registrar execução · Ponto ${point.ordem}`}
+      okText="Confirmar execução"
+      cancelText="Cancelar"
+      confirmLoading={save.isPending}
+      maskClosable={!save.isPending}
+      closable={!save.isPending}
+      cancelButtonProps={{ disabled: save.isPending }}
+      onCancel={onCancel}
+      onOk={() => void form.validateFields().then((values) => save.mutate(values))}
+      destroyOnHidden
+    >
+      <Alert
+        type="warning"
+        showIcon
+        message="Confirme o local onde o material foi realmente instalado"
+        description="Clique no mapa ou use a localização atual do dispositivo. O marcador verde será gravado no histórico."
+        className={styles.executionNotice}
+      />
+      <Form
+        form={form}
+        layout="vertical"
+        initialValues={{
+          materiais: Object.fromEntries(
+            point.materiais.map((material) => [
+              String(material.material_id),
+              material.quantidade_pendente,
+            ]),
+          ),
+        }}
+      >
+        <Form.Item label="Local efetivo da instalação" required>
+          <div className={styles.executionMapToolbar}>
+            <Button icon={<EnvironmentOutlined />} loading={locating} onClick={useCurrentLocation}>
+              Usar minha localização
+            </Button>
+            <Typography.Text type={location ? 'success' : 'secondary'}>
+              {location
+                ? `${location.latitude.toFixed(7)}, ${location.longitude.toFixed(7)}${location.accuracy ? ` · precisão ${Math.round(location.accuracy)} m` : ''}`
+                : 'Nenhum local selecionado'}
+            </Typography.Text>
+          </div>
+          {locationError ? <Alert type="error" message={locationError} showIcon /> : null}
+          <MapContainer
+            center={mapCenter}
+            zoom={plannedLatitude === null ? 4 : 17}
+            className={styles.executionMap}
+          >
+            <TileLayer
+              attribution="&copy; OpenStreetMap contributors"
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            <LocationPicker onSelect={setLocation} />
+            <RecenterLocation location={location} />
+            {plannedLatitude !== null && plannedLongitude !== null ? (
+              <CircleMarker
+                center={[plannedLatitude, plannedLongitude]}
+                radius={10}
+                pathOptions={{ color: '#1677ff', fillColor: '#1677ff', fillOpacity: 0.45 }}
+              >
+                <LeafletTooltip>Local planejado</LeafletTooltip>
+              </CircleMarker>
+            ) : null}
+            {location ? (
+              <CircleMarker
+                center={[location.latitude, location.longitude]}
+                radius={9}
+                pathOptions={{ color: '#237804', fillColor: '#52c41a', fillOpacity: 0.9 }}
+              >
+                <LeafletTooltip permanent>Instalação</LeafletTooltip>
+              </CircleMarker>
+            ) : null}
+          </MapContainer>
+        </Form.Item>
+
+        <Typography.Title level={5}>Materiais efetivamente instalados</Typography.Title>
+        <div className={styles.executionMaterials}>
+          {point.materiais.map((material) => (
+            <Form.Item
+              key={material.material_id}
+              name={['materiais', String(material.material_id)]}
+              label={`${material.material_nome} (saldo: ${material.quantidade_pendente})`}
+              rules={[
+                { required: true, message: 'Informe a quantidade.' },
+                {
+                  type: 'number',
+                  min: 0,
+                  max: material.quantidade_pendente,
+                  message: `Use um valor entre 0 e ${material.quantidade_pendente}.`,
+                },
+              ]}
+            >
+              <InputNumber min={0} max={material.quantidade_pendente} precision={0} />
+            </Form.Item>
+          ))}
+        </div>
+
+        <Form.Item name="observacao" label="Observações">
+          <Input.TextArea rows={3} maxLength={1000} showCount />
+        </Form.Item>
+
+        <Form.Item
+          label="Fotografias e vídeos"
+          required
+          extra="Ao menos uma fotografia é obrigatória. Você pode anexar várias fotos e vídeos."
+        >
+          <Upload.Dragger
+            multiple
+            accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm"
+            fileList={files}
+            beforeUpload={(file) => {
+              if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+                AppToast.error('Selecione somente fotografias ou vídeos.');
+                return Upload.LIST_IGNORE;
+              }
+              return false;
+            }}
+            onChange={({ fileList }) => setFiles(fileList)}
+          >
+            <p className="ant-upload-drag-icon">
+              <InboxOutlined />
+            </p>
+            <p className="ant-upload-text">Clique ou arraste as evidências para esta área</p>
+            <p className="ant-upload-hint">Imagens JPG, PNG ou WebP e vídeos MP4, MOV ou WebM.</p>
+          </Upload.Dragger>
+        </Form.Item>
+      </Form>
+    </Modal>
+  );
+}
+
+function LocationPicker({ onSelect }: { onSelect: (location: SelectedLocation) => void }) {
+  useMapEvents({
+    click: ({ latlng }) => onSelect({ latitude: latlng.lat, longitude: latlng.lng }),
+  });
+  return null;
+}
+
+function RecenterLocation({ location }: { location?: SelectedLocation }) {
+  const map = useMap();
+  useEffect(() => {
+    if (location) map.setView([location.latitude, location.longitude], Math.max(map.getZoom(), 17));
+  }, [location, map]);
+  return null;
 }
 
 function ExecutionDetails({ execution }: { execution: ExecutionHistory }) {

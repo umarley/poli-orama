@@ -47,6 +47,19 @@ def driver(*, tenant_id: int = 7) -> RequestActor:
     )
 
 
+def web_executor(profile: str) -> RequestActor:
+    return RequestActor(
+        tenant_id=7,
+        user_id=11,
+        session_id=3,
+        pessoa_id=21,
+        profiles=(profile,),
+        permissions=frozenset({"anuncios.execucao.registrar"}),
+        token="test",
+        login_origin="web",
+    )
+
+
 class FakeAudit:
     def __init__(self) -> None:
         self.entries: list[dict[str, object]] = []
@@ -500,6 +513,32 @@ async def test_profile_and_permission_are_required() -> None:
             installation(),
             photo=("a.jpg", "image/jpeg", b"image"),
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("profile", ["gestor", "coordenador_territorial"])
+async def test_web_management_profiles_can_install_without_route_assignment(profile: str) -> None:
+    repository = FakeRepository(accessible=False)
+    instance, _, _ = service(repository)
+    payload = installation()
+
+    response = await instance.install(
+        web_executor(profile),
+        repository.point_uuid,
+        payload,
+        photo=("instalacao.jpg", "image/jpeg", b"image"),
+    )
+    repeated = await instance.install(
+        web_executor(profile),
+        repository.point_uuid,
+        payload,
+        photo=("instalacao.jpg", "image/jpeg", b"image"),
+    )
+
+    assert response.ponto_status == "INSTALADO"
+    assert repeated.idempotente is True
+    assert repository.material["quantidade_instalada"] == 5
+    assert len(repository.movements) == 1
 
 
 @pytest.mark.asyncio

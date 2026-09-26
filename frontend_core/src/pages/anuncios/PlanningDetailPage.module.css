@@ -163,6 +163,36 @@
   gap: 6px;
 }
 
+.executionNotice {
+  margin: 16px 0;
+}
+
+.executionMapToolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.executionMap {
+  width: 100%;
+  height: 340px;
+  margin-top: 10px;
+  overflow: hidden;
+  border: 1px solid #d9d9d9;
+  border-radius: 10px;
+}
+
+.executionMaterials {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0 16px;
+}
+
+.executionMaterials :global(.ant-input-number) {
+  width: 100%;
+}
+
 @media (max-width: 992px) {
   .summaryGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -183,7 +213,13 @@
   }
 
   .mediaGrid,
-  .materialGrid {
+  .materialGrid,
+  .executionMaterials {
     grid-template-columns: 1fr;
+  }
+
+  .executionMapToolbar {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
