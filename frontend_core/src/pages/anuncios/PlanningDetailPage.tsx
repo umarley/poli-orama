@@ -640,6 +640,11 @@ function PointDetails({
         <Descriptions.Item label="Status">
           <Tag color={statusColors[point.status]}>{statusLabel(point.status)}</Tag>
         </Descriptions.Item>
+        <Descriptions.Item label="Origem">
+          {point.origem_ponto === 'ADICIONADO_EXECUCAO'
+            ? 'Adicionado durante a execução'
+            : 'Planejado'}
+        </Descriptions.Item>
         <Descriptions.Item label="Observações" span={2}>
           {point.observacao || 'Nenhuma observação.'}
         </Descriptions.Item>
@@ -895,18 +900,17 @@ function ExecutionModal({
             <Form.Item
               key={material.material_id}
               name={['materiais', String(material.material_id)]}
-              label={`${material.material_nome} (saldo: ${material.quantidade_pendente})`}
+              label={`${material.material_nome} (planejado: ${material.quantidade_planejada})`}
               rules={[
                 { required: true, message: 'Informe a quantidade.' },
                 {
                   type: 'number',
                   min: 0,
-                  max: material.quantidade_pendente,
-                  message: `Use um valor entre 0 e ${material.quantidade_pendente}.`,
+                  message: 'Use um valor igual ou maior que zero.',
                 },
               ]}
             >
-              <InputNumber min={0} max={material.quantidade_pendente} precision={0} />
+              <InputNumber min={0} precision={0} />
             </Form.Item>
           ))}
         </div>

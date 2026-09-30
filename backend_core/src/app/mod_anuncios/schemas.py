@@ -18,6 +18,7 @@ PointStatus = Literal[
     "NAO_EXECUTADO",
 ]
 MovementType = Literal["INSTALACAO", "RECOLHIMENTO", "EXTRAVIO"]
+PointOrigin = Literal["PLANEJADO", "ADICIONADO_EXECUCAO"]
 
 
 class AnuncioSchema(BaseModel):
@@ -204,6 +205,7 @@ class PointSummary(AnuncioSchema):
     longitude_planejada: Decimal | None
     observacao: str | None
     status: PointStatus
+    origem_ponto: PointOrigin = "PLANEJADO"
     materiais: list[PointMaterialResponse]
 
 
@@ -398,6 +400,7 @@ class WithdrawalInput(AnuncioSchema):
 
 class OperationResponse(AnuncioSchema):
     execucao: ExecutionHistory
+    ponto_uuid: UUID
     ponto_status: PointStatus
     rota_status: RouteStatus
     idempotente: bool = False

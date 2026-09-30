@@ -903,7 +903,7 @@ class AnunciosRepository:
                 await self.session.execute(
                     text(
                         "SELECT id,uuid_publico,ordem,descricao_local,endereco,latitude_planejada,"
-                        "longitude_planejada,observacao,status FROM anuncio.rota_comunicacao_planejamento_ponto "
+                        "longitude_planejada,observacao,status,origem_ponto FROM anuncio.rota_comunicacao_planejamento_ponto "
                         "WHERE tenant_id=:tenant_id AND planejamento_id=:planning_id ORDER BY ordem"
                     ),
                     {"tenant_id": tenant_id, "planning_id": planning_id},
@@ -929,7 +929,7 @@ class AnunciosRepository:
                 await self.session.execute(
                     text(
                         "SELECT p.id,p.uuid_publico,p.tenant_id,p.rota_id,p.ordem,p.descricao_local,"
-                        "p.endereco,p.latitude_planejada,p.longitude_planejada,p.observacao,p.status,"
+                        "p.endereco,p.latitude_planejada,p.longitude_planejada,p.observacao,p.status,p.origem_ponto,"
                         "p.planejamento_id,pl.uuid_publico AS planejamento_uuid,pl.status AS planejamento_status,"
                         "p.rota_id,r.uuid_publico AS rota_uuid FROM anuncio.rota_comunicacao_planejamento_ponto p "
                         "JOIN anuncio.rota_comunicacao_planejamento pl ON pl.id=p.planejamento_id AND pl.tenant_id=p.tenant_id "
@@ -948,6 +948,65 @@ class AnunciosRepository:
         point["materiais"] = await self.point_materials(tenant_id, point["id"], lock=lock)
         return point
 
+    async def get_point_by_id(self, tenant_id: int, point_id: int) -> dict[str, Any] | None:
+        point_uuid = await self.session.scalar(
+            text(
+                "SELECT uuid_publico FROM anuncio.rota_comunicacao_planejamento_ponto "
+                "WHERE tenant_id=:tenant_id AND id=:point_id"
+            ),
+            {"tenant_id": tenant_id, "point_id": point_id},
+        )
+        return await self.get_point(tenant_id, point_uuid) if point_uuid else None
+
+    async def create_manual_point(
+        self,
+        tenant_id: int,
+        planning_id: int,
+        route_id: int,
+        material_ids: list[int],
+        latitude: Any,
+        longitude: Any,
+    ) -> dict[str, Any]:
+        await self.session.execute(
+            text(
+                "SELECT id FROM anuncio.rota_comunicacao_planejamento "
+                "WHERE tenant_id=:tenant_id AND id=:planning_id FOR UPDATE"
+            ),
+            {"tenant_id": tenant_id, "planning_id": planning_id},
+        )
+        point_id = int(
+            await self.session.scalar(
+                text(
+                    "INSERT INTO anuncio.rota_comunicacao_planejamento_ponto"
+                    "(tenant_id,planejamento_id,rota_id,ordem,descricao_local,latitude_planejada,"
+                    "longitude_planejada,origem_ponto) SELECT :tenant_id,:planning_id,:route_id,"
+                    "COALESCE(max(ordem),0)+1,'Ponto adicionado durante a execução',:latitude,"
+                    ":longitude,'ADICIONADO_EXECUCAO' FROM "
+                    "anuncio.rota_comunicacao_planejamento_ponto WHERE tenant_id=:tenant_id "
+                    "AND planejamento_id=:planning_id RETURNING id"
+                ),
+                {
+                    "tenant_id": tenant_id,
+                    "planning_id": planning_id,
+                    "route_id": route_id,
+                    "latitude": latitude,
+                    "longitude": longitude,
+                },
+            )
+        )
+        for material_id in material_ids:
+            await self.session.execute(
+                text(
+                    "INSERT INTO anuncio.rota_comunicacao_planejamento_ponto_material"
+                    "(tenant_id,ponto_id,material_id,quantidade_planejada) "
+                    "VALUES(:tenant_id,:point_id,:material_id,0)"
+                ),
+                {"tenant_id": tenant_id, "point_id": point_id, "material_id": material_id},
+            )
+        point = await self.get_point_by_id(tenant_id, point_id)
+        assert point is not None
+        return point
+
     async def point_materials(
         self, tenant_id: int, point_id: int, *, lock: bool = False
     ) -> list[dict[str, Any]]:
@@ -958,7 +1017,7 @@ class AnunciosRepository:
                     text(
                         "SELECT pm.id,pm.material_id,m.nome AS material_nome,pm.quantidade_planejada,"
                         "pm.quantidade_instalada,pm.quantidade_recolhida,pm.quantidade_extraviada,"
-                        "(pm.quantidade_planejada-pm.quantidade_instalada)::int "
+                        "GREATEST(pm.quantidade_planejada-pm.quantidade_instalada,0)::int "
                         "AS quantidade_pendente "
                         "FROM anuncio.rota_comunicacao_planejamento_ponto_material pm "
                         "JOIN anuncio.material_comunicacao m ON m.id=pm.material_id "
@@ -1299,7 +1358,8 @@ class AnunciosRepository:
                         "count(DISTINCT pl.id) FILTER (WHERE pl.status='EM_EXECUCAO')::int "
                         "AS rotas_iniciadas,count(DISTINCT pl.id) FILTER "
                         "(WHERE pl.status='CONCLUIDA')::int AS rotas_concluidas,"
-                        "count(DISTINCT p.id)::int AS pontos_planejados,"
+                        "count(DISTINCT p.id) FILTER (WHERE p.origem_ponto='PLANEJADO')::int "
+                        "AS pontos_planejados,"
                         "count(DISTINCT p.id) FILTER (WHERE p.status NOT IN "
                         "('PENDENTE','EM_EXECUCAO','NAO_EXECUTADO'))::int AS pontos_executados,"
                         "count(DISTINCT p.id) FILTER (WHERE p.status IN "
@@ -1458,6 +1518,8 @@ class AnunciosRepository:
                         'pl.rota_nome AS "Rota",e.nome AS "Equipe",'
                         'u.nome AS "Usuário responsável",pl.territorio_nome AS "Território",'
                         'p.descricao_local AS "Ponto/local",p.endereco AS "Endereço",'
+                        "CASE p.origem_ponto WHEN 'ADICIONADO_EXECUCAO' THEN "
+                        "'Adicionado durante a execução' ELSE 'Planejado' END AS \"Origem do ponto\","
                         'm.nome AS "Material",pm.quantidade_planejada AS "Quantidade planejada",'
                         'pm.quantidade_instalada AS "Quantidade instalada",'
                         'pm.quantidade_recolhida AS "Quantidade recolhida",'

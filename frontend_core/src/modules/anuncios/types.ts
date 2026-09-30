@@ -108,6 +108,7 @@ export interface RoutePoint {
   longitude_planejada: string | null;
   observacao: string | null;
   status: PointStatus;
+  origem_ponto: 'PLANEJADO' | 'ADICIONADO_EXECUCAO';
   materiais: PointMaterial[];
   historico: ExecutionHistory[];
 }

@@ -80,6 +80,15 @@ class AnunciosService:
             [MaterialResponse.model_validate(item) for item in items], total, params
         )
 
+    async def app_materials(
+        self, actor: RequestActor, params: ListParams
+    ) -> Page[MaterialResponse]:
+        self._require_execution_actor(actor)
+        items, total = await self.repository.list_materials(actor.tenant_id, params, False)
+        return Page[MaterialResponse].create(
+            [MaterialResponse.model_validate(item) for item in items], total, params
+        )
+
     async def create_material(
         self, actor: RequestActor, payload: MaterialCreate
     ) -> MaterialResponse:
@@ -458,17 +467,6 @@ class AnunciosService:
                     code="material_not_planned",
                     details={"material_id": item.material_id},
                 )
-            if item.quantidade > planned[item.material_id]["quantidade_pendente"]:
-                raise BusinessRuleError(
-                    "A quantidade instalada ultrapassa o saldo planejado do material.",
-                    code="planned_quantity_exceeded",
-                    details={
-                        "material_id": item.material_id,
-                        "quantidade_planejada": planned[item.material_id]["quantidade_planejada"],
-                        "quantidade_instalada": planned[item.material_id]["quantidade_instalada"],
-                        "quantidade_pendente": planned[item.material_id]["quantidade_pendente"],
-                    },
-                )
         execution_id = await self.repository.create_execution(
             tenant_id=actor.tenant_id,
             route_id=point["rota_id"],
@@ -525,6 +523,77 @@ class AnunciosService:
         return await self._operation_response(
             actor.tenant_id, point["id"], execution_id, point_status, route_status
         )
+
+    async def install_manual_point(
+        self, actor: RequestActor, planning_uuid: UUID, payload: InstallationInput
+    ) -> OperationResponse:
+        self._require_execution_actor(actor)
+        existing = await self.repository.get_execution_by_key(
+            actor.tenant_id, actor.user_id, payload.chave_idempotencia
+        )
+        planning = await self.repository.get_planning(actor.tenant_id, planning_uuid)
+        await self._ensure_execution_planning_access(actor, planning)
+        assert planning is not None
+        if existing is not None:
+            if (
+                existing["planejamento_id"] != planning["id"]
+                or existing["tipo_operacao"] != "INSTALACAO"
+            ):
+                raise BusinessRuleError(
+                    "A chave de idempotencia ja foi utilizada em outra operacao.",
+                    code="idempotency_key_reused",
+                )
+            point = await self.repository.get_point_by_id(actor.tenant_id, existing["ponto_id"])
+            if point is None or point["origem_ponto"] != "ADICIONADO_EXECUCAO":
+                raise BusinessRuleError(
+                    "A chave de idempotencia ja foi utilizada em outra operacao.",
+                    code="idempotency_key_reused",
+                )
+            response = await self._operation_response(
+                actor.tenant_id,
+                point["id"],
+                existing["id"],
+                point["status"],
+                planning["status"],
+            )
+            return response.model_copy(update={"idempotente": True})
+        if planning["status"] not in {"LIBERADA", "EM_EXECUCAO"}:
+            raise BusinessRuleError(
+                "A rota nao esta liberada para execucao.", code="route_not_released"
+            )
+        material_ids = {item.material_id for item in payload.materiais}
+        materials = [
+            await self.repository.get_material(actor.tenant_id, material_id)
+            for material_id in material_ids
+        ]
+        if any(item is None or not item["ativo"] for item in materials):
+            raise BusinessRuleError(
+                "Somente materiais ativos podem ser instalados no novo ponto.",
+                code="invalid_manual_point_material",
+            )
+        point = await self.repository.create_manual_point(
+            actor.tenant_id,
+            planning["id"],
+            planning["rota_id"],
+            list(material_ids),
+            payload.latitude,
+            payload.longitude,
+        )
+        await self._audit(
+            actor,
+            "criar",
+            "rota_comunicacao_planejamento_ponto",
+            point["id"],
+            None,
+            {
+                "uuid_publico": str(point["uuid_publico"]),
+                "planejamento_id": planning["id"],
+                "origem_ponto": "ADICIONADO_EXECUCAO",
+                "latitude": str(payload.latitude),
+                "longitude": str(payload.longitude),
+            },
+        )
+        return await self.install(actor, point["uuid_publico"], payload)
 
     async def withdraw(
         self,
@@ -798,9 +867,12 @@ class AnunciosService:
     ) -> OperationResponse:
         history = await self.repository.point_history(tenant_id, point_id)
         execution = next(item for item in history if item["id"] == execution_id)
+        point = await self.repository.get_point_by_id(tenant_id, point_id)
+        assert point is not None
         return OperationResponse.model_validate(
             {
                 "execucao": execution,
+                "ponto_uuid": point["uuid_publico"],
                 "ponto_status": point_status,
                 "rota_status": route_status,
                 "idempotente": False,
@@ -870,6 +942,7 @@ class AnunciosService:
             "Território",
             "Ponto/local",
             "Endereço",
+            "Origem do ponto",
             "Material",
             "Quantidade planejada",
             "Quantidade instalada",

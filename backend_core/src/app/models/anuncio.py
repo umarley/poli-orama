@@ -137,6 +137,7 @@ class RotaComunicacaoPlanejamentoPonto(Base):
     longitude_planejada: Mapped[Decimal | None] = mapped_column(Numeric(10, 7))
     observacao: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(30))
+    origem_ponto: Mapped[str] = mapped_column(String(24), default="PLANEJADO")
     criado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     atualizado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 

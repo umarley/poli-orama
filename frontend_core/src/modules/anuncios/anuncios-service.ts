@@ -116,7 +116,7 @@ export async function uploadExecutionMedia(executionUuid: string, file: File) {
   const form = new FormData();
   form.append('arquivo', file);
   const { data } = await httpClient.post(`${base}/app/execucoes/${executionUuid}/midias`, form, {
-    timeout: 120_000,
+    timeout: 300_000,
   });
   return data;
 }

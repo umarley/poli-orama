@@ -84,6 +84,6 @@ describe('anuncios-service', () => {
     const [url, body, options] = post.mock.calls[0];
     expect(url).toBe('/api/v1/anuncios/app/execucoes/execution-uuid/midias');
     expect((body as FormData).get('arquivo')).toBe(video);
-    expect(options).toEqual({ timeout: 120_000 });
+    expect(options).toEqual({ timeout: 300_000 });
   });
 });

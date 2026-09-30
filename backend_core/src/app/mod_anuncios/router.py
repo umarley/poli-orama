@@ -371,6 +371,15 @@ async def app_route(
     return await service.app_route(actor, route_uuid)
 
 
+@router.get("/app/materiais", response_model=Page[MaterialResponse])
+async def app_materials(
+    actor: Annotated[RequestActor, Depends(get_current_user)],
+    service: Annotated[AnunciosService, Depends(get_service)],
+    params: Annotated[ListParams, Depends(list_params)],
+) -> Page[MaterialResponse]:
+    return await service.app_materials(actor, params)
+
+
 async def _read_photo(
     photo: UploadFile | None, *, required: bool
 ) -> tuple[str, str | None, bytes] | None:
@@ -408,6 +417,23 @@ async def install_point(
     _validate_idempotency_header(payload.chave_idempotencia, idempotency_key)
     photo = await _read_photo(foto, required=False)
     return await service.install(actor, point_uuid, payload, photo=photo)
+
+
+@router.post(
+    "/app/rotas/{route_uuid}/pontos-manuais/instalar",
+    response_model=OperationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def install_manual_point(
+    actor: Annotated[RequestActor, Depends(get_current_user)],
+    service: Annotated[AnunciosService, Depends(get_service)],
+    dados: Annotated[str, Form()],
+    route_uuid: UUID,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> OperationResponse:
+    payload = InstallationInput.model_validate_json(dados)
+    _validate_idempotency_header(payload.chave_idempotencia, idempotency_key)
+    return await service.install_manual_point(actor, route_uuid, payload)
 
 
 @router.post(

@@ -113,11 +113,13 @@ class FakeRepository:
             "planejamento_id": 19,
             "planejamento_uuid": self.planning_uuid,
             "status": "PENDENTE" if installed == 0 else "INSTALADO",
+            "origem_ponto": "PLANEJADO",
             "materiais": [self.material],
         }
         self.planning = {
             "id": 19,
             "uuid_publico": self.planning_uuid,
+            "rota_id": 17,
             "status": "LIBERADA" if installed == 0 else "EM_EXECUCAO",
         }
         self.route = self.planning
@@ -134,10 +136,41 @@ class FakeRepository:
             return None
         return {**self.point, "materiais": [dict(self.material)]}
 
-    async def get_planning(self, tenant_id: int, planning_uuid: UUID):
+    async def get_planning(self, tenant_id: int, planning_uuid: UUID, *, lock: bool = False):
         return (
             dict(self.planning) if tenant_id == 7 and planning_uuid == self.planning_uuid else None
         )
+
+    async def get_point_by_id(self, tenant_id: int, point_id: int):
+        if tenant_id != 7 or point_id != self.point["id"]:
+            return None
+        return {**self.point, "materiais": [dict(self.material)]}
+
+    async def get_material(self, tenant_id: int, material_id: int):
+        if tenant_id == 7 and material_id == 41:
+            return {"id": 41, "ativo": True}
+        return None
+
+    async def create_manual_point(
+        self,
+        tenant_id: int,
+        planning_id: int,
+        route_id: int,
+        material_ids: list[int],
+        latitude: Decimal,
+        longitude: Decimal,
+    ):
+        assert (tenant_id, planning_id, route_id, material_ids) == (7, 19, 17, [41])
+        self.point_uuid = uuid4()
+        self.point.update(
+            uuid_publico=self.point_uuid,
+            origem_ponto="ADICIONADO_EXECUCAO",
+            status="PENDENTE",
+            latitude_planejada=latitude,
+            longitude_planejada=longitude,
+        )
+        self.material.update(quantidade_planejada=0, quantidade_pendente=0)
+        return {**self.point, "materiais": [dict(self.material)]}
 
     async def planning_is_accessible(
         self, tenant_id: int, planning_id: int, user_id: int, person_id: int | None
@@ -197,8 +230,8 @@ class FakeRepository:
         self.material["quantidade_instalada"] += installed
         self.material["quantidade_recolhida"] += collected
         self.material["quantidade_extraviada"] += lost
-        self.material["quantidade_pendente"] = (
-            self.material["quantidade_planejada"] - self.material["quantidade_instalada"]
+        self.material["quantidade_pendente"] = max(
+            self.material["quantidade_planejada"] - self.material["quantidade_instalada"], 0
         )
 
     async def point_materials(self, tenant_id: int, point_id: int, *, lock=False):
@@ -583,16 +616,33 @@ async def test_repeated_installation_key_is_idempotent() -> None:
 
 
 @pytest.mark.asyncio
-async def test_installation_rejects_quantity_above_plan() -> None:
+async def test_installation_accepts_quantity_above_plan() -> None:
     repository = FakeRepository()
     instance, _, _ = service(repository)
-    with pytest.raises(BusinessRuleError, match="saldo planejado"):
-        await instance.install(
-            driver(),
-            repository.point_uuid,
-            installation(6),
-            photo=("a.jpg", "image/jpeg", b"image"),
-        )
+    response = await instance.install(
+        driver(),
+        repository.point_uuid,
+        installation(6),
+        photo=("a.jpg", "image/jpeg", b"image"),
+    )
+    assert response.ponto_status == "INSTALADO"
+    assert repository.material["quantidade_planejada"] == 5
+    assert repository.material["quantidade_instalada"] == 6
+    assert repository.material["quantidade_pendente"] == 0
+
+
+@pytest.mark.asyncio
+async def test_manual_point_is_created_and_installed_in_route_execution() -> None:
+    repository = FakeRepository()
+    instance, _, _ = service(repository)
+    response = await instance.install_manual_point(
+        driver(), repository.planning_uuid, installation(3)
+    )
+    assert response.ponto_uuid == repository.point_uuid
+    assert response.ponto_status == "INSTALADO"
+    assert repository.point["origem_ponto"] == "ADICIONADO_EXECUCAO"
+    assert repository.material["quantidade_planejada"] == 0
+    assert repository.material["quantidade_instalada"] == 3
 
 
 @pytest.mark.asyncio
@@ -708,6 +758,8 @@ def test_main_administrative_and_app_endpoints_are_registered() -> None:
         ("GET", "/anuncios/mapa/locais-votacao/{polling_place_id}/secoes"),
         ("GET", "/anuncios/mapa/zonas-eleitorais"),
         ("GET", "/anuncios/app/rotas"),
+        ("GET", "/anuncios/app/materiais"),
+        ("POST", "/anuncios/app/rotas/{route_uuid}/pontos-manuais/instalar"),
         ("POST", "/anuncios/app/pontos/{point_uuid}/instalar"),
         ("POST", "/anuncios/app/pontos/{point_uuid}/retirar"),
     } <= registered
