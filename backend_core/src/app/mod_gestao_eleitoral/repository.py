@@ -593,6 +593,19 @@ class GestaoEleitoralRepository:
     async def list_offices(
         self, filters: ResultadoFilters, scope: TerritorialScope
     ) -> list[dict[str, Any]]:
+        if (
+            scope.unrestricted
+            and filters.eleicao_chaves
+            and not (
+                filters.votaveis
+                or filters.ufs
+                or filters.cd_municipio
+                or filters.nr_zona
+                or filters.nr_local_votacao
+                or filters.nr_secao
+            )
+        ):
+            return await self._list_election_offices(filters.eleicao_chaves)
         where, values = self._filters(filters, scope)
         return await self._all(
             f"""
@@ -602,6 +615,73 @@ class GestaoEleitoralRepository:
               AND re.ds_cargo IS NOT NULL
             GROUP BY re.ds_cargo
             ORDER BY re.ds_cargo
+            """,
+            values,
+        )
+
+    async def _list_election_offices(
+        self, election_keys: list[str]
+    ) -> list[dict[str, Any]]:
+        election_rows: list[str] = []
+        values: dict[str, Any] = {}
+        for index, key in enumerate(election_keys):
+            parts = str(key).split(":")
+            if len(parts) != 3 or not all(parts):
+                continue
+            try:
+                year, code, turn = (int(part) for part in parts)
+            except ValueError:
+                continue
+            election_rows.append(
+                f"(CAST(:cargo_aa_{index} AS smallint), "
+                f"CAST(:cargo_cd_{index} AS integer), "
+                f"CAST(:cargo_turno_{index} AS smallint))"
+            )
+            values[f"cargo_aa_{index}"] = year
+            values[f"cargo_cd_{index}"] = code
+            values[f"cargo_turno_{index}"] = turn
+        if not election_rows:
+            return []
+        return await self._all(
+            f"""
+            WITH RECURSIVE eleicoes (aa_eleicao, cd_eleicao, nr_turno) AS (
+              SELECT DISTINCT *
+              FROM (VALUES {", ".join(election_rows)}) AS selecionada(
+                aa_eleicao, cd_eleicao, nr_turno
+              )
+            ),
+            cargos_por_eleicao (aa_eleicao, cd_eleicao, nr_turno, ds_cargo) AS (
+              SELECT e.aa_eleicao, e.cd_eleicao, e.nr_turno, primeiro.ds_cargo
+              FROM eleicoes e
+              JOIN LATERAL (
+                SELECT re.ds_cargo
+                FROM tse.resultados_eleicoes re
+                WHERE re.aa_eleicao = e.aa_eleicao
+                  AND re.cd_eleicao = e.cd_eleicao
+                  AND re.nr_turno = e.nr_turno
+                  AND re.ds_cargo IS NOT NULL
+                ORDER BY re.ds_cargo
+                LIMIT 1
+              ) primeiro ON TRUE
+              UNION ALL
+              SELECT atual.aa_eleicao, atual.cd_eleicao,
+                     atual.nr_turno, proximo.ds_cargo
+              FROM cargos_por_eleicao atual
+              JOIN LATERAL (
+                SELECT re.ds_cargo
+                FROM tse.resultados_eleicoes re
+                WHERE re.aa_eleicao = atual.aa_eleicao
+                  AND re.cd_eleicao = atual.cd_eleicao
+                  AND re.nr_turno = atual.nr_turno
+                  AND re.ds_cargo > atual.ds_cargo
+                ORDER BY re.ds_cargo
+                LIMIT 1
+              ) proximo ON TRUE
+            )
+            SELECT c.ds_cargo AS valor, c.ds_cargo AS rotulo
+            FROM cargos_por_eleicao c
+            GROUP BY c.ds_cargo
+            ORDER BY c.ds_cargo
             """,
             values,
         )
