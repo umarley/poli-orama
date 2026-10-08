@@ -181,15 +181,12 @@ export function GestaoEleitoralAnalisePage() {
     queryKey: ['gestao-eleitoral', 'eleicoes'],
     queryFn: listElectoralElections,
   });
-  const officeFilters = omitElectoralFilters(filters, 'ds_cargo', 'nm_votaveis');
-  const stateFilters = omitElectoralFilters(
-    filters,
-    'sg_uf',
-    'cd_municipio',
-    'nr_zona',
-    'nr_local_votacao',
-    'nr_secao',
-  );
+  const officeFilters: ElectoralFilters = {
+    eleicao_chaves: filters.eleicao_chaves,
+  };
+  const stateFilters: ElectoralFilters = {
+    eleicao_chaves: filters.eleicao_chaves,
+  };
   const municipalityFilters = omitElectoralFilters(
     filters,
     'cd_municipio',
@@ -388,6 +385,8 @@ export function GestaoEleitoralAnalisePage() {
             maxTagCount="responsive"
             optionFilterProp="label"
             placeholder="Estado"
+            loading={states.isFetching}
+            status={states.isError ? 'error' : undefined}
             value={filters.sg_uf}
             options={(states.data ?? []).map((item) => ({ value: item.valor, label: item.rotulo }))}
             onChange={(value: string[]) =>
@@ -407,6 +406,8 @@ export function GestaoEleitoralAnalisePage() {
             optionFilterProp="label"
             placeholder="Cargo disputado"
             disabled={!electionSelected}
+            loading={offices.isFetching}
+            status={offices.isError ? 'error' : undefined}
             value={filters.ds_cargo}
             options={(offices.data ?? []).map((item) => ({
               value: item.valor,

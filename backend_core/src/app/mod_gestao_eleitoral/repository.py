@@ -366,7 +366,17 @@ class GestaoEleitoralRepository:
         self, filters: ResultadoFilters, scope: TerritorialScope
     ) -> list[dict[str, Any]]:
         if not filters.eleicao_chaves:
-            return await self._list_scope_states(scope)
+            return await self._list_available_states(scope)
+        if not (
+            filters.votaveis
+            or filters.cargos
+            or filters.ufs
+            or filters.cd_municipio
+            or filters.nr_zona
+            or filters.nr_local_votacao
+            or filters.nr_secao
+        ):
+            return await self._list_election_states(filters.eleicao_chaves, scope)
         where, values = self._filters(filters, scope)
         return await self._all(
             f"""
@@ -378,6 +388,139 @@ class GestaoEleitoralRepository:
               AND re.sg_uf IS NOT NULL
             GROUP BY re.sg_uf
             ORDER BY re.sg_uf
+            """,
+            values,
+        )
+
+    async def _list_available_states(
+        self, scope: TerritorialScope
+    ) -> list[dict[str, Any]]:
+        if scope.blocks_all:
+            return []
+        scope_clause = ""
+        values: dict[str, Any] = {}
+        if not scope.unrestricted:
+            allowed_states = await self._list_scope_states(scope)
+            allowed_ufs = [str(row["valor"]) for row in allowed_states if row.get("valor")]
+            if not allowed_ufs:
+                return []
+            scope_clause = "WHERE de.sg_uf = ANY(CAST(:allowed_ufs AS text[]))"
+            values["allowed_ufs"] = allowed_ufs
+        return await self._all(
+            f"""
+            WITH RECURSIVE dados_estado (
+              aa_eleicao, cd_eleicao, nr_turno, sg_uf
+            ) AS (
+              (
+                SELECT re.aa_eleicao, re.cd_eleicao, re.nr_turno, re.sg_uf
+                FROM tse.resultados_eleicoes re
+                WHERE re.aa_eleicao IS NOT NULL
+                  AND re.cd_eleicao IS NOT NULL
+                  AND re.nr_turno IS NOT NULL
+                  AND re.sg_uf IS NOT NULL
+                ORDER BY re.aa_eleicao, re.cd_eleicao, re.nr_turno, re.sg_uf
+                LIMIT 1
+              )
+              UNION ALL
+              SELECT proximo.aa_eleicao, proximo.cd_eleicao,
+                     proximo.nr_turno, proximo.sg_uf
+              FROM dados_estado atual
+              JOIN LATERAL (
+                SELECT re.aa_eleicao, re.cd_eleicao, re.nr_turno, re.sg_uf
+                FROM tse.resultados_eleicoes re
+                WHERE (re.aa_eleicao, re.cd_eleicao, re.nr_turno, re.sg_uf)
+                      > (atual.aa_eleicao, atual.cd_eleicao,
+                         atual.nr_turno, atual.sg_uf)
+                ORDER BY re.aa_eleicao, re.cd_eleicao, re.nr_turno, re.sg_uf
+                LIMIT 1
+              ) proximo ON TRUE
+            )
+            SELECT de.sg_uf AS valor, COALESCE(MAX(e.nome), de.sg_uf) AS rotulo
+            FROM dados_estado de
+            LEFT JOIN global.estado e ON e.uf = de.sg_uf
+            {scope_clause}
+            GROUP BY de.sg_uf
+            ORDER BY de.sg_uf
+            """,
+            values,
+        )
+
+    async def _list_election_states(
+        self, election_keys: list[str], scope: TerritorialScope
+    ) -> list[dict[str, Any]]:
+        if scope.blocks_all:
+            return []
+        election_rows: list[str] = []
+        values: dict[str, Any] = {}
+        for index, key in enumerate(election_keys):
+            parts = str(key).split(":")
+            if len(parts) != 3 or not all(parts):
+                continue
+            try:
+                year, code, turn = (int(part) for part in parts)
+            except ValueError:
+                continue
+            election_rows.append(
+                f"(CAST(:estado_aa_{index} AS smallint), "
+                f"CAST(:estado_cd_{index} AS integer), "
+                f"CAST(:estado_turno_{index} AS smallint))"
+            )
+            values[f"estado_aa_{index}"] = year
+            values[f"estado_cd_{index}"] = code
+            values[f"estado_turno_{index}"] = turn
+        if not election_rows:
+            return []
+
+        scope_clause = ""
+        if not scope.unrestricted:
+            allowed_states = await self._list_scope_states(scope)
+            allowed_ufs = [str(row["valor"]) for row in allowed_states if row.get("valor")]
+            if not allowed_ufs:
+                return []
+            scope_clause = "WHERE ep.sg_uf = ANY(CAST(:allowed_ufs AS text[]))"
+            values["allowed_ufs"] = allowed_ufs
+
+        return await self._all(
+            f"""
+            WITH RECURSIVE eleicoes (aa_eleicao, cd_eleicao, nr_turno) AS (
+              SELECT DISTINCT *
+              FROM (VALUES {", ".join(election_rows)}) AS selecionada(
+                aa_eleicao, cd_eleicao, nr_turno
+              )
+            ),
+            estados_por_eleicao (aa_eleicao, cd_eleicao, nr_turno, sg_uf) AS (
+              SELECT e.aa_eleicao, e.cd_eleicao, e.nr_turno, primeiro.sg_uf
+              FROM eleicoes e
+              JOIN LATERAL (
+                SELECT re.sg_uf
+                FROM tse.resultados_eleicoes re
+                WHERE re.aa_eleicao = e.aa_eleicao
+                  AND re.cd_eleicao = e.cd_eleicao
+                  AND re.nr_turno = e.nr_turno
+                  AND re.sg_uf IS NOT NULL
+                ORDER BY re.sg_uf
+                LIMIT 1
+              ) primeiro ON TRUE
+              UNION ALL
+              SELECT atual.aa_eleicao, atual.cd_eleicao, atual.nr_turno, proximo.sg_uf
+              FROM estados_por_eleicao atual
+              JOIN LATERAL (
+                SELECT re.sg_uf
+                FROM tse.resultados_eleicoes re
+                WHERE re.aa_eleicao = atual.aa_eleicao
+                  AND re.cd_eleicao = atual.cd_eleicao
+                  AND re.nr_turno = atual.nr_turno
+                  AND re.sg_uf > atual.sg_uf
+                ORDER BY re.sg_uf
+                LIMIT 1
+              ) proximo ON TRUE
+            )
+            SELECT ep.sg_uf AS valor, COALESCE(MAX(e.nome), ep.sg_uf) AS rotulo
+            FROM estados_por_eleicao ep
+            LEFT JOIN global.estado e ON e.uf = ep.sg_uf
+            {scope_clause}
+            GROUP BY ep.sg_uf
+            ORDER BY ep.sg_uf
             """,
             values,
         )
@@ -454,7 +597,7 @@ class GestaoEleitoralRepository:
         return await self._all(
             f"""
             SELECT re.ds_cargo AS valor, re.ds_cargo AS rotulo
-            {BASE_FROM}
+            {self._from_clause(scope, geo=False)}
             WHERE {where}
               AND re.ds_cargo IS NOT NULL
             GROUP BY re.ds_cargo
