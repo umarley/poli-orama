@@ -5,6 +5,7 @@ import {
   DownloadOutlined,
   EnvironmentOutlined,
   GlobalOutlined,
+  SearchOutlined,
   TeamOutlined,
   TrophyOutlined,
 } from '@ant-design/icons';
@@ -139,6 +140,7 @@ export function GestaoEleitoralAnalisePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = searchParams.get('aba') ?? 'visao';
   const [filters, setFilters] = useState<ElectoralFilters>(emptyFilters);
+  const [appliedFilters, setAppliedFilters] = useState<ElectoralFilters | null>(null);
   const [candidateQuery, setCandidateQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [mapMode, setMapMode] = useState<MapMode>('secao');
@@ -169,6 +171,10 @@ export function GestaoEleitoralAnalisePage() {
     setTablePage(1);
   };
   const electionSelected = hasItems(filters.eleicao_chaves);
+  const appliedElectionSelected = hasItems(appliedFilters?.eleicao_chaves);
+  const resultFilters = appliedFilters ?? emptyFilters;
+  const hasPendingChanges =
+    appliedFilters !== null && JSON.stringify(filters) !== JSON.stringify(appliedFilters);
   const mapAggregation: MapMode = mapView === 'secao' ? 'secao' : mapMode;
 
   const elections = useQuery({
@@ -208,7 +214,6 @@ export function GestaoEleitoralAnalisePage() {
   const states = useQuery({
     queryKey: ['gestao-eleitoral', 'estados', stateFilters],
     queryFn: () => listElectoralStates(stateFilters),
-    enabled: electionSelected,
   });
   const municipalities = useQuery({
     queryKey: ['gestao-eleitoral', 'municipios', municipalityFilters],
@@ -231,17 +236,18 @@ export function GestaoEleitoralAnalisePage() {
     enabled: hasItems(filters.nr_zona) || hasItems(filters.nr_local_votacao),
   });
   const panel = useQuery({
-    queryKey: ['gestao-eleitoral', 'painel', filters],
-    queryFn: () => getElectoralPanel(filters),
-    enabled: electionSelected,
+    queryKey: ['gestao-eleitoral', 'painel', resultFilters],
+    queryFn: () => getElectoralPanel(resultFilters),
+    enabled: appliedElectionSelected,
   });
   const mapData = useQuery({
-    queryKey: ['gestao-eleitoral', 'mapa', filters, mapAggregation],
-    queryFn: () => getElectoralMap(filters, mapAggregation),
-    enabled: electionSelected && tab === 'mapa' && hasItems(filters.nm_votaveis),
+    queryKey: ['gestao-eleitoral', 'mapa', resultFilters, mapAggregation],
+    queryFn: () => getElectoralMap(resultFilters, mapAggregation),
+    enabled:
+      appliedElectionSelected && tab === 'mapa' && hasItems(resultFilters.nm_votaveis),
   });
   const zoneMeshFilters = omitElectoralFilters(
-    filters,
+    resultFilters,
     'eleicao_chaves',
     'nm_votaveis',
     'ds_cargo',
@@ -256,22 +262,27 @@ export function GestaoEleitoralAnalisePage() {
       mapBounds,
     ],
     queryFn: () => getElectoralZoneMeshes(zoneMeshFilters, mapBounds!),
-    enabled: showElectoralZones && tab === 'mapa' && mapBounds !== null,
+    enabled:
+      appliedElectionSelected && showElectoralZones && tab === 'mapa' && mapBounds !== null,
     staleTime: 5 * 60_000,
   });
   const zoneResults = useQuery({
-    queryKey: ['gestao-eleitoral', 'mapa', 'zonas-eleitorais', 'resultados', filters],
-    queryFn: () => getElectoralZoneResults(filters),
+    queryKey: ['gestao-eleitoral', 'mapa', 'zonas-eleitorais', 'resultados', resultFilters],
+    queryFn: () => getElectoralZoneResults(resultFilters),
     enabled:
-      showElectoralZones && electionSelected && hasItems(filters.nm_votaveis) && tab === 'mapa',
+      showElectoralZones &&
+      appliedElectionSelected &&
+      hasItems(resultFilters.nm_votaveis) &&
+      tab === 'mapa',
   });
   const table = useQuery({
-    queryKey: ['gestao-eleitoral', 'tabela', tableDimension, filters, tablePage],
-    queryFn: () => getElectoralDistribution(tableDimension, filters, tablePage, 20),
-    enabled: electionSelected && tab === 'tabelas',
+    queryKey: ['gestao-eleitoral', 'tabela', tableDimension, resultFilters, tablePage],
+    queryFn: () => getElectoralDistribution(tableDimension, resultFilters, tablePage, 20),
+    enabled: appliedElectionSelected && tab === 'tabelas',
   });
   const mapExport = useMutation({
-    mutationFn: (format: 'csv' | 'xlsx') => exportElectoralMap(filters, mapAggregation, format),
+    mutationFn: (format: 'csv' | 'xlsx') =>
+      exportElectoralMap(resultFilters, mapAggregation, format),
     onSuccess: () => AppToast.success('Arquivo da análise eleitoral gerado.'),
     onError: (error) => AppToast.error(normalizeApiError(error).message),
   });
@@ -294,14 +305,14 @@ export function GestaoEleitoralAnalisePage() {
   const data = panel.data;
   const mapPoints = useMemo(() => mapData.data?.pontos ?? [], [mapData.data?.pontos]);
   const heatSeries = useMemo(
-    () => buildElectoralHeatSeries(mapPoints, filters.nm_votaveis ?? []),
-    [mapPoints, filters.nm_votaveis],
+    () => buildElectoralHeatSeries(mapPoints, resultFilters.nm_votaveis ?? []),
+    [mapPoints, resultFilters.nm_votaveis],
   );
   const sectionMarkers = useMemo(
-    () => buildSectionMarkers(mapPoints, filters.nm_votaveis ?? []),
-    [mapPoints, filters.nm_votaveis],
+    () => buildSectionMarkers(mapPoints, resultFilters.nm_votaveis ?? []),
+    [mapPoints, resultFilters.nm_votaveis],
   );
-  const candidateSelected = hasItems(filters.nm_votaveis);
+  const candidateSelected = hasItems(resultFilters.nm_votaveis);
   const electoralZoneMeshes = useMemo(() => {
     const resultsByZone = new Map((zoneResults.data ?? []).map((item) => [item.id, item]));
     return (zoneMeshes.data ?? []).flatMap((mesh): ElectoralZoneMesh[] => {
@@ -309,6 +320,18 @@ export function GestaoEleitoralAnalisePage() {
       return result ? [{ ...mesh, ...result, geometry: mesh.geometry }] : [];
     });
   }, [zoneMeshes.data, zoneResults.data]);
+
+  const clearFilters = () => {
+    setFilters(emptyFilters);
+    setAppliedFilters(null);
+    setCandidateQuery('');
+    setTablePage(1);
+  };
+
+  const search = () => {
+    setAppliedFilters({ ...filters });
+    setTablePage(1);
+  };
 
   return (
     <div className={styles.page}>
@@ -321,7 +344,7 @@ export function GestaoEleitoralAnalisePage() {
           { label: 'Análise de resultados' },
         ]}
         actions={
-          <Button icon={<ClearOutlined />} onClick={() => setFilters(emptyFilters)}>
+          <Button icon={<ClearOutlined />} onClick={clearFilters}>
             Limpar filtros
           </Button>
         }
@@ -345,19 +368,36 @@ export function GestaoEleitoralAnalisePage() {
             }))}
             onChange={(value: string[]) => {
               if (!value.length) {
-                setFilters(emptyFilters);
+                clearFilters();
                 return;
               }
               updateFilters({ eleicao_chaves: value }, [
                 'ds_cargo',
                 'nm_votaveis',
-                'sg_uf',
                 'cd_municipio',
                 'nr_zona',
                 'nr_local_votacao',
                 'nr_secao',
               ]);
             }}
+          />
+          <Select
+            mode="multiple"
+            showSearch
+            allowClear
+            maxTagCount="responsive"
+            optionFilterProp="label"
+            placeholder="Estado"
+            value={filters.sg_uf}
+            options={(states.data ?? []).map((item) => ({ value: item.valor, label: item.rotulo }))}
+            onChange={(value: string[]) =>
+              updateFilters({ sg_uf: value }, [
+                'cd_municipio',
+                'nr_zona',
+                'nr_local_votacao',
+                'nr_secao',
+              ])
+            }
           />
           <Select
             mode="multiple"
@@ -388,25 +428,6 @@ export function GestaoEleitoralAnalisePage() {
             onChange={(value: string[]) => updateFilters({ nm_votaveis: value })}
             notFoundContent={
               debouncedQuery.length < 2 ? 'Digite ao menos 2 letras' : 'Nenhum candidato encontrado'
-            }
-          />
-          <Select
-            mode="multiple"
-            showSearch
-            allowClear
-            maxTagCount="responsive"
-            optionFilterProp="label"
-            placeholder="Estado"
-            disabled={!electionSelected}
-            value={filters.sg_uf}
-            options={(states.data ?? []).map((item) => ({ value: item.valor, label: item.rotulo }))}
-            onChange={(value: string[]) =>
-              updateFilters({ sg_uf: value }, [
-                'cd_municipio',
-                'nr_zona',
-                'nr_local_votacao',
-                'nr_secao',
-              ])
             }
           />
           <Select
@@ -467,6 +488,17 @@ export function GestaoEleitoralAnalisePage() {
             }))}
             onChange={(value: number[]) => updateFilters({ nr_secao: value })}
           />
+          <div className={styles.filterActions}>
+            <Button
+              type="primary"
+              icon={<SearchOutlined />}
+              disabled={!electionSelected}
+              loading={panel.isFetching}
+              onClick={search}
+            >
+              Pesquisar
+            </Button>
+          </div>
         </div>
       </Card>
 
@@ -482,8 +514,24 @@ export function GestaoEleitoralAnalisePage() {
         <Alert
           type="info"
           showIcon
-          message="Selecione uma eleição para carregar o painel."
-          description="Os filtros seguintes e as visualizações usam apenas os dados agregados do recorte escolhido."
+          message="Selecione os filtros da análise."
+          description="Escolha ao menos uma eleição e clique em Pesquisar para consultar os resultados."
+        />
+      )}
+      {electionSelected && !appliedElectionSelected && (
+        <Alert
+          type="info"
+          showIcon
+          message="Filtros prontos para pesquisar."
+          description="Clique em Pesquisar para consultar os resultados do recorte selecionado."
+        />
+      )}
+      {hasPendingChanges && (
+        <Alert
+          type="warning"
+          showIcon
+          message="Existem alterações ainda não pesquisadas."
+          description="Clique em Pesquisar para atualizar os resultados com os filtros atuais."
         />
       )}
       {panelError && <Alert type="error" showIcon message={panelError} />}
@@ -556,9 +604,9 @@ export function GestaoEleitoralAnalisePage() {
                     </Card>
                   </Col>
                 </Row>
-                {hasItems(filters.ds_cargo) && (
+                {hasItems(resultFilters.ds_cargo) && (
                   <Card
-                    title={rankingTitle(filters.ds_cargo)}
+                    title={rankingTitle(resultFilters.ds_cargo)}
                     extra={<Link to="/gestao-eleitoral/analise?aba=ranking">Ver completo</Link>}
                   >
                     <RankingTable
@@ -679,8 +727,8 @@ export function GestaoEleitoralAnalisePage() {
                     message="O mapa exibe os locais com maior votação do recorte. Aplique filtros para ver um detalhamento completo."
                   />
                 )}
-                {!electionSelected ? (
-                  <Empty description="Selecione uma eleição para ver o mapa." />
+                {!appliedElectionSelected ? (
+                  <Empty description="Selecione os filtros e clique em Pesquisar para ver o mapa." />
                 ) : !candidateSelected ? (
                   <Empty
                     description={
@@ -777,8 +825,8 @@ export function GestaoEleitoralAnalisePage() {
             key: 'ranking',
             label: 'Ranking',
             children: (
-              <Card title={rankingTitle(filters.ds_cargo)}>
-                {!hasItems(filters.ds_cargo) ? (
+              <Card title={rankingTitle(resultFilters.ds_cargo)}>
+                {!hasItems(resultFilters.ds_cargo) ? (
                   <Empty description="Selecione um ou mais cargos disputados para ver o ranking dos candidatos." />
                 ) : (
                   <RankingTable

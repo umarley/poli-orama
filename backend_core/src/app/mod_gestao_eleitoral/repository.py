@@ -365,6 +365,8 @@ class GestaoEleitoralRepository:
     async def list_states(
         self, filters: ResultadoFilters, scope: TerritorialScope
     ) -> list[dict[str, Any]]:
+        if not filters.eleicao_chaves:
+            return await self._list_scope_states(scope)
         where, values = self._filters(filters, scope)
         return await self._all(
             f"""
@@ -376,6 +378,53 @@ class GestaoEleitoralRepository:
               AND re.sg_uf IS NOT NULL
             GROUP BY re.sg_uf
             ORDER BY re.sg_uf
+            """,
+            values,
+        )
+
+    async def _list_scope_states(self, scope: TerritorialScope) -> list[dict[str, Any]]:
+        if scope.blocks_all:
+            return []
+        if scope.unrestricted:
+            where = "TRUE"
+            values: dict[str, Any] = {}
+        else:
+            predicates: list[str] = []
+            values = {}
+            if scope.ufs:
+                predicates.append("e.uf = ANY(CAST(:scope_ufs AS text[]))")
+                values["scope_ufs"] = scope.ufs
+            if scope.municipios_ibge:
+                predicates.append(
+                    "EXISTS (SELECT 1 FROM global.municipio m "
+                    "WHERE m.codigo_uf_ibge = e.codigo_ibge "
+                    "AND m.codigo_ibge = ANY(CAST(:scope_municipios AS integer[])))"
+                )
+                values["scope_municipios"] = scope.municipios_ibge
+            if scope.zonas_ids:
+                predicates.append(
+                    "EXISTS (SELECT 1 FROM global.zona_eleitoral ze "
+                    "WHERE ze.codigo_uf_ibge = e.codigo_ibge "
+                    "AND ze.id = ANY(CAST(:scope_zonas AS integer[])))"
+                )
+                values["scope_zonas"] = scope.zonas_ids
+            if scope.secoes_ids:
+                predicates.append(
+                    "EXISTS (SELECT 1 FROM global.secao_eleitoral se "
+                    "JOIN global.zona_eleitoral ze ON ze.id = se.zona_eleitoral_id "
+                    "WHERE ze.codigo_uf_ibge = e.codigo_ibge "
+                    "AND se.id = ANY(CAST(:scope_secoes AS bigint[])))"
+                )
+                values["scope_secoes"] = scope.secoes_ids
+            if not predicates:
+                return []
+            where = f"({' OR '.join(predicates)})"
+        return await self._all(
+            f"""
+            SELECT e.uf AS valor, e.nome AS rotulo
+            FROM global.estado e
+            WHERE {where}
+            ORDER BY e.uf
             """,
             values,
         )
