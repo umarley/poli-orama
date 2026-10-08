@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import Select, func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.core.errors import BusinessRuleError
 from app.core.pagination import ListParams, SortDirection
@@ -87,7 +88,10 @@ class TenantRepository(BaseRepository[Tenant]):
 
     async def get_by_id(self, tenant_id: int) -> Tenant | None:
         result = await self.session.scalar(
-            select(Tenant).where(Tenant.id == tenant_id, Tenant.excluido_em.is_(None))
+            select(Tenant)
+            .options(joinedload(Tenant.plano), selectinload(Tenant.configuracao))
+            .where(Tenant.id == tenant_id, Tenant.excluido_em.is_(None))
+            .execution_options(populate_existing=True)
         )
         return result
 

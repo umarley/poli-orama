@@ -12,7 +12,7 @@ from app.core.errors import ResourceNotFoundError
 from app.core.pagination import ListParams
 from app.tenants.repository import TenantRepository
 from app.tenants.schemas import TenantConfiguracaoUpdate, TenantCreate
-from app.tenants.service import TenantService
+from app.tenants.service import TenantManagementService, TenantService
 
 
 class FakeTenantRepository:
@@ -76,6 +76,30 @@ async def test_new_tenant_defaults_to_leadership_terminology() -> None:
         "nomenclatura_liderancas": "liderancas",
         "maximo_atendimentos_simultaneos": 10,
     }
+
+
+@pytest.mark.asyncio
+async def test_create_reloads_tenant_before_building_response() -> None:
+    created_tenant = make_tenant()
+    persisted_tenant = make_tenant()
+    persisted_tenant.plano = None
+    persisted_tenant.configuracao = None
+    repository = SimpleNamespace(
+        get_by_slug=AsyncMock(return_value=None),
+        create=AsyncMock(return_value=created_tenant),
+        audit=AsyncMock(),
+        commit=AsyncMock(),
+        get_by_id=AsyncMock(return_value=persisted_tenant),
+    )
+    service = TenantManagementService(repository)
+
+    response = await service.create(
+        TenantCreate(nome="Campanha Exemplo", slug="campanha-exemplo"),
+        actor_id=1,
+    )
+
+    repository.get_by_id.assert_awaited_once_with(created_tenant.id)
+    assert response.slug == persisted_tenant.slug
 
 
 def test_configuration_update_keeps_full_name_required() -> None:

@@ -14,6 +14,7 @@ from app.auth.security import (
     generate_mfa_secret,
     hash_password,
     mfa_provisioning_uri,
+    refresh_token_expiration,
     session_is_inactive,
     token_digest,
     validate_password_policy,
@@ -64,7 +65,7 @@ def test_jwt_contains_tenant_user_profiles_permissions_and_session() -> None:
     assert len(token_digest(token)) == 64
 
 
-@pytest.mark.parametrize("login_origin", ["web", "app_lider"])
+@pytest.mark.parametrize("login_origin", ["web", "app_lider", "pwa_lider"])
 def test_access_and_refresh_tokens_preserve_login_origin(login_origin: str) -> None:
     settings = Settings()
     expires_at = datetime.now(UTC) + timedelta(minutes=10)
@@ -89,6 +90,15 @@ def test_access_and_refresh_tokens_preserve_login_origin(login_origin: str) -> N
 
     assert decode_access_token(access_token, settings)["origem_login"] == login_origin
     assert decode_refresh_token(refresh_token, settings)["origem_login"] == login_origin
+
+
+def test_pwa_persistent_session_defaults_to_seven_days() -> None:
+    settings = Settings(refresh_token_days=7)
+    before = datetime.now(UTC) + timedelta(days=7)
+    expires_at = refresh_token_expiration(settings)
+    after = datetime.now(UTC) + timedelta(days=7)
+
+    assert before <= expires_at <= after
 
 
 def test_token_rejects_invalid_login_origin() -> None:

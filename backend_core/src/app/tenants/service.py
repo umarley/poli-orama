@@ -67,7 +67,10 @@ class TenantManagementService(TenantService):
             after=_tenant_snapshot(tenant),
         )
         await self.repository.commit()
-        return TenantResponse.model_validate(tenant)
+        persisted_tenant = await self.repository.get_by_id(tenant.id)
+        if persisted_tenant is None:
+            raise ResourceNotFoundError("Tenant", tenant.id)
+        return TenantResponse.model_validate(persisted_tenant)
 
     async def update(self, tenant_id: int, payload: TenantUpdate, actor_id: int) -> TenantResponse:
         tenant = await self.repository.get_by_id(tenant_id)
@@ -90,7 +93,10 @@ class TenantManagementService(TenantService):
             after=_tenant_snapshot(tenant),
         )
         await self.repository.commit()
-        return TenantResponse.model_validate(tenant)
+        persisted_tenant = await self.repository.get_by_id(tenant.id)
+        if persisted_tenant is None:
+            raise ResourceNotFoundError("Tenant", tenant.id)
+        return TenantResponse.model_validate(persisted_tenant)
 
     async def activate(self, tenant_id: int, actor_id: int) -> TenantResponse:
         tenant = await self.repository.get_by_id(tenant_id)

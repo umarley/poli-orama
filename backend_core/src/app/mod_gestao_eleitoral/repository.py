@@ -171,18 +171,174 @@ class GestaoEleitoralRepository:
         return ufs, sorted(set(municipios))
 
     async def list_elections(self, scope: TerritorialScope) -> list[dict[str, Any]]:
-        where, values = self._filters(ResultadoFilters(), scope, include_candidates=False)
-        return await self._all(
-            f"""
-            SELECT DISTINCT ON (re.aa_eleicao, re.cd_eleicao, re.nr_turno)
-                   re.aa_eleicao, re.cd_eleicao, re.nr_turno, re.ds_eleicao,
-                   re.nm_tipo_eleicao, to_char(re.dt_eleicao, 'YYYY-MM-DD') AS dt_eleicao
-            {self._from_clause(scope, geo=False)}
-            WHERE {where}
-            ORDER BY re.aa_eleicao DESC NULLS LAST, re.cd_eleicao, re.nr_turno
-            """,
-            values,
-        )
+        if scope.blocks_all:
+            return []
+        scope_filter, values = await self._election_scope_filter(scope)
+        if scope_filter is None:
+            return []
+        return await self._all(self._election_catalog_sql(scope_filter), values)
+
+    async def _election_scope_filter(
+        self, scope: TerritorialScope
+    ) -> tuple[str | None, dict[str, Any]]:
+        if scope.unrestricted:
+            return "", {}
+        predicates: list[str] = []
+        values: dict[str, Any] = {}
+        if scope.ufs:
+            predicates.append(
+                self._election_exists(
+                    "unnest(CAST(:scope_ufs AS text[])) AS uf(sigla)",
+                    "AND re.sg_uf = CAST(uf.sigla AS char(2))",
+                )
+            )
+            values["scope_ufs"] = scope.ufs
+        if scope.municipios_ibge:
+            rows = await self._all(
+                """
+                SELECT e.uf, m.codigo_tse
+                FROM global.municipio m
+                JOIN global.estado e ON e.codigo_ibge = m.codigo_uf_ibge
+                WHERE m.codigo_ibge = ANY(CAST(:ids AS INTEGER[]))
+                  AND m.codigo_tse IS NOT NULL
+                  AND e.uf IS NOT NULL
+                """,
+                {"ids": scope.municipios_ibge},
+            )
+            if rows:
+                predicates.append(
+                    self._election_exists(
+                        "unnest(CAST(:scope_mun_ufs AS text[]),"
+                        " CAST(:scope_mun_codigos AS integer[])) AS mun(uf, codigo)",
+                        "AND re.sg_uf = CAST(mun.uf AS char(2))"
+                        " AND re.cd_municipio = mun.codigo",
+                    )
+                )
+                values["scope_mun_ufs"] = [str(row["uf"]) for row in rows]
+                values["scope_mun_codigos"] = [int(row["codigo_tse"]) for row in rows]
+        if scope.zonas_ids:
+            rows = await self._all(
+                """
+                SELECT e.uf, m.codigo_tse, ze.numero_zona
+                FROM global.zona_eleitoral ze
+                JOIN global.municipio m ON m.codigo_ibge = ze.codigo_municipio_ibge
+                JOIN global.estado e ON e.codigo_ibge = m.codigo_uf_ibge
+                WHERE ze.id = ANY(CAST(:ids AS INTEGER[]))
+                  AND m.codigo_tse IS NOT NULL
+                  AND e.uf IS NOT NULL
+                  AND ze.numero_zona IS NOT NULL
+                """,
+                {"ids": scope.zonas_ids},
+            )
+            if rows:
+                predicates.append(
+                    self._election_exists(
+                        "unnest(CAST(:scope_zona_ufs AS text[]),"
+                        " CAST(:scope_zona_codigos AS integer[]),"
+                        " CAST(:scope_zona_numeros AS smallint[])) AS zona(uf, codigo, numero)",
+                        "AND re.sg_uf = CAST(zona.uf AS char(2))"
+                        " AND re.cd_municipio = zona.codigo"
+                        " AND re.nr_zona = zona.numero",
+                    )
+                )
+                values["scope_zona_ufs"] = [str(row["uf"]) for row in rows]
+                values["scope_zona_codigos"] = [int(row["codigo_tse"]) for row in rows]
+                values["scope_zona_numeros"] = [int(row["numero_zona"]) for row in rows]
+        if scope.secoes_ids:
+            rows = await self._all(
+                """
+                SELECT e.uf, m.codigo_tse, ze.numero_zona, se.numero_secao
+                FROM global.secao_eleitoral se
+                JOIN global.zona_eleitoral ze ON ze.id = se.zona_eleitoral_id
+                JOIN global.municipio m ON m.codigo_ibge = ze.codigo_municipio_ibge
+                JOIN global.estado e ON e.codigo_ibge = m.codigo_uf_ibge
+                WHERE se.id = ANY(CAST(:ids AS BIGINT[]))
+                  AND m.codigo_tse IS NOT NULL
+                  AND e.uf IS NOT NULL
+                  AND ze.numero_zona IS NOT NULL
+                  AND se.numero_secao IS NOT NULL
+                """,
+                {"ids": scope.secoes_ids},
+            )
+            if rows:
+                predicates.append(
+                    self._election_exists(
+                        "unnest(CAST(:scope_secao_ufs AS text[]),"
+                        " CAST(:scope_secao_codigos AS integer[]),"
+                        " CAST(:scope_secao_zonas AS smallint[]),"
+                        " CAST(:scope_secao_numeros AS smallint[]))"
+                        " AS secao(uf, codigo, zona, numero)",
+                        "AND re.sg_uf = CAST(secao.uf AS char(2))"
+                        " AND re.cd_municipio = secao.codigo"
+                        " AND re.nr_zona = secao.zona"
+                        " AND re.nr_secao = secao.numero",
+                    )
+                )
+                values["scope_secao_ufs"] = [str(row["uf"]) for row in rows]
+                values["scope_secao_codigos"] = [int(row["codigo_tse"]) for row in rows]
+                values["scope_secao_zonas"] = [int(row["numero_zona"]) for row in rows]
+                values["scope_secao_numeros"] = [int(row["numero_secao"]) for row in rows]
+        if not predicates:
+            return None, {}
+        return f"WHERE {' OR '.join(predicates)}", values
+
+    @staticmethod
+    def _election_exists(source_sql: str, match_sql: str) -> str:
+        return f"""EXISTS (
+              SELECT 1
+              FROM {source_sql}
+              CROSS JOIN LATERAL (
+                SELECT 1
+                FROM tse.resultados_eleicoes re
+                WHERE re.aa_eleicao = chaves.aa_eleicao
+                  AND re.cd_eleicao = chaves.cd_eleicao
+                  AND re.nr_turno = chaves.nr_turno
+                  {match_sql}
+                LIMIT 1
+              ) encontrado
+            )"""
+
+    @staticmethod
+    def _election_catalog_sql(scope_filter: str) -> str:
+        # O indice ix_resultados_eleicoes_eleicao_turno ja cobre
+        # (aa_eleicao, cd_eleicao, nr_turno). Cada passo abaixo salta
+        # para o proximo trio distinto em vez de ordenar a tabela inteira.
+        return f"""
+            WITH RECURSIVE chaves AS (
+              (
+                SELECT re.aa_eleicao, re.cd_eleicao, re.nr_turno,
+                       re.ds_eleicao, re.nm_tipo_eleicao, re.dt_eleicao
+                FROM tse.resultados_eleicoes re
+                WHERE re.aa_eleicao IS NOT NULL
+                  AND re.cd_eleicao IS NOT NULL
+                  AND re.nr_turno IS NOT NULL
+                ORDER BY re.aa_eleicao, re.cd_eleicao, re.nr_turno
+                LIMIT 1
+              )
+              UNION ALL
+              SELECT nxt.aa_eleicao, nxt.cd_eleicao, nxt.nr_turno,
+                     nxt.ds_eleicao, nxt.nm_tipo_eleicao, nxt.dt_eleicao
+              FROM chaves
+              JOIN LATERAL (
+                SELECT re.aa_eleicao, re.cd_eleicao, re.nr_turno,
+                       re.ds_eleicao, re.nm_tipo_eleicao, re.dt_eleicao
+                FROM tse.resultados_eleicoes re
+                WHERE re.aa_eleicao IS NOT NULL
+                  AND re.cd_eleicao IS NOT NULL
+                  AND re.nr_turno IS NOT NULL
+                  AND (re.aa_eleicao, re.cd_eleicao, re.nr_turno)
+                      > (chaves.aa_eleicao, chaves.cd_eleicao, chaves.nr_turno)
+                ORDER BY re.aa_eleicao, re.cd_eleicao, re.nr_turno
+                LIMIT 1
+              ) nxt ON TRUE
+            )
+            SELECT chaves.aa_eleicao, chaves.cd_eleicao, chaves.nr_turno,
+                   chaves.ds_eleicao, chaves.nm_tipo_eleicao,
+                   to_char(chaves.dt_eleicao, 'YYYY-MM-DD') AS dt_eleicao
+            FROM chaves
+            {scope_filter}
+            ORDER BY chaves.aa_eleicao DESC NULLS LAST, chaves.cd_eleicao, chaves.nr_turno
+            """
 
     async def search_candidates(
         self, filters: ResultadoFilters, scope: TerritorialScope, query: str, limit: int
