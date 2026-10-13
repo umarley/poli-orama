@@ -8,9 +8,14 @@ vi.mock('@/services/api/http-client', () => ({
 
 import {
   exportElectoralMap,
+  getElectoralComparison,
+  getElectoralDistribution,
+  getElectoralIndicators,
+  getElectoralRanking,
   getElectoralZoneMeshes,
   getElectoralZoneResults,
   getElectoralPanel,
+  listElectoralElections,
   omitElectoralFilters,
   searchElectoralCandidates,
   serializeElectoralParams,
@@ -96,6 +101,55 @@ describe('gestao-eleitoral-service', () => {
     expect(get).toHaveBeenCalledWith(
       '/api/v1/gestao-eleitoral/painel',
       expect.objectContaining({ timeout: 60_000 }),
+    );
+  });
+
+  it('carrega os blocos progressivos em endpoints independentes', async () => {
+    get.mockResolvedValue({ data: [] });
+    const filters = { eleicao_chaves: ['2024:1:1'], ds_cargo: ['Prefeito'] };
+
+    await getElectoralIndicators(filters);
+    await getElectoralRanking(filters, 15);
+    await getElectoralComparison(filters);
+    await getElectoralDistribution('municipio', filters, 2, 12, true);
+
+    expect(get).toHaveBeenNthCalledWith(
+      1,
+      '/api/v1/gestao-eleitoral/indicadores',
+      expect.objectContaining({ params: filters, timeout: 60_000 }),
+    );
+    expect(get).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/gestao-eleitoral/ranking',
+      expect.objectContaining({
+        params: { ...filters, limit: 15 },
+        timeout: 60_000,
+      }),
+    );
+    expect(get).toHaveBeenNthCalledWith(
+      3,
+      '/api/v1/gestao-eleitoral/comparativo',
+      expect.objectContaining({ params: filters, timeout: 60_000 }),
+    );
+    expect(get).toHaveBeenNthCalledWith(
+      4,
+      '/api/v1/gestao-eleitoral/distribuicao/municipio',
+      expect.objectContaining({
+        params: { ...filters, page: 2, page_size: 12, por_candidato: true },
+        timeout: 60_000,
+      }),
+    );
+  });
+
+  it('encaminha AbortSignal nas leituras', async () => {
+    get.mockResolvedValueOnce({ data: [] });
+    const controller = new AbortController();
+
+    await listElectoralElections(controller.signal);
+
+    expect(get).toHaveBeenCalledWith(
+      '/api/v1/gestao-eleitoral/filtros/eleicoes',
+      expect.objectContaining({ signal: controller.signal }),
     );
   });
 

@@ -3,7 +3,12 @@ from pydantic import ValidationError
 
 from jobs.config import Settings
 from jobs.database import normalize_database_url
-from jobs.tasks import enqueue_completeness, recalculate_completeness
+from jobs.election_rollups import ElectionKey, ElectionRollupProcessor
+from jobs.tasks import (
+    enqueue_completeness,
+    process_pending_election_rollups,
+    recalculate_completeness,
+)
 
 
 def test_normalizes_backend_async_database_url() -> None:
@@ -28,3 +33,20 @@ def test_completeness_schedule_settings_validate_limits() -> None:
 
     with pytest.raises(ValidationError):
         Settings(completeness_job_batch_size=0)
+
+
+def test_election_rollup_task_and_lock_key_are_stable() -> None:
+    assert process_pending_election_rollups.name == "jobs.election_rollups.process_pending"
+    key = ElectionKey(aa_eleicao=2024, cd_eleicao=619, nr_turno=1)
+    assert key.lock_name == "tse-rollup:2024:619:1"
+
+
+def test_election_rollup_settings_and_backfill_filter() -> None:
+    settings = Settings(election_rollup_job_batch_size=100)
+    assert settings.election_rollup_job_batch_size == 100
+    with pytest.raises(ValidationError):
+        Settings(election_rollup_job_batch_size=0)
+
+    where, parameters = ElectionRollupProcessor._backfill_filter(2024, 619)
+    assert where == "WHERE aa_eleicao = %s AND cd_eleicao = %s"
+    assert parameters == (2024, 619)

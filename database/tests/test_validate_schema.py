@@ -64,6 +64,29 @@ class ValidateSchemaTests(unittest.TestCase):
         self.assertIn("nr_votavel", sql)
         self.assertIn("qt_votos", sql)
 
+    def test_election_rollup_migration_is_versioned_and_atomic(self) -> None:
+        migration = DEFAULT_MIGRATION.parent / "073 - rollup_resultados_eleitorais.sql"
+        expected = parse_expected_structure(migration.read_text(encoding="utf-8"))
+        sql = migration.read_text(encoding="utf-8")
+
+        expected_tables = {
+            ("tse", "resultado_rollup_controle"),
+            ("tse", "resultado_rollup_catalogo"),
+            ("tse", "resultado_rollup_localidade"),
+            ("tse", "resultado_rollup_municipio_candidato"),
+            ("tse", "resultado_rollup_zona_candidato"),
+            ("tse", "resultado_rollup_local_candidato"),
+            ("tse", "resultado_rollup_secao_candidato"),
+        }
+        self.assertTrue(expected_tables.issubset(expected.tables))
+        self.assertIn("CREATE OR REPLACE FUNCTION tse.fn_refresh_resultado_rollup", sql)
+        self.assertNotIn("\nCREATE INDEX CONCURRENTLY", sql)
+        self.assertIn("IF v_rollup_votes <> v_source_votes", sql)
+        self.assertLess(
+            sql.index("SET active_generation = v_generation"),
+            sql.index("DELETE FROM tse.resultado_rollup_secao_candidato"),
+        )
+
     def test_gestao_eleitoral_migration_grants_permission_to_campaign_managers(self) -> None:
         migration = DEFAULT_MIGRATION.parent / "054 - gestao_eleitoral_permissoes.sql"
         sql = migration.read_text(encoding="utf-8")

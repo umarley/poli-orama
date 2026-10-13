@@ -1,6 +1,6 @@
 from typing import Annotated, Literal, TypeVar
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.access import (
@@ -15,12 +15,14 @@ from app.mod_gestao_eleitoral.schemas import (
     CandidateOption,
     ElectionOption,
     ElectoralZoneResult,
+    IndicatorSummary,
     MapExportRequest,
     MapResponse,
     NamedOption,
     NumericOption,
     PaginatedDistribution,
     PanelResponse,
+    RankingItem,
     ResultadoFilters,
 )
 from app.mod_gestao_eleitoral.service import GestaoEleitoralService
@@ -36,9 +38,12 @@ Access = Annotated[TerritorialAccess, Depends(get_territorial_access)]
 
 
 def get_service(
+    request: Request,
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> GestaoEleitoralService:
-    return GestaoEleitoralService(GestaoEleitoralRepository(session))
+    return GestaoEleitoralService(
+        GestaoEleitoralRepository(session), cache=getattr(request.app.state, "cache", None)
+    )
 
 
 T = TypeVar("T")
@@ -62,10 +67,11 @@ def filters(
     nr_local_votacao: Annotated[list[int] | None, Query()] = None,
     nr_secao: Annotated[list[int] | None, Query()] = None,
 ) -> ResultadoFilters:
+    uf_items: list[str] = as_list(sg_uf)
     return ResultadoFilters(
         eleicao_chaves=as_list(eleicao_chaves),
         nm_votaveis=as_list(nm_votaveis),
-        sg_uf=[item.upper() for item in as_list(sg_uf) if item],
+        sg_uf=[item.upper() for item in uf_items if item],
         cd_municipio=as_list(cd_municipio),
         ds_cargo=as_list(ds_cargo),
         nr_zona=as_list(nr_zona),
@@ -141,6 +147,31 @@ async def panel(actor: Viewer, access: Access, service: Service, query: Filter) 
     return await service.panel(actor, access, query)
 
 
+@router.get("/indicadores", response_model=IndicatorSummary)
+async def indicators(
+    actor: Viewer, access: Access, service: Service, query: Filter
+) -> IndicatorSummary:
+    return await service.indicators(actor, access, query)
+
+
+@router.get("/ranking", response_model=list[RankingItem])
+async def ranking(
+    actor: Viewer,
+    access: Access,
+    service: Service,
+    query: Filter,
+    limit: Annotated[int, Query(ge=1, le=200)] = 80,
+) -> list[RankingItem]:
+    return await service.ranking(actor, access, query, limit=limit)
+
+
+@router.get("/comparativo", response_model=list[RankingItem])
+async def comparison(
+    actor: Viewer, access: Access, service: Service, query: Filter
+) -> list[RankingItem]:
+    return await service.comparison(actor, access, query)
+
+
 @router.get("/mapa", response_model=MapResponse)
 async def map_points(
     actor: Viewer,
@@ -211,5 +242,14 @@ async def distribution(
     query: Filter,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=5, le=100)] = 20,
+    por_candidato: bool = False,
 ) -> PaginatedDistribution:
-    return await service.paginated_distribution(actor, access, query, dimensao, page, page_size)
+    return await service.paginated_distribution(
+        actor,
+        access,
+        query,
+        dimensao,
+        page,
+        page_size,
+        by_candidate=por_candidato,
+    )

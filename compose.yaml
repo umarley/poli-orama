@@ -8,6 +8,9 @@ services:
       ENVIRONMENT: local
       LOG_LEVEL: INFO
       DATABASE_URL: ${API_DATABASE_URL:-postgresql+asyncpg://app_inteligencia:troque_esta_senha@postgres:5432/inteligencia_politica}
+      REDIS_CACHE_ENABLED: ${REDIS_CACHE_ENABLED:-true}
+      REDIS_CACHE_URL: ${REDIS_CACHE_URL:-redis://redis:6379/2}
+      REDIS_CACHE_TTL: ${REDIS_CACHE_TTL:-900}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173,http://localhost:4321,http://127.0.0.1:4321}
       JWT_SECRET: ${JWT_SECRET:-local-compose-jwt-secret-change-before-production}
       MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:-local-compose-mfa-key-change-before-production}
@@ -42,6 +45,9 @@ services:
     restart: unless-stopped
     volumes:
       - file_storage:/data/arquivos
+    depends_on:
+      redis:
+        condition: service_healthy
 
   frontend:
     build:

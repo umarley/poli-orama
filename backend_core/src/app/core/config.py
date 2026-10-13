@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     database_pool_size: int = Field(default=5, ge=1)
     database_max_overflow: int = Field(default=10, ge=0)
     celery_broker_url: str = "redis://localhost:6379/0"
+    redis_cache_url: str = "redis://localhost:6379/2"
+    redis_cache_ttl: int = Field(default=900, ge=1)
+    redis_cache_enabled: bool = True
     import_storage_path: str = "../data/importacoes"
     import_max_file_mb: int = Field(default=25, ge=1, le=250)
     storage_provider: Literal["local", "s3", "seaweedfs"] = "local"

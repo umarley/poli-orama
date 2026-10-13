@@ -62,5 +62,10 @@ if settings.scheduled_reports_enabled:
         "task": "jobs.dashboard.enqueue_scheduled_reports",
         "schedule": crontab(hour=settings.scheduled_reports_hour, minute=0),
     }
+if settings.election_rollup_job_enabled:
+    beat_schedule["resultados-eleitorais-rollup"] = {
+        "task": "jobs.election_rollups.process_pending",
+        "schedule": settings.election_rollup_job_interval_minutes * 60,
+    }
 if beat_schedule:
     celery_app.conf.beat_schedule = beat_schedule

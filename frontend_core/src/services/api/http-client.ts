@@ -70,6 +70,8 @@ httpClient.interceptors.request.use(async (config) => {
 httpClient.interceptors.response.use(
   (response) => response,
   async (error: unknown) => {
+    if (axios.isCancel(error)) return Promise.reject(error);
+
     const normalizedError = normalizeApiError(error);
     const request = axios.isAxiosError(error)
       ? (error.config as RetryableRequest | undefined)

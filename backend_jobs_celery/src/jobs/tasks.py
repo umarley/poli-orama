@@ -7,6 +7,7 @@ from jobs.celery_app import celery_app
 from jobs.config import get_settings
 from jobs.dashboard import DashboardProcessor
 from jobs.demands import DemandDeadlineProcessor
+from jobs.election_rollups import ElectionRollupProcessor
 from jobs.files import FileExtractionProcessor
 from jobs.imports import ImportProcessor
 from jobs.repository import JobRepository
@@ -17,6 +18,14 @@ from jobs.service import (
     execute_goals_job,
     execute_test_job,
 )
+
+
+@celery_app.task(name="jobs.election_rollups.process_pending")  # type: ignore[untyped-decorator]
+def process_pending_election_rollups() -> dict[str, int]:
+    settings = get_settings()
+    return ElectionRollupProcessor(settings.jobs_database_url).process_pending(
+        settings.election_rollup_job_batch_size
+    )
 
 
 @celery_app.task(

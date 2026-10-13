@@ -7,12 +7,14 @@ import type {
   ElectionOption,
   ElectoralFilters,
   ElectoralMap,
+  IndicatorSummary,
   ElectoralPanel,
   ElectoralZoneResult,
   MapMode,
   NamedOption,
   NumericOption,
   PaginatedDistribution,
+  RankingItem,
 } from './types';
 
 const base = '/api/v1/gestao-eleitoral';
@@ -66,78 +68,123 @@ export function serializeElectoralParams(
   };
 }
 
-export async function listElectoralElections() {
-  const { data } = await httpClient.get<ElectionOption[]>(`${base}/filtros/eleicoes`, slowRequest);
-  return data;
-}
-
-export async function searchElectoralCandidates(filters: ElectoralFilters, q: string) {
-  const { data } = await httpClient.get<CandidateOption[]>(`${base}/filtros/candidatos`, {
-    ...serializeElectoralParams(filters, { q }),
+export async function listElectoralElections(signal?: AbortSignal) {
+  const { data } = await httpClient.get<ElectionOption[]>(`${base}/filtros/eleicoes`, {
+    ...slowRequest,
+    signal,
   });
   return data;
 }
 
-export async function listElectoralStates(filters: ElectoralFilters) {
-  const { data } = await httpClient.get<NamedOption[]>(
-    `${base}/filtros/estados`,
-    serializeElectoralParams(filters),
-  );
+export async function searchElectoralCandidates(
+  filters: ElectoralFilters,
+  q: string,
+  signal?: AbortSignal,
+) {
+  const { data } = await httpClient.get<CandidateOption[]>(`${base}/filtros/candidatos`, {
+    ...serializeElectoralParams(filters, { q }),
+    signal,
+  });
   return data;
 }
 
-export async function listElectoralMunicipalities(filters: ElectoralFilters) {
-  const { data } = await httpClient.get<NumericOption[]>(
-    `${base}/filtros/municipios`,
-    serializeElectoralParams(filters),
-  );
+export async function listElectoralStates(filters: ElectoralFilters, signal?: AbortSignal) {
+  const { data } = await httpClient.get<NamedOption[]>(`${base}/filtros/estados`, {
+    ...serializeElectoralParams(filters),
+    signal,
+  });
   return data;
 }
 
-export async function listElectoralOffices(filters: ElectoralFilters) {
-  const { data } = await httpClient.get<NamedOption[]>(
-    `${base}/filtros/cargos`,
-    serializeElectoralParams(filters),
-  );
+export async function listElectoralMunicipalities(filters: ElectoralFilters, signal?: AbortSignal) {
+  const { data } = await httpClient.get<NumericOption[]>(`${base}/filtros/municipios`, {
+    ...serializeElectoralParams(filters),
+    signal,
+  });
   return data;
 }
 
-export async function listElectoralZones(filters: ElectoralFilters) {
-  const { data } = await httpClient.get<NumericOption[]>(
-    `${base}/filtros/zonas`,
-    serializeElectoralParams(filters),
-  );
+export async function listElectoralOffices(filters: ElectoralFilters, signal?: AbortSignal) {
+  const { data } = await httpClient.get<NamedOption[]>(`${base}/filtros/cargos`, {
+    ...serializeElectoralParams(filters),
+    signal,
+  });
   return data;
 }
 
-export async function listElectoralPollingPlaces(filters: ElectoralFilters) {
-  const { data } = await httpClient.get<NumericOption[]>(
-    `${base}/filtros/locais`,
-    serializeElectoralParams(filters),
-  );
+export async function listElectoralZones(filters: ElectoralFilters, signal?: AbortSignal) {
+  const { data } = await httpClient.get<NumericOption[]>(`${base}/filtros/zonas`, {
+    ...serializeElectoralParams(filters),
+    signal,
+  });
   return data;
 }
 
-export async function listElectoralSections(filters: ElectoralFilters) {
-  const { data } = await httpClient.get<NumericOption[]>(
-    `${base}/filtros/secoes`,
-    serializeElectoralParams(filters),
-  );
+export async function listElectoralPollingPlaces(filters: ElectoralFilters, signal?: AbortSignal) {
+  const { data } = await httpClient.get<NumericOption[]>(`${base}/filtros/locais`, {
+    ...serializeElectoralParams(filters),
+    signal,
+  });
   return data;
 }
 
-export async function getElectoralPanel(filters: ElectoralFilters) {
+export async function listElectoralSections(filters: ElectoralFilters, signal?: AbortSignal) {
+  const { data } = await httpClient.get<NumericOption[]>(`${base}/filtros/secoes`, {
+    ...serializeElectoralParams(filters),
+    signal,
+  });
+  return data;
+}
+
+export async function getElectoralPanel(filters: ElectoralFilters, signal?: AbortSignal) {
   const { data } = await httpClient.get<ElectoralPanel>(`${base}/painel`, {
     ...serializeElectoralParams(filters),
     ...slowRequest,
+    signal,
   });
   return data;
 }
 
-export async function getElectoralMap(filters: ElectoralFilters, modo: MapMode) {
+export async function getElectoralIndicators(filters: ElectoralFilters, signal?: AbortSignal) {
+  const { data } = await httpClient.get<IndicatorSummary>(`${base}/indicadores`, {
+    ...serializeElectoralParams(filters),
+    ...slowRequest,
+    signal,
+  });
+  return data;
+}
+
+export async function getElectoralRanking(
+  filters: ElectoralFilters,
+  limit = 80,
+  signal?: AbortSignal,
+) {
+  const { data } = await httpClient.get<RankingItem[]>(`${base}/ranking`, {
+    ...serializeElectoralParams(filters, { limit }),
+    ...slowRequest,
+    signal,
+  });
+  return data;
+}
+
+export async function getElectoralComparison(filters: ElectoralFilters, signal?: AbortSignal) {
+  const { data } = await httpClient.get<RankingItem[]>(`${base}/comparativo`, {
+    ...serializeElectoralParams(filters),
+    ...slowRequest,
+    signal,
+  });
+  return data;
+}
+
+export async function getElectoralMap(
+  filters: ElectoralFilters,
+  modo: MapMode,
+  signal?: AbortSignal,
+) {
   const { data } = await httpClient.get<ElectoralMap>(`${base}/mapa`, {
     ...serializeElectoralParams(filters, { modo }),
     ...slowRequest,
+    signal,
   });
   return data;
 }
@@ -160,7 +207,11 @@ export async function exportElectoralMap(
   URL.revokeObjectURL(url);
 }
 
-export async function getElectoralZoneMeshes(filters: ElectoralFilters, bounds: MapBounds) {
+export async function getElectoralZoneMeshes(
+  filters: ElectoralFilters,
+  bounds: MapBounds,
+  signal?: AbortSignal,
+) {
   const { data } = await httpClient.get<ElectoralZoneMesh[]>(
     `${base}/mapa/zonas-eleitorais/malhas`,
     {
@@ -171,17 +222,19 @@ export async function getElectoralZoneMeshes(filters: ElectoralFilters, bounds: 
         leste: bounds.east,
       }),
       ...slowRequest,
+      signal,
     },
   );
   return data;
 }
 
-export async function getElectoralZoneResults(filters: ElectoralFilters) {
+export async function getElectoralZoneResults(filters: ElectoralFilters, signal?: AbortSignal) {
   const { data } = await httpClient.get<ElectoralZoneResult[]>(
     `${base}/mapa/zonas-eleitorais/resultados`,
     {
       ...serializeElectoralParams(filters),
       ...slowRequest,
+      signal,
     },
   );
   return data;
@@ -192,12 +245,19 @@ export async function getElectoralDistribution(
   filters: ElectoralFilters,
   page: number,
   pageSize: number,
+  byCandidate = false,
+  signal?: AbortSignal,
 ) {
   const { data } = await httpClient.get<PaginatedDistribution>(
     `${base}/distribuicao/${dimension}`,
     {
-      ...serializeElectoralParams(filters, { page, page_size: pageSize }),
+      ...serializeElectoralParams(filters, {
+        page,
+        page_size: pageSize,
+        por_candidato: byCandidate,
+      }),
       ...slowRequest,
+      signal,
     },
   );
   return data;

@@ -4,6 +4,7 @@ from typing import Any
 from celery.result import AsyncResult
 
 from jobs.config import get_settings
+from jobs.election_rollups import ElectionRollupProcessor
 from jobs.repository import JobRecord, JobRepository
 from jobs.tasks import recalculate_completeness, test_job
 
@@ -112,6 +113,20 @@ def enqueue_completeness(
     return 0 if job.status == "concluido" else 1
 
 
+def election_rollup_backfill(
+    *, aa_eleicao: int | None, cd_eleicao: int | None, confirm: bool
+) -> int:
+    processor = ElectionRollupProcessor(get_settings().jobs_database_url)
+    total = processor.count_backfill_candidates(aa_eleicao=aa_eleicao, cd_eleicao=cd_eleicao)
+    print(f"chaves_encontradas={total}")
+    if not confirm:
+        print("Simulacao: use --confirm para marcar essas chaves como pending.")
+        return 0
+    marked = processor.mark_backfill_pending(aa_eleicao=aa_eleicao, cd_eleicao=cd_eleicao)
+    print(f"chaves_marcadas={marked}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Operacoes do worker Celery.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -132,6 +147,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     status = subparsers.add_parser("status", help="Consulta um job persistido.")
     status.add_argument("job_id", type=int)
+    rollup = subparsers.add_parser(
+        "election-rollup-backfill",
+        help="Lista ou marca rollups eleitorais para backfill; nao executa o refresh.",
+    )
+    rollup.add_argument("--aa-eleicao", type=int)
+    rollup.add_argument("--cd-eleicao", type=int)
+    rollup.add_argument(
+        "--confirm",
+        action="store_true",
+        help="Confirma a marcacao; sem esta opcao o comando e somente leitura.",
+    )
     return parser
 
 
@@ -151,6 +177,12 @@ def main(argv: list[str] | None = None) -> int:
             batch_size=args.batch_size,
             wait=args.wait,
             timeout=args.timeout,
+        )
+    if args.command == "election-rollup-backfill":
+        return election_rollup_backfill(
+            aa_eleicao=args.aa_eleicao,
+            cd_eleicao=args.cd_eleicao,
+            confirm=args.confirm,
         )
     return 2
 

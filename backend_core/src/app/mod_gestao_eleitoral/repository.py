@@ -48,6 +48,7 @@ class TerritorialScope:
 class GestaoEleitoralRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+        self._generation_cache: dict[tuple[str, ...], dict[str, int] | None] = {}
 
     async def _all(self, query: str, values: dict[str, Any]) -> list[dict[str, Any]]:
         rows = (await self.session.execute(text(query), values)).mappings()
@@ -59,6 +60,135 @@ class GestaoEleitoralRepository:
 
     async def commit(self) -> None:
         await self.session.commit()
+
+    @staticmethod
+    def _election_keys(filters: ResultadoFilters) -> list[tuple[int, int, int]] | None:
+        keys: list[tuple[int, int, int]] = []
+        for key in filters.eleicao_chaves:
+            parts = str(key).split(":")
+            if len(parts) != 3:
+                return None
+            try:
+                keys.append(tuple(int(part) for part in parts))  # type: ignore[arg-type]
+            except ValueError:
+                return None
+        return sorted(set(keys)) or None
+
+    async def active_rollup_generations(
+        self, filters: ResultadoFilters
+    ) -> dict[str, int] | None:
+        """Return generations only when every requested election is ready."""
+        cache_key = tuple(sorted(set(filters.eleicao_chaves)))
+        if cache_key in self._generation_cache:
+            return self._generation_cache[cache_key]
+        keys = self._election_keys(filters)
+        if not keys:
+            self._generation_cache[cache_key] = None
+            return None
+        rows_sql: list[str] = []
+        values: dict[str, Any] = {}
+        for index, (year, code, turn) in enumerate(keys):
+            rows_sql.append(
+                f"(CAST(:rollup_aa_{index} AS smallint), "
+                f"CAST(:rollup_cd_{index} AS integer), "
+                f"CAST(:rollup_turno_{index} AS smallint))"
+            )
+            values[f"rollup_aa_{index}"] = year
+            values[f"rollup_cd_{index}"] = code
+            values[f"rollup_turno_{index}"] = turn
+        rows = await self._all(
+            f"""
+            WITH selecionadas (aa_eleicao, cd_eleicao, nr_turno) AS (
+              VALUES {", ".join(rows_sql)}
+            )
+            SELECT s.aa_eleicao, s.cd_eleicao, s.nr_turno, c.active_generation
+            FROM selecionadas s
+            JOIN tse.resultado_rollup_controle c USING (aa_eleicao, cd_eleicao, nr_turno)
+            WHERE c.status = 'ready' AND c.active_generation IS NOT NULL
+            """,
+            values,
+        )
+        generations = {
+            f"{row['aa_eleicao']}:{row['cd_eleicao']}:{row['nr_turno']}": int(
+                row["active_generation"]
+            )
+            for row in rows
+        }
+        result = generations if len(generations) == len(keys) else None
+        self._generation_cache[cache_key] = result
+        return result
+
+    async def rollup_generation_fingerprint(self, filters: ResultadoFilters) -> str:
+        generations = await self.active_rollup_generations(filters)
+        if not generations:
+            return "raw"
+        return ",".join(f"{key}={generations[key]}" for key in sorted(generations))
+
+    @staticmethod
+    def _required_level(
+        filters: ResultadoFilters, scope: TerritorialScope, requested: str
+    ) -> str:
+        levels = {"municipio": 0, "zona": 1, "local": 2, "secao": 3}
+        required = levels[requested]
+        if filters.nr_secao or scope.secoes_ids:
+            required = 3
+        elif filters.nr_local_votacao:
+            required = max(required, 2)
+        elif filters.nr_zona or scope.zonas_ids:
+            required = max(required, 1)
+        names = ("municipio", "zona", "local", "secao")
+        return names[required]
+
+    async def _analytical_from(
+        self,
+        filters: ResultadoFilters,
+        scope: TerritorialScope,
+        requested: str,
+        *,
+        geo: bool = False,
+    ) -> tuple[str, bool]:
+        if await self.active_rollup_generations(filters) is None:
+            return self._from_clause(scope, geo=geo), False
+        level = self._required_level(filters, scope, requested)
+        table = {
+            "municipio": "tse.resultado_rollup_municipio_candidato",
+            "zona": "tse.resultado_rollup_zona_candidato",
+            "local": "tse.resultado_rollup_local_candidato",
+            "secao": "tse.resultado_rollup_secao_candidato",
+        }[level]
+        joins = """
+        JOIN tse.resultado_rollup_controle rc
+          ON rc.aa_eleicao = re.aa_eleicao
+         AND rc.cd_eleicao = re.cd_eleicao
+         AND rc.nr_turno = re.nr_turno
+         AND rc.status = 'ready'
+         AND rc.active_generation = re.generation
+        """
+        needs_geo = geo or bool(scope.municipios_ibge or scope.zonas_ids or scope.secoes_ids)
+        if needs_geo:
+            joins += """
+            LEFT JOIN global.municipio m ON m.codigo_tse = re.cd_municipio
+            """
+        if needs_geo and level in {"zona", "local", "secao"}:
+            joins += """
+            LEFT JOIN global.zona_eleitoral ze
+              ON ze.codigo_municipio_ibge = m.codigo_ibge
+             AND ze.numero_zona = re.nr_zona
+            """
+        if needs_geo and level == "secao":
+            joins += """
+            LEFT JOIN global.secao_eleitoral se
+              ON se.zona_eleitoral_id = ze.id
+             AND se.numero_secao = re.nr_secao
+            LEFT JOIN global.local_votacao lv ON lv.id = se.local_votacao_id
+            """
+        elif needs_geo and level == "local":
+            joins += """
+            LEFT JOIN global.local_votacao lv
+              ON lv.zona_eleitoral_id = ze.id
+             AND lv.codigo_local = re.nr_local_votacao
+            """
+        return f"FROM {table} re {joins}", True
 
     def _filters(
         self,
@@ -117,20 +247,20 @@ class GestaoEleitoralRepository:
             if scope.blocks_all:
                 clauses.append("FALSE")
             else:
-                parts: list[str] = []
+                scope_parts: list[str] = []
                 if scope.ufs:
-                    parts.append("re.sg_uf = ANY(:scope_ufs)")
+                    scope_parts.append("re.sg_uf = ANY(:scope_ufs)")
                     values["scope_ufs"] = scope.ufs
                 if scope.municipios_ibge:
-                    parts.append("m.codigo_ibge = ANY(:scope_municipios)")
+                    scope_parts.append("m.codigo_ibge = ANY(:scope_municipios)")
                     values["scope_municipios"] = scope.municipios_ibge
                 if scope.zonas_ids:
-                    parts.append("ze.id = ANY(:scope_zonas)")
+                    scope_parts.append("ze.id = ANY(:scope_zonas)")
                     values["scope_zonas"] = scope.zonas_ids
                 if scope.secoes_ids:
-                    parts.append("se.id = ANY(:scope_secoes)")
+                    scope_parts.append("se.id = ANY(:scope_secoes)")
                     values["scope_secoes"] = scope.secoes_ids
-                clauses.append(f"({' OR '.join(parts)})" if parts else "FALSE")
+                clauses.append(f"({' OR '.join(scope_parts)})" if scope_parts else "FALSE")
         return (" AND ".join(clauses) if clauses else "TRUE"), values
 
     def _from_clause(self, scope: TerritorialScope, *, geo: bool) -> str:
@@ -576,11 +706,17 @@ class GestaoEleitoralRepository:
         self, filters: ResultadoFilters, scope: TerritorialScope
     ) -> list[dict[str, Any]]:
         where, values = self._filters(filters, scope)
+        source, rollup = await self._analytical_from(filters, scope, "municipio", geo=True)
+        name_expr = (
+            "COALESCE(MAX(m.nome), re.cd_municipio::text)"
+            if rollup
+            else "COALESCE(MAX(m.nome), MAX(re.nm_municipio), re.cd_municipio::text)"
+        )
         return await self._all(
             f"""
             SELECT re.cd_municipio AS valor,
-                   COALESCE(MAX(m.nome), MAX(re.nm_municipio), re.cd_municipio::text) AS rotulo
-            {BASE_FROM}
+                   {name_expr} AS rotulo
+            {source}
             WHERE {where}
               AND re.cd_municipio IS NOT NULL
             GROUP BY re.cd_municipio
@@ -690,11 +826,12 @@ class GestaoEleitoralRepository:
         self, filters: ResultadoFilters, scope: TerritorialScope
     ) -> list[dict[str, Any]]:
         where, values = self._filters(filters, scope)
+        source, _ = await self._analytical_from(filters, scope, "zona")
         return await self._all(
             f"""
             SELECT re.nr_zona AS valor,
                    CONCAT('Zona ', re.nr_zona) AS rotulo
-            {BASE_FROM}
+            {source}
             WHERE {where}
               AND re.nr_zona IS NOT NULL
             GROUP BY re.nr_zona
@@ -708,14 +845,21 @@ class GestaoEleitoralRepository:
         self, filters: ResultadoFilters, scope: TerritorialScope
     ) -> list[dict[str, Any]]:
         where, values = self._filters(filters, scope)
+        source, rollup = await self._analytical_from(filters, scope, "local", geo=True)
+        name_expr = (
+            "COALESCE(MAX(lv.nome), CONCAT('Local ', re.nr_local_votacao))"
+            if rollup
+            else "COALESCE(MAX(lv.nome), MAX(re.nm_local_votacao),"
+            " CONCAT('Local ', re.nr_local_votacao))"
+        )
         return await self._all(
             f"""
             SELECT re.nr_local_votacao AS valor,
-                   COALESCE(MAX(lv.nome), MAX(re.nm_local_votacao),
-                            CONCAT('Local ', re.nr_local_votacao)) AS rotulo
-            {BASE_FROM}
+                   {name_expr} AS rotulo
+            {source}
             WHERE {where}
               AND re.nr_local_votacao IS NOT NULL
+              {"AND re.nr_local_votacao <> -1" if rollup else ""}
             GROUP BY re.nr_local_votacao
             ORDER BY 2
             LIMIT 300
@@ -727,11 +871,12 @@ class GestaoEleitoralRepository:
         self, filters: ResultadoFilters, scope: TerritorialScope
     ) -> list[dict[str, Any]]:
         where, values = self._filters(filters, scope)
+        source, _ = await self._analytical_from(filters, scope, "secao")
         return await self._all(
             f"""
             SELECT re.nr_secao AS valor,
                    CONCAT('Seção ', re.nr_secao) AS rotulo
-            {BASE_FROM}
+            {source}
             WHERE {where}
               AND re.nr_secao IS NOT NULL
             GROUP BY re.nr_secao
@@ -745,6 +890,7 @@ class GestaoEleitoralRepository:
         self, filters: ResultadoFilters, scope: TerritorialScope
     ) -> dict[str, Any]:
         where, values = self._filters(filters, scope)
+        source, _ = await self._analytical_from(filters, scope, "secao")
         return await self._one(
             f"""
             SELECT
@@ -756,7 +902,7 @@ class GestaoEleitoralRepository:
               COUNT(DISTINCT (re.sg_uf, re.nr_zona))::int AS zonas,
               COUNT(DISTINCT (re.cd_municipio, re.nr_zona, re.nr_local_votacao))::int AS locais,
               COUNT(DISTINCT (re.cd_municipio, re.nr_zona, re.nr_secao))::int AS secoes
-            {BASE_FROM}
+            {source}
             WHERE {where}
             """,
             values,
@@ -767,12 +913,13 @@ class GestaoEleitoralRepository:
     ) -> list[dict[str, Any]]:
         where, values = self._filters(filters, scope)
         values["limit"] = limit
+        source, _ = await self._analytical_from(filters, scope, "municipio")
         return await self._all(
             f"""
             SELECT re.nm_votavel,
                    MIN(re.nr_votavel) AS nr_votavel,
                    SUM(re.qt_votos)::bigint AS votos
-            {self._from_clause(scope, geo=False)}
+            {source}
             WHERE {where}
               AND {CANDIDATE_ONLY}
             GROUP BY re.nm_votavel
@@ -788,12 +935,13 @@ class GestaoEleitoralRepository:
         if not filters.votaveis:
             return []
         where, values = self._filters(filters, scope)
+        source, _ = await self._analytical_from(filters, scope, "municipio")
         return await self._all(
             f"""
             SELECT re.nm_votavel,
                    MIN(re.nr_votavel) AS nr_votavel,
                    SUM(re.qt_votos)::bigint AS votos
-            {BASE_FROM}
+            {source}
             WHERE {where}
             GROUP BY re.nm_votavel
             ORDER BY votos DESC, re.nm_votavel
@@ -810,7 +958,7 @@ class GestaoEleitoralRepository:
         page: int,
         page_size: int,
         by_candidate: bool = False,
-    ) -> tuple[list[dict[str, Any]], int]:
+    ) -> tuple[list[dict[str, Any]], int, int]:
         expressions = {
             "municipio": (
                 "COALESCE(MAX(m.nome), MAX(re.nm_municipio), re.cd_municipio::text)",
@@ -840,14 +988,26 @@ class GestaoEleitoralRepository:
                 " AS local_votacao, re.nr_secao AS secao",
             ),
         }
-        label_expr, group_expr, extra = expressions[dimension]
         where, values = self._filters(filters, scope)
+        source, rollup = await self._analytical_from(filters, scope, dimension, geo=True)
+        label_expr, group_expr, extra = expressions[dimension]
+        if rollup:
+            label_expr = label_expr.replace("MAX(re.nm_municipio)", "NULL::text")
+            label_expr = label_expr.replace("MAX(re.nm_local_votacao)", "NULL::text")
+            extra = extra.replace("re.nm_municipio", "NULL::text")
+            extra = extra.replace("MAX(re.nm_local_votacao)", "NULL::text")
+            if dimension == "local":
+                group_expr = "NULLIF(re.nr_local_votacao, -1)"
         values["limit"] = page_size
         values["offset"] = (page - 1) * page_size
         group_by = {
             "municipio": "re.cd_municipio",
             "zona": "re.nr_zona",
-            "local": "re.nr_zona, re.nr_local_votacao",
+            "local": (
+                "re.nr_zona, NULLIF(re.nr_local_votacao, -1)"
+                if rollup
+                else "re.nr_zona, re.nr_local_votacao"
+            ),
             "secao": "re.nr_zona, re.nr_local_votacao, re.nr_secao",
         }[dimension]
         if by_candidate:
@@ -862,7 +1022,7 @@ class GestaoEleitoralRepository:
                          SUM(SUM(re.qt_votos)) OVER (
                            PARTITION BY {group_by}
                          )::bigint AS votos_local
-                  {BASE_FROM}
+                  {source}
                   WHERE {where}
                   GROUP BY {group_by}, re.nm_votavel
                 ),
@@ -879,11 +1039,12 @@ class GestaoEleitoralRepository:
                 com_total AS (
                   SELECT valor, rotulo, municipio, zona, local_votacao, secao,
                          candidato, votos, ordem_local,
-                         MAX(ordem_local) OVER ()::int AS total
+                         MAX(ordem_local) OVER ()::int AS total,
+                         SUM(votos) OVER ()::bigint AS total_votos
                   FROM ranqueados
                 )
                 SELECT valor, rotulo, municipio, zona, local_votacao, secao,
-                       candidato, votos, total
+                       candidato, votos, total, total_votos
                 FROM com_total
                 WHERE ordem_local > CAST(:offset AS INTEGER)
                   AND ordem_local <= CAST(:offset AS INTEGER) + CAST(:limit AS INTEGER)
@@ -900,12 +1061,13 @@ class GestaoEleitoralRepository:
                          {extra},
                          NULL::text AS candidato,
                          SUM(re.qt_votos)::bigint AS votos
-                  {BASE_FROM}
+                  {source}
                   WHERE {where}
                   GROUP BY {group_by}
                 )
                 SELECT valor, rotulo, municipio, zona, local_votacao, secao,
-                       candidato, votos, COUNT(*) OVER()::int AS total
+                       candidato, votos, COUNT(*) OVER()::int AS total,
+                       SUM(votos) OVER()::bigint AS total_votos
                 FROM agregados
                 WHERE valor IS NOT NULL
                 ORDER BY votos DESC, rotulo
@@ -914,7 +1076,8 @@ class GestaoEleitoralRepository:
                 values,
             )
         total = int(rows[0]["total"]) if rows else 0
-        return rows, total
+        total_votes = int(rows[0]["total_votos"]) if rows else 0
+        return rows, total, total_votes
 
     async def map_points(
         self,

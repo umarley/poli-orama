@@ -9,7 +9,7 @@ import {
   TeamOutlined,
   TrophyOutlined,
 } from '@ant-design/icons';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQueries, useQuery } from '@tanstack/react-query';
 import {
   Alert,
   Button,
@@ -28,7 +28,7 @@ import {
   Typography,
 } from 'antd';
 import L from 'leaflet';
-import { useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { CircleMarker, MapContainer, Popup, TileLayer, useMap } from 'react-leaflet';
 import { Link, useSearchParams } from 'react-router-dom';
 import 'leaflet/dist/leaflet.css';
@@ -45,9 +45,11 @@ import {
 } from '@/modules/gestao-eleitoral/electoral-heatmap';
 import {
   getElectoralDistribution,
+  getElectoralComparison,
+  getElectoralIndicators,
   exportElectoralMap,
   getElectoralMap,
-  getElectoralPanel,
+  getElectoralRanking,
   getElectoralZoneMeshes,
   getElectoralZoneResults,
   listElectoralElections,
@@ -136,6 +138,43 @@ function DistributionBars({ items }: { items: DistributionItem[] }) {
   );
 }
 
+function QueryBlock({
+  children,
+  error,
+  isFetching,
+  isLoading,
+  onRetry,
+}: {
+  children: ReactNode;
+  error: unknown;
+  isFetching: boolean;
+  isLoading: boolean;
+  onRetry: () => void;
+}) {
+  if (isLoading) return <Spin />;
+  if (error) {
+    return (
+      <Alert
+        type="error"
+        showIcon
+        message="Não foi possível carregar este bloco."
+        description={normalizeApiError(error).message}
+        action={
+          <Button size="small" onClick={onRetry}>
+            Tentar novamente
+          </Button>
+        }
+      />
+    );
+  }
+  return (
+    <>
+      {isFetching && <Spin size="small" style={{ marginBottom: 8 }} />}
+      {children}
+    </>
+  );
+}
+
 export function GestaoEleitoralAnalisePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = searchParams.get('aba') ?? 'visao';
@@ -179,7 +218,7 @@ export function GestaoEleitoralAnalisePage() {
 
   const elections = useQuery({
     queryKey: ['gestao-eleitoral', 'eleicoes'],
-    queryFn: listElectoralElections,
+    queryFn: ({ signal }) => listElectoralElections(signal),
   });
   const officeFilters: ElectoralFilters = {
     eleicao_chaves: filters.eleicao_chaves,
@@ -187,61 +226,100 @@ export function GestaoEleitoralAnalisePage() {
   const stateFilters: ElectoralFilters = {
     eleicao_chaves: filters.eleicao_chaves,
   };
-  const municipalityFilters = omitElectoralFilters(
-    filters,
-    'cd_municipio',
-    'nr_zona',
-    'nr_local_votacao',
-    'nr_secao',
-  );
-  const zoneFilters = omitElectoralFilters(filters, 'nr_zona', 'nr_local_votacao', 'nr_secao');
-  const placeFilters = omitElectoralFilters(filters, 'nr_local_votacao', 'nr_secao');
-  const sectionFilters = omitElectoralFilters(filters, 'nr_secao');
+  const municipalityFilters: ElectoralFilters = {
+    eleicao_chaves: filters.eleicao_chaves,
+    sg_uf: filters.sg_uf,
+  };
+  const zoneFilters: ElectoralFilters = {
+    ...municipalityFilters,
+    cd_municipio: filters.cd_municipio,
+  };
+  const placeFilters: ElectoralFilters = {
+    ...zoneFilters,
+    nr_zona: filters.nr_zona,
+  };
+  const sectionFilters: ElectoralFilters = {
+    ...placeFilters,
+    nr_local_votacao: filters.nr_local_votacao,
+  };
 
   const offices = useQuery({
     queryKey: ['gestao-eleitoral', 'cargos', officeFilters],
-    queryFn: () => listElectoralOffices(officeFilters),
+    queryFn: ({ signal }) => listElectoralOffices(officeFilters, signal),
     enabled: electionSelected,
   });
   const candidates = useQuery({
     queryKey: ['gestao-eleitoral', 'candidatos', filters, debouncedQuery],
-    queryFn: () => searchElectoralCandidates(filters, debouncedQuery),
+    queryFn: ({ signal }) => searchElectoralCandidates(filters, debouncedQuery, signal),
     enabled: electionSelected && debouncedQuery.length >= 2,
   });
   const states = useQuery({
     queryKey: ['gestao-eleitoral', 'estados', stateFilters],
-    queryFn: () => listElectoralStates(stateFilters),
+    queryFn: ({ signal }) => listElectoralStates(stateFilters, signal),
   });
   const municipalities = useQuery({
     queryKey: ['gestao-eleitoral', 'municipios', municipalityFilters],
-    queryFn: () => listElectoralMunicipalities(municipalityFilters),
+    queryFn: ({ signal }) => listElectoralMunicipalities(municipalityFilters, signal),
     enabled: electionSelected && hasItems(filters.sg_uf),
   });
   const zones = useQuery({
     queryKey: ['gestao-eleitoral', 'zonas', zoneFilters],
-    queryFn: () => listElectoralZones(zoneFilters),
+    queryFn: ({ signal }) => listElectoralZones(zoneFilters, signal),
     enabled: electionSelected && (hasItems(filters.sg_uf) || hasItems(filters.cd_municipio)),
   });
   const places = useQuery({
     queryKey: ['gestao-eleitoral', 'locais', placeFilters],
-    queryFn: () => listElectoralPollingPlaces(placeFilters),
+    queryFn: ({ signal }) => listElectoralPollingPlaces(placeFilters, signal),
     enabled: hasItems(filters.cd_municipio) || hasItems(filters.nr_zona),
   });
   const sections = useQuery({
     queryKey: ['gestao-eleitoral', 'secoes', sectionFilters],
-    queryFn: () => listElectoralSections(sectionFilters),
+    queryFn: ({ signal }) => listElectoralSections(sectionFilters, signal),
     enabled: hasItems(filters.nr_zona) || hasItems(filters.nr_local_votacao),
   });
-  const panel = useQuery({
-    queryKey: ['gestao-eleitoral', 'painel', resultFilters],
-    queryFn: () => getElectoralPanel(resultFilters),
+  const indicators = useQuery({
+    queryKey: ['gestao-eleitoral', 'indicadores', resultFilters],
+    queryFn: ({ signal }) => getElectoralIndicators(resultFilters, signal),
     enabled: appliedElectionSelected,
+    placeholderData: keepPreviousData,
+  });
+  const ranking = useQuery({
+    queryKey: ['gestao-eleitoral', 'ranking', resultFilters, 80],
+    queryFn: ({ signal }) => getElectoralRanking(resultFilters, 80, signal),
+    enabled:
+      appliedElectionSelected &&
+      (tab === 'visao' || tab === 'ranking') &&
+      hasItems(resultFilters.ds_cargo),
+    placeholderData: keepPreviousData,
+  });
+  const comparison = useQuery({
+    queryKey: ['gestao-eleitoral', 'comparativo', resultFilters],
+    queryFn: ({ signal }) => getElectoralComparison(resultFilters, signal),
+    enabled: appliedElectionSelected && tab === 'visao' && hasItems(resultFilters.nm_votaveis),
+    placeholderData: keepPreviousData,
+  });
+  const overviewDimensions: DistributionDimension[] = ['municipio', 'zona', 'local', 'secao'];
+  const overviewDistributions = useQueries({
+    queries: overviewDimensions.map((dimension) => ({
+      queryKey: ['gestao-eleitoral', 'distribuicao', dimension, resultFilters, 1, 12],
+      queryFn: ({ signal }) =>
+        getElectoralDistribution(
+          dimension,
+          resultFilters,
+          1,
+          12,
+          (resultFilters.nm_votaveis?.length ?? 0) > 1,
+          signal,
+        ),
+      enabled: appliedElectionSelected && tab === 'visao',
+      placeholderData: keepPreviousData,
+    })),
   });
   const mapData = useQuery({
     queryKey: ['gestao-eleitoral', 'mapa', resultFilters, mapAggregation],
-    queryFn: () => getElectoralMap(resultFilters, mapAggregation),
-    enabled:
-      appliedElectionSelected && tab === 'mapa' && hasItems(resultFilters.nm_votaveis),
+    queryFn: ({ signal }) => getElectoralMap(resultFilters, mapAggregation, signal),
+    enabled: appliedElectionSelected && tab === 'mapa' && hasItems(resultFilters.nm_votaveis),
+    placeholderData: keepPreviousData,
   });
   const zoneMeshFilters = omitElectoralFilters(
     resultFilters,
@@ -258,24 +336,27 @@ export function GestaoEleitoralAnalisePage() {
       zoneMeshFilters,
       mapBounds,
     ],
-    queryFn: () => getElectoralZoneMeshes(zoneMeshFilters, mapBounds!),
-    enabled:
-      appliedElectionSelected && showElectoralZones && tab === 'mapa' && mapBounds !== null,
+    queryFn: ({ signal }) => getElectoralZoneMeshes(zoneMeshFilters, mapBounds!, signal),
+    enabled: appliedElectionSelected && showElectoralZones && tab === 'mapa' && mapBounds !== null,
     staleTime: 5 * 60_000,
+    placeholderData: keepPreviousData,
   });
   const zoneResults = useQuery({
     queryKey: ['gestao-eleitoral', 'mapa', 'zonas-eleitorais', 'resultados', resultFilters],
-    queryFn: () => getElectoralZoneResults(resultFilters),
+    queryFn: ({ signal }) => getElectoralZoneResults(resultFilters, signal),
     enabled:
       showElectoralZones &&
       appliedElectionSelected &&
       hasItems(resultFilters.nm_votaveis) &&
       tab === 'mapa',
+    placeholderData: keepPreviousData,
   });
   const table = useQuery({
     queryKey: ['gestao-eleitoral', 'tabela', tableDimension, resultFilters, tablePage],
-    queryFn: () => getElectoralDistribution(tableDimension, resultFilters, tablePage, 20),
+    queryFn: ({ signal }) =>
+      getElectoralDistribution(tableDimension, resultFilters, tablePage, 20, false, signal),
     enabled: appliedElectionSelected && tab === 'tabelas',
+    placeholderData: keepPreviousData,
   });
   const mapExport = useMutation({
     mutationFn: (format: 'csv' | 'xlsx') =>
@@ -298,8 +379,6 @@ export function GestaoEleitoralAnalisePage() {
     return [...merged.values()];
   }, [candidates.data, filters.nm_votaveis]);
 
-  const panelError = panel.error ? normalizeApiError(panel.error).message : null;
-  const data = panel.data;
   const mapPoints = useMemo(() => mapData.data?.pontos ?? [], [mapData.data?.pontos]);
   const heatSeries = useMemo(
     () => buildElectoralHeatSeries(mapPoints, resultFilters.nm_votaveis ?? []),
@@ -310,6 +389,16 @@ export function GestaoEleitoralAnalisePage() {
     [mapPoints, resultFilters.nm_votaveis],
   );
   const candidateSelected = hasItems(resultFilters.nm_votaveis);
+  const analysisFetching = [
+    indicators,
+    ranking,
+    comparison,
+    ...overviewDistributions,
+    mapData,
+    zoneMeshes,
+    zoneResults,
+    table,
+  ].some((query) => query.isFetching);
   const electoralZoneMeshes = useMemo(() => {
     const resultsByZone = new Map((zoneResults.data ?? []).map((item) => [item.id, item]));
     return (zoneMeshes.data ?? []).flatMap((mesh): ElectoralZoneMesh[] => {
@@ -494,7 +583,7 @@ export function GestaoEleitoralAnalisePage() {
               type="primary"
               icon={<SearchOutlined />}
               disabled={!electionSelected}
-              loading={panel.isFetching}
+              loading={analysisFetching}
               onClick={search}
             >
               Pesquisar
@@ -535,8 +624,6 @@ export function GestaoEleitoralAnalisePage() {
           description="Clique em Pesquisar para atualizar os resultados com os filtros atuais."
         />
       )}
-      {panelError && <Alert type="error" showIcon message={panelError} />}
-
       <Tabs
         activeKey={tab}
         onChange={(key) => {
@@ -551,110 +638,125 @@ export function GestaoEleitoralAnalisePage() {
             label: 'Visão geral',
             children: (
               <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                <Row gutter={[16, 16]}>
-                  <Col xs={24} sm={12} lg={8} xl={4}>
-                    <Card className={styles.summaryCard}>
-                      <span className={`${styles.summaryIcon} ${styles.blue}`}>
-                        <BarChartOutlined />
-                      </span>
-                      <Statistic
-                        title="Total de votos"
-                        value={data?.indicadores.total_votos ?? 0}
-                        formatter={(value) => formatInteger(Number(value))}
-                      />
-                    </Card>
-                  </Col>
-                  <Col xs={24} sm={12} lg={8} xl={4}>
-                    <Card className={styles.summaryCard}>
-                      <span className={`${styles.summaryIcon} ${styles.purple}`}>
-                        <TeamOutlined />
-                      </span>
-                      <Statistic title="Candidatos" value={data?.indicadores.candidatos ?? 0} />
-                    </Card>
-                  </Col>
-                  <Col xs={24} sm={12} lg={8} xl={4}>
-                    <Card className={styles.summaryCard}>
-                      <span className={`${styles.summaryIcon} ${styles.green}`}>
-                        <BankOutlined />
-                      </span>
-                      <Statistic title="Municípios" value={data?.indicadores.municipios ?? 0} />
-                    </Card>
-                  </Col>
-                  <Col xs={24} sm={12} lg={8} xl={4}>
-                    <Card className={styles.summaryCard}>
-                      <span className={`${styles.summaryIcon} ${styles.orange}`}>
-                        <GlobalOutlined />
-                      </span>
-                      <Statistic title="Zonas" value={data?.indicadores.zonas ?? 0} />
-                    </Card>
-                  </Col>
-                  <Col xs={24} sm={12} lg={8} xl={4}>
-                    <Card className={styles.summaryCard}>
-                      <span className={`${styles.summaryIcon} ${styles.blue}`}>
-                        <EnvironmentOutlined />
-                      </span>
-                      <Statistic title="Locais" value={data?.indicadores.locais ?? 0} />
-                    </Card>
-                  </Col>
-                  <Col xs={24} sm={12} lg={8} xl={4}>
-                    <Card className={styles.summaryCard}>
-                      <span className={`${styles.summaryIcon} ${styles.green}`}>
-                        <TrophyOutlined />
-                      </span>
-                      <Statistic title="Seções" value={data?.indicadores.secoes ?? 0} />
-                    </Card>
-                  </Col>
-                </Row>
+                <QueryBlock
+                  isLoading={indicators.isLoading}
+                  isFetching={indicators.isFetching}
+                  error={indicators.error}
+                  onRetry={() => void indicators.refetch()}
+                >
+                  <Row gutter={[16, 16]}>
+                    <Col xs={24} sm={12} lg={8} xl={4}>
+                      <Card className={styles.summaryCard}>
+                        <span className={`${styles.summaryIcon} ${styles.blue}`}>
+                          <BarChartOutlined />
+                        </span>
+                        <Statistic
+                          title="Total de votos"
+                          value={indicators.data?.total_votos ?? 0}
+                          formatter={(value) => formatInteger(Number(value))}
+                        />
+                      </Card>
+                    </Col>
+                    <Col xs={24} sm={12} lg={8} xl={4}>
+                      <Card className={styles.summaryCard}>
+                        <span className={`${styles.summaryIcon} ${styles.purple}`}>
+                          <TeamOutlined />
+                        </span>
+                        <Statistic title="Candidatos" value={indicators.data?.candidatos ?? 0} />
+                      </Card>
+                    </Col>
+                    <Col xs={24} sm={12} lg={8} xl={4}>
+                      <Card className={styles.summaryCard}>
+                        <span className={`${styles.summaryIcon} ${styles.green}`}>
+                          <BankOutlined />
+                        </span>
+                        <Statistic title="Municípios" value={indicators.data?.municipios ?? 0} />
+                      </Card>
+                    </Col>
+                    <Col xs={24} sm={12} lg={8} xl={4}>
+                      <Card className={styles.summaryCard}>
+                        <span className={`${styles.summaryIcon} ${styles.orange}`}>
+                          <GlobalOutlined />
+                        </span>
+                        <Statistic title="Zonas" value={indicators.data?.zonas ?? 0} />
+                      </Card>
+                    </Col>
+                    <Col xs={24} sm={12} lg={8} xl={4}>
+                      <Card className={styles.summaryCard}>
+                        <span className={`${styles.summaryIcon} ${styles.blue}`}>
+                          <EnvironmentOutlined />
+                        </span>
+                        <Statistic title="Locais" value={indicators.data?.locais ?? 0} />
+                      </Card>
+                    </Col>
+                    <Col xs={24} sm={12} lg={8} xl={4}>
+                      <Card className={styles.summaryCard}>
+                        <span className={`${styles.summaryIcon} ${styles.green}`}>
+                          <TrophyOutlined />
+                        </span>
+                        <Statistic title="Seções" value={indicators.data?.secoes ?? 0} />
+                      </Card>
+                    </Col>
+                  </Row>
+                </QueryBlock>
                 {hasItems(resultFilters.ds_cargo) && (
                   <Card
                     title={rankingTitle(resultFilters.ds_cargo)}
                     extra={<Link to="/gestao-eleitoral/analise?aba=ranking">Ver completo</Link>}
                   >
-                    <RankingTable
-                      items={data?.ranking ?? []}
-                      loading={panel.isFetching}
-                      emptyText="Nenhum candidato encontrado neste recorte."
-                    />
+                    <QueryBlock
+                      isLoading={ranking.isLoading}
+                      isFetching={ranking.isFetching}
+                      error={ranking.error}
+                      onRetry={() => void ranking.refetch()}
+                    >
+                      <RankingTable
+                        items={ranking.data ?? []}
+                        loading={ranking.isFetching && !ranking.data}
+                        emptyText="Nenhum candidato encontrado neste recorte."
+                      />
+                    </QueryBlock>
                   </Card>
                 )}
-                {(data?.comparativo.length ?? 0) > 0 && (
+                {hasItems(resultFilters.nm_votaveis) && (
                   <Card title="Comparativo entre candidatos selecionados">
-                    <DistributionBars
-                      items={(data?.comparativo ?? []).map((item) => ({
-                        chave: item.nm_votavel,
-                        rotulo: item.nm_votavel,
-                        municipio: null,
-                        zona: null,
-                        local_votacao: null,
-                        secao: null,
-                        candidato: null,
-                        votos: item.votos,
-                        percentual: item.percentual,
-                      }))}
-                    />
+                    <QueryBlock
+                      isLoading={comparison.isLoading}
+                      isFetching={comparison.isFetching}
+                      error={comparison.error}
+                      onRetry={() => void comparison.refetch()}
+                    >
+                      <DistributionBars
+                        items={(comparison.data ?? []).map((item) => ({
+                          chave: item.nm_votavel,
+                          rotulo: item.nm_votavel,
+                          municipio: null,
+                          zona: null,
+                          local_votacao: null,
+                          secao: null,
+                          candidato: null,
+                          votos: item.votos,
+                          percentual: item.percentual,
+                        }))}
+                      />
+                    </QueryBlock>
                   </Card>
                 )}
                 <Row gutter={[16, 16]}>
-                  <Col xs={24} lg={12}>
-                    <Card title="Votos por município">
-                      <DistributionBars items={data?.por_municipio ?? []} />
-                    </Card>
-                  </Col>
-                  <Col xs={24} lg={12}>
-                    <Card title="Votos por zona">
-                      <DistributionBars items={data?.por_zona ?? []} />
-                    </Card>
-                  </Col>
-                  <Col xs={24} lg={12}>
-                    <Card title="Votos por local">
-                      <DistributionBars items={data?.por_local ?? []} />
-                    </Card>
-                  </Col>
-                  <Col xs={24} lg={12}>
-                    <Card title="Votos por seção">
-                      <DistributionBars items={data?.por_secao ?? []} />
-                    </Card>
-                  </Col>
+                  {overviewDistributions.map((query, index) => (
+                    <Col xs={24} lg={12} key={overviewDimensions[index]}>
+                      <Card title={`Votos por ${['município', 'zona', 'local', 'seção'][index]}`}>
+                        <QueryBlock
+                          isLoading={query.isLoading}
+                          isFetching={query.isFetching}
+                          error={query.error}
+                          onRetry={() => void query.refetch()}
+                        >
+                          <DistributionBars items={query.data?.items ?? []} />
+                        </QueryBlock>
+                      </Card>
+                    </Col>
+                  ))}
                 </Row>
               </Space>
             ),
@@ -720,6 +822,40 @@ export function GestaoEleitoralAnalisePage() {
                   </Space>
                 }
               >
+                {mapData.error && (
+                  <Alert
+                    style={{ marginBottom: 12 }}
+                    type="error"
+                    showIcon
+                    message="Não foi possível carregar o mapa."
+                    description={normalizeApiError(mapData.error).message}
+                    action={
+                      <Button size="small" onClick={() => void mapData.refetch()}>
+                        Tentar novamente
+                      </Button>
+                    }
+                  />
+                )}
+                {(zoneMeshes.error || zoneResults.error) && (
+                  <Alert
+                    style={{ marginBottom: 12 }}
+                    type="error"
+                    showIcon
+                    message="Não foi possível carregar as zonas eleitorais."
+                    description={normalizeApiError(zoneMeshes.error ?? zoneResults.error).message}
+                    action={
+                      <Button
+                        size="small"
+                        onClick={() => {
+                          if (zoneMeshes.error) void zoneMeshes.refetch();
+                          if (zoneResults.error) void zoneResults.refetch();
+                        }}
+                      >
+                        Tentar novamente
+                      </Button>
+                    }
+                  />
+                )}
                 {mapData.data?.truncado && (
                   <Alert
                     style={{ marginBottom: 12 }}
@@ -830,11 +966,18 @@ export function GestaoEleitoralAnalisePage() {
                 {!hasItems(resultFilters.ds_cargo) ? (
                   <Empty description="Selecione um ou mais cargos disputados para ver o ranking dos candidatos." />
                 ) : (
-                  <RankingTable
-                    items={data?.ranking ?? []}
-                    loading={panel.isFetching}
-                    emptyText="Nenhum candidato encontrado neste recorte."
-                  />
+                  <QueryBlock
+                    isLoading={ranking.isLoading}
+                    isFetching={ranking.isFetching}
+                    error={ranking.error}
+                    onRetry={() => void ranking.refetch()}
+                  >
+                    <RankingTable
+                      items={ranking.data ?? []}
+                      loading={ranking.isFetching && !ranking.data}
+                      emptyText="Nenhum candidato encontrado neste recorte."
+                    />
+                  </QueryBlock>
                 )}
               </Card>
             ),
@@ -862,53 +1005,60 @@ export function GestaoEleitoralAnalisePage() {
                   />
                 }
               >
-                <BaseTable<DistributionItem>
-                  rowKey="chave"
-                  loading={table.isFetching}
-                  dataSource={table.data?.items ?? []}
-                  pagination={{
-                    current: tablePage,
-                    pageSize: 20,
-                    total: table.data?.total ?? 0,
-                    onChange: setTablePage,
-                    showSizeChanger: false,
-                  }}
-                  columns={[
-                    {
-                      title: 'Local',
-                      dataIndex: 'rotulo',
-                      sorter: (a, b) => a.rotulo.localeCompare(b.rotulo),
-                    },
-                    {
-                      title: 'Município',
-                      dataIndex: 'municipio',
-                      render: (value: string | null) => value ?? '—',
-                    },
-                    {
-                      title: 'Zona',
-                      dataIndex: 'zona',
-                      render: (value: number | null) => value ?? '—',
-                    },
-                    {
-                      title: 'Seção',
-                      dataIndex: 'secao',
-                      render: (value: number | null) => value ?? '—',
-                    },
-                    {
-                      title: 'Votos',
-                      dataIndex: 'votos',
-                      sorter: (a, b) => a.votos - b.votos,
-                      defaultSortOrder: 'descend',
-                      render: (value: number) => formatInteger(value),
-                    },
-                    {
-                      title: '% recorte',
-                      dataIndex: 'percentual',
-                      sorter: (a, b) => a.percentual - b.percentual,
-                      render: (value: number) => formatPercent(value),
-                    },
-                  ]}
-                />
+                <QueryBlock
+                  isLoading={table.isLoading}
+                  isFetching={table.isFetching}
+                  error={table.error}
+                  onRetry={() => void table.refetch()}
+                >
+                  <BaseTable<DistributionItem>
+                    rowKey="chave"
+                    loading={table.isFetching && !table.data}
+                    dataSource={table.data?.items ?? []}
+                    pagination={{
+                      current: tablePage,
+                      pageSize: 20,
+                      total: table.data?.total ?? 0,
+                      onChange: setTablePage,
+                      showSizeChanger: false,
+                    }}
+                    columns={[
+                      {
+                        title: 'Local',
+                        dataIndex: 'rotulo',
+                        sorter: (a, b) => a.rotulo.localeCompare(b.rotulo),
+                      },
+                      {
+                        title: 'Município',
+                        dataIndex: 'municipio',
+                        render: (value: string | null) => value ?? '—',
+                      },
+                      {
+                        title: 'Zona',
+                        dataIndex: 'zona',
+                        render: (value: number | null) => value ?? '—',
+                      },
+                      {
+                        title: 'Seção',
+                        dataIndex: 'secao',
+                        render: (value: number | null) => value ?? '—',
+                      },
+                      {
+                        title: 'Votos',
+                        dataIndex: 'votos',
+                        sorter: (a, b) => a.votos - b.votos,
+                        defaultSortOrder: 'descend',
+                        render: (value: number) => formatInteger(value),
+                      },
+                      {
+                        title: '% recorte',
+                        dataIndex: 'percentual',
+                        sorter: (a, b) => a.percentual - b.percentual,
+                        render: (value: number) => formatPercent(value),
+                      },
+                    ]}
+                  />
+                </QueryBlock>
               </Card>
             ),
           },

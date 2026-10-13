@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     dashboard_materialization_hour: int = Field(default=1, ge=0, le=23)
     scheduled_reports_enabled: bool = True
     scheduled_reports_hour: int = Field(default=5, ge=0, le=23)
+    election_rollup_job_enabled: bool = True
+    election_rollup_job_interval_minutes: int = Field(default=5, ge=1, le=1440)
+    election_rollup_job_batch_size: int = Field(default=5, ge=1, le=100)
 
 
 @lru_cache

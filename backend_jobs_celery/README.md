@@ -62,6 +62,33 @@ jobs enqueue-completeness --tenant-id 1 --batch-size 500
 O job registra as quantidades `processadas` e `atualizadas` em
 `etl.log_processamento`.
 
+## Rollups de resultados eleitorais
+
+O importador de resultados marca na tabela de controle as chaves
+`(aa_eleicao, cd_eleicao, nr_turno)` alteradas. O Beat chama
+`jobs.election_rollups.process_pending` a cada cinco minutos por padrao. O
+worker usa advisory lock transacional por chave e chama a funcao PostgreSQL que
+constroi e valida uma nova geracao antes de trocar o ponteiro ativo.
+
+Para preparar um backfill, primeiro execute a visualizacao segura (somente
+leitura):
+
+```powershell
+jobs election-rollup-backfill
+jobs election-rollup-backfill --aa-eleicao 2024 --cd-eleicao 619
+```
+
+Revise `chaves_encontradas` e somente entao marque as chaves. Este comando nao
+executa o refresh; ele deixa as chaves `pending` para o Beat:
+
+```powershell
+jobs election-rollup-backfill --aa-eleicao 2024 --cd-eleicao 619 --confirm
+```
+
+As opcoes `ELECTION_ROLLUP_JOB_ENABLED`,
+`ELECTION_ROLLUP_JOB_INTERVAL_MINUTES` e
+`ELECTION_ROLLUP_JOB_BATCH_SIZE` controlam o processamento.
+
 ## Qualidade
 
 ```powershell

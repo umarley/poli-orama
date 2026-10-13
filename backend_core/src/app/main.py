@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.auth.api_key_router import router as api_key_router
 from app.auth.router import router as auth_router
+from app.core.cache import create_redis_cache
 from app.core.config import get_settings
 from app.core.database import dispose_database
 from app.core.errors import install_exception_handlers
@@ -35,8 +36,15 @@ configure_logging(settings.log_level)
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+    application.state.cache = (
+        create_redis_cache(settings.redis_cache_url, ttl=settings.redis_cache_ttl)
+        if settings.redis_cache_enabled
+        else None
+    )
     yield
+    if application.state.cache is not None:
+        await application.state.cache.close()
     await dispose_database()
 
 

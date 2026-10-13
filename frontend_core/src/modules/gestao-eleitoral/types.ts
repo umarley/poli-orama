@@ -57,15 +57,17 @@ export interface DistributionItem {
   percentual: number;
 }
 
+export interface IndicatorSummary {
+  total_votos: number;
+  candidatos: number;
+  municipios: number;
+  zonas: number;
+  locais: number;
+  secoes: number;
+}
+
 export interface ElectoralPanel {
-  indicadores: {
-    total_votos: number;
-    candidatos: number;
-    municipios: number;
-    zonas: number;
-    locais: number;
-    secoes: number;
-  };
+  indicadores: IndicatorSummary;
   ranking: RankingItem[];
   comparativo: RankingItem[];
   por_municipio: DistributionItem[];
