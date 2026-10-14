@@ -210,6 +210,8 @@ export function GestaoEleitoralAnalisePage() {
     setTablePage(1);
   };
   const electionSelected = hasItems(filters.eleicao_chaves);
+  const officeSelected = hasItems(filters.ds_cargo);
+  const candidateSearchEnabled = electionSelected && officeSelected;
   const appliedElectionSelected = hasItems(appliedFilters?.eleicao_chaves);
   const resultFilters = appliedFilters ?? emptyFilters;
   const hasPendingChanges =
@@ -225,6 +227,11 @@ export function GestaoEleitoralAnalisePage() {
   };
   const stateFilters: ElectoralFilters = {
     eleicao_chaves: filters.eleicao_chaves,
+  };
+  const candidateSearchFilters: ElectoralFilters = {
+    eleicao_chaves: filters.eleicao_chaves,
+    ds_cargo: filters.ds_cargo,
+    sg_uf: filters.sg_uf,
   };
   const municipalityFilters: ElectoralFilters = {
     eleicao_chaves: filters.eleicao_chaves,
@@ -249,9 +256,10 @@ export function GestaoEleitoralAnalisePage() {
     enabled: electionSelected,
   });
   const candidates = useQuery({
-    queryKey: ['gestao-eleitoral', 'candidatos', filters, debouncedQuery],
-    queryFn: ({ signal }) => searchElectoralCandidates(filters, debouncedQuery, signal),
-    enabled: electionSelected && debouncedQuery.length >= 2,
+    queryKey: ['gestao-eleitoral', 'candidatos', candidateSearchFilters, debouncedQuery],
+    queryFn: ({ signal }) =>
+      searchElectoralCandidates(candidateSearchFilters, debouncedQuery, signal),
+    enabled: candidateSearchEnabled && debouncedQuery.length >= 2,
   });
   const states = useQuery({
     queryKey: ['gestao-eleitoral', 'estados', stateFilters],
@@ -480,6 +488,7 @@ export function GestaoEleitoralAnalisePage() {
             options={(states.data ?? []).map((item) => ({ value: item.valor, label: item.rotulo }))}
             onChange={(value: string[]) =>
               updateFilters({ sg_uf: value }, [
+                'nm_votaveis',
                 'cd_municipio',
                 'nr_zona',
                 'nr_local_votacao',
@@ -511,13 +520,23 @@ export function GestaoEleitoralAnalisePage() {
             maxTagCount="responsive"
             filterOption={false}
             placeholder="Pesquisar candidatos"
-            disabled={!electionSelected}
+            disabled={!candidateSearchEnabled}
+            loading={candidates.isFetching}
+            status={candidates.isError ? 'error' : undefined}
             value={filters.nm_votaveis}
             options={candidateOptions}
             onSearch={setCandidateQuery}
             onChange={(value: string[]) => updateFilters({ nm_votaveis: value })}
             notFoundContent={
-              debouncedQuery.length < 2 ? 'Digite ao menos 2 letras' : 'Nenhum candidato encontrado'
+              candidates.isFetching ? (
+                <Spin size="small" />
+              ) : candidates.isError ? (
+                'Não foi possível pesquisar candidatos'
+              ) : debouncedQuery.length < 2 ? (
+                'Digite ao menos 2 letras'
+              ) : (
+                'Nenhum candidato encontrado'
+              )
             }
           />
           <Select
