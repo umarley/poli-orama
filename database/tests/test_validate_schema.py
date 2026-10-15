@@ -87,6 +87,17 @@ class ValidateSchemaTests(unittest.TestCase):
             sql.index("DELETE FROM tse.resultado_rollup_secao_candidato"),
         )
 
+    def test_candidate_catalog_migration_is_searchable_by_name(self) -> None:
+        migration = DEFAULT_MIGRATION.parent / "074 - catalogo_resultado_votavel.sql"
+        expected = parse_expected_structure(migration.read_text(encoding="utf-8"))
+        sql = migration.read_text(encoding="utf-8")
+
+        self.assertIn(("tse", "resultado_votavel"), expected.tables)
+        self.assertIn("ix_resultado_votavel_nome_trgm", sql)
+        self.assertIn("gin_trgm_ops", sql)
+        self.assertIn("lower(unaccent(MAX(btrim(nm_votavel))))", sql)
+        self.assertNotIn("CREATE INDEX CONCURRENTLY", sql)
+
     def test_gestao_eleitoral_migration_grants_permission_to_campaign_managers(self) -> None:
         migration = DEFAULT_MIGRATION.parent / "054 - gestao_eleitoral_permissoes.sql"
         sql = migration.read_text(encoding="utf-8")

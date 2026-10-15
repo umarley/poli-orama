@@ -196,6 +196,7 @@ class GestaoEleitoralRepository:
         scope: TerritorialScope,
         *,
         include_candidates: bool = True,
+        include_location: bool = True,
         extra: dict[str, Any] | None = None,
     ) -> tuple[str, dict[str, Any]]:
         clauses: list[str] = []
@@ -225,16 +226,24 @@ class GestaoEleitoralRepository:
             clauses.append(f"({' OR '.join(election_clauses)})")
         list_filters: tuple[tuple[str, str, list[Any]], ...] = (
             ("sg_uf", "re.sg_uf = ANY(:sg_uf)", filters.ufs),
-            ("cd_municipio", "re.cd_municipio = ANY(:cd_municipio)", list(filters.cd_municipio)),
             ("ds_cargo", "re.ds_cargo = ANY(:ds_cargo)", filters.cargos),
-            ("nr_zona", "re.nr_zona = ANY(:nr_zona)", list(filters.nr_zona)),
-            (
-                "nr_local_votacao",
-                "re.nr_local_votacao = ANY(:nr_local_votacao)",
-                list(filters.nr_local_votacao),
-            ),
-            ("nr_secao", "re.nr_secao = ANY(:nr_secao)", list(filters.nr_secao)),
         )
+        if include_location:
+            list_filters = (
+                *list_filters,
+                (
+                    "cd_municipio",
+                    "re.cd_municipio = ANY(:cd_municipio)",
+                    list(filters.cd_municipio),
+                ),
+                ("nr_zona", "re.nr_zona = ANY(:nr_zona)", list(filters.nr_zona)),
+                (
+                    "nr_local_votacao",
+                    "re.nr_local_votacao = ANY(:nr_local_votacao)",
+                    list(filters.nr_local_votacao),
+                ),
+                ("nr_secao", "re.nr_secao = ANY(:nr_secao)", list(filters.nr_secao)),
+            )
         for name, clause, value in list_filters:
             if not value:
                 continue
@@ -470,21 +479,152 @@ class GestaoEleitoralRepository:
             ORDER BY chaves.aa_eleicao DESC NULLS LAST, chaves.cd_eleicao, chaves.nr_turno
             """
 
+    @staticmethod
+    def _contains_pattern(query: str) -> str:
+        escaped = query.strip().replace("!", "!!").replace("%", "!%").replace("_", "!_")
+        return f"%{escaped}%"
+
+    def _candidate_identity_sql(self) -> str:
+        return """
+            fato.aa_eleicao = re.aa_eleicao
+            AND fato.cd_eleicao = re.cd_eleicao
+            AND fato.nr_turno = re.nr_turno
+            AND fato.nm_votavel = re.nm_votavel
+        """
+
+    def _candidate_scope_sql(
+        self,
+        filters: ResultadoFilters,
+        scope: TerritorialScope,
+        values: dict[str, Any],
+    ) -> str:
+        clauses: list[str] = []
+        if not scope.unrestricted:
+            options: list[str] = []
+            if scope.ufs:
+                options.append("btrim(re.sg_uf::text) = ANY(CAST(:scope_ufs AS text[]))")
+                values["scope_ufs"] = scope.ufs
+            territory = self._territory_match_sql(scope, values)
+            if territory:
+                options.append(
+                    f"""
+                    EXISTS (
+                      SELECT 1
+                      FROM tse.resultados_eleicoes fato
+                      WHERE {self._candidate_identity_sql()}
+                        AND ({territory})
+                    )
+                    """
+                )
+            clauses.append(f"({' OR '.join(options)})" if options else "FALSE")
+        place = self._place_match_sql(filters, values)
+        if place:
+            clauses.append(
+                f"""
+                EXISTS (
+                  SELECT 1
+                  FROM tse.resultados_eleicoes fato
+                  WHERE {self._candidate_identity_sql()}
+                    AND {place}
+                )
+                """
+            )
+        if not clauses:
+            return ""
+        return " AND " + " AND ".join(clauses)
+
+    def _territory_match_sql(self, scope: TerritorialScope, values: dict[str, Any]) -> str:
+        parts: list[str] = []
+        if scope.municipios_ibge:
+            parts.append(
+                """
+                fato.cd_municipio IN (
+                  SELECT m.codigo_tse
+                  FROM global.municipio m
+                  WHERE m.codigo_ibge = ANY(CAST(:scope_municipios AS integer[]))
+                    AND m.codigo_tse IS NOT NULL
+                )
+                """
+            )
+            values["scope_municipios"] = scope.municipios_ibge
+        if scope.zonas_ids:
+            parts.append(
+                """
+                (fato.cd_municipio, fato.nr_zona) IN (
+                  SELECT m.codigo_tse, ze.numero_zona
+                  FROM global.zona_eleitoral ze
+                  JOIN global.municipio m ON m.codigo_ibge = ze.codigo_municipio_ibge
+                  WHERE ze.id = ANY(CAST(:scope_zonas AS integer[]))
+                    AND m.codigo_tse IS NOT NULL
+                    AND ze.numero_zona IS NOT NULL
+                )
+                """
+            )
+            values["scope_zonas"] = scope.zonas_ids
+        if scope.secoes_ids:
+            parts.append(
+                """
+                (fato.cd_municipio, fato.nr_zona, fato.nr_secao) IN (
+                  SELECT m.codigo_tse, ze.numero_zona, se.numero_secao
+                  FROM global.secao_eleitoral se
+                  JOIN global.zona_eleitoral ze ON ze.id = se.zona_eleitoral_id
+                  JOIN global.municipio m ON m.codigo_ibge = ze.codigo_municipio_ibge
+                  WHERE se.id = ANY(CAST(:scope_secoes AS integer[]))
+                    AND m.codigo_tse IS NOT NULL
+                    AND ze.numero_zona IS NOT NULL
+                    AND se.numero_secao IS NOT NULL
+                )
+                """
+            )
+            values["scope_secoes"] = scope.secoes_ids
+        return " OR ".join(parts)
+
+    def _place_match_sql(self, filters: ResultadoFilters, values: dict[str, Any]) -> str:
+        checks: list[str] = []
+        if filters.cd_municipio:
+            checks.append("fato.cd_municipio = ANY(CAST(:cd_municipio AS integer[]))")
+            values["cd_municipio"] = list(filters.cd_municipio)
+        if filters.nr_zona:
+            checks.append("fato.nr_zona = ANY(CAST(:nr_zona AS smallint[]))")
+            values["nr_zona"] = list(filters.nr_zona)
+        if filters.nr_local_votacao:
+            checks.append("fato.nr_local_votacao = ANY(CAST(:nr_local_votacao AS integer[]))")
+            values["nr_local_votacao"] = list(filters.nr_local_votacao)
+        if filters.nr_secao:
+            checks.append("fato.nr_secao = ANY(CAST(:nr_secao AS smallint[]))")
+            values["nr_secao"] = list(filters.nr_secao)
+        return " AND ".join(checks)
+
     async def search_candidates(
         self, filters: ResultadoFilters, scope: TerritorialScope, query: str, limit: int
     ) -> list[dict[str, Any]]:
+        if scope.blocks_all:
+            return []
         where, values = self._filters(
             filters,
-            scope,
+            TerritorialScope(unrestricted=True),
             include_candidates=False,
-            extra={"q": f"%{query.strip()}%", "limit": limit},
+            include_location=False,
+            extra={"q": self._contains_pattern(query), "limit": limit},
         )
+        scope_sql = self._candidate_scope_sql(filters, scope, values)
+        catalog_where = where.replace("re.", "base.")
+        fenced = "OFFSET 0" if "resultados_eleicoes" in scope_sql else ""
         return await self._all(
             f"""
-            SELECT re.nm_votavel, MIN(re.nr_votavel) AS nr_votavel, MIN(re.ds_cargo) AS ds_cargo
-            {self._from_clause(scope, geo=False)}
-            WHERE {where}
-              AND re.nm_votavel ILIKE :q
+            SELECT re.nm_votavel,
+                   MIN(re.nr_votavel) AS nr_votavel,
+                   MIN(re.ds_cargo) AS ds_cargo
+            FROM (
+              SELECT base.aa_eleicao, base.cd_eleicao, base.nr_turno, base.sg_uf,
+                     base.ds_cargo, base.nr_votavel, base.nm_votavel
+              FROM tse.resultado_votavel base
+              WHERE {catalog_where}
+                AND base.nm_votavel_busca ILIKE lower(unaccent(CAST(:q AS text))) ESCAPE '!'
+              {fenced}
+            ) re
+            WHERE TRUE
+              {scope_sql}
             GROUP BY re.nm_votavel
             ORDER BY re.nm_votavel
             LIMIT :limit
