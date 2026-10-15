@@ -6,6 +6,7 @@ from jobs.repository import (
     CompletenessRepositoryProtocol,
     CompletenessSchedulerRepositoryProtocol,
     GoalsRepositoryProtocol,
+    InactiveCampaignError,
     JobRepositoryProtocol,
 )
 
@@ -26,6 +27,16 @@ def execute_goals_job(
         result: dict[str, Any] = {"job_id": job_id, "status": "concluido", **metrics}
         repository.mark_succeeded(job_id, metrics)
         return result
+    except InactiveCampaignError:
+        metrics = {
+            "tenant_id": tenant_id,
+            "metas_atualizadas": 0,
+            "alertas_abertos": 0,
+            "liderancas_ranqueadas": 0,
+            "motivo": "sem_campanha_ativa",
+        }
+        repository.mark_succeeded(job_id, metrics)
+        return {"job_id": job_id, "status": "concluido", **metrics}
     except Exception as exc:
         repository.mark_failed(
             job_id,

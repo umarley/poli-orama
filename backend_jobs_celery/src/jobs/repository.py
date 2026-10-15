@@ -72,6 +72,10 @@ class CompletenessSchedulerRepositoryProtocol(Protocol):
     def mark_failed(self, job_id: int, context: dict[str, Any] | None = None) -> None: ...
 
 
+class InactiveCampaignError(Exception):
+    """O tenant nao tem campanha eleitoral ativa para recalcular metas."""
+
+
 class GoalsRepositoryProtocol(JobRepositoryProtocol, Protocol):
     def recalculate_goals_and_rankings(
         self, *, tenant_id: int, reference_date: date
@@ -379,7 +383,9 @@ class JobRepository:
                     (tenant_id,),
                 ).fetchone()
                 if campaign is None:
-                    raise RuntimeError("Tenant nao possui campanha eleitoral ativa.")
+                    raise InactiveCampaignError(
+                        "Tenant nao possui campanha eleitoral ativa."
+                    )
                 campaign_id = int(campaign["id"])
                 threshold_row = connection.execute(
                     """

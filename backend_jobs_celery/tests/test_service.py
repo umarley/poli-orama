@@ -3,6 +3,7 @@ from typing import Any
 
 import pytest
 
+from jobs.repository import InactiveCampaignError
 from jobs.service import (
     enqueue_scheduled_goals_jobs,
     enqueue_scheduled_completeness_jobs,
@@ -189,6 +190,24 @@ def test_goals_job_recalculates_progress_alerts_and_ranking() -> None:
 
     assert result["metas_atualizadas"] == 4
     assert result["liderancas_ranqueadas"] == 3
+    assert [event[0] for event in repository.events] == ["started", "succeeded"]
+
+
+class FakeInactiveCampaignRepository(FakeRepository):
+    def recalculate_goals_and_rankings(
+        self, *, tenant_id: int, reference_date: date
+    ) -> dict[str, int]:
+        raise InactiveCampaignError("Tenant nao possui campanha eleitoral ativa.")
+
+
+def test_goals_job_without_active_campaign_finishes_without_failure() -> None:
+    repository = FakeInactiveCampaignRepository()
+
+    result = execute_goals_job(repository, job_id=41, tenant_id=8)
+
+    assert result["status"] == "concluido"
+    assert result["motivo"] == "sem_campanha_ativa"
+    assert result["metas_atualizadas"] == 0
     assert [event[0] for event in repository.events] == ["started", "succeeded"]
 
 
