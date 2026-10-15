@@ -98,6 +98,35 @@ class ValidateSchemaTests(unittest.TestCase):
         self.assertIn("lower(unaccent(MAX(btrim(nm_votavel))))", sql)
         self.assertNotIn("CREATE INDEX CONCURRENTLY", sql)
 
+    def test_rollup_refresh_reads_raw_source_once_and_rebuilds_candidate_catalog(self) -> None:
+        migration = DEFAULT_MIGRATION.parent / "075 - otimiza_refresh_resultado_rollup.sql"
+        sql = migration.read_text(encoding="utf-8")
+
+        self.assertEqual(sql.count("FROM tse.resultados_eleicoes"), 1)
+        self.assertIn("CREATE TEMP TABLE resultado_rollup_fonte ON COMMIT DROP", sql)
+        self.assertIn("FROM tse.resultado_rollup_secao_candidato", sql)
+        self.assertIn("FROM tse.resultado_rollup_local_candidato", sql)
+        self.assertIn("FROM tse.resultado_rollup_zona_candidato", sql)
+        self.assertIn("DELETE FROM tse.resultado_votavel", sql)
+        self.assertIn("pg_try_advisory_xact_lock", sql)
+        self.assertIn("IF v_rollup_votes <> v_source_votes", sql)
+        self.assertLess(
+            sql.index("SET active_generation = v_generation"),
+            sql.index("DELETE FROM tse.resultado_rollup_secao_candidato WHERE generation = v_old_generation"),
+        )
+
+    def test_election_locality_catalog_tracks_active_rollup_generation(self) -> None:
+        migration = DEFAULT_MIGRATION.parent / "076 - catalogo_localidades_eleitorais.sql"
+        expected = parse_expected_structure(migration.read_text(encoding="utf-8"))
+        sql = migration.read_text(encoding="utf-8")
+
+        self.assertIn(("tse", "resultado_localidade_eleitoral"), expected.tables)
+        self.assertIn("ix_resultado_localidade_eleitoral_municipio", sql)
+        self.assertIn("trg_sync_resultado_localidade_eleitoral", sql)
+        self.assertIn("c.active_generation = l.generation", sql)
+        self.assertIn("l.generation = NEW.active_generation", sql)
+        self.assertNotIn("FROM tse.resultados_eleicoes", sql)
+
     def test_gestao_eleitoral_migration_grants_permission_to_campaign_managers(self) -> None:
         migration = DEFAULT_MIGRATION.parent / "054 - gestao_eleitoral_permissoes.sql"
         sql = migration.read_text(encoding="utf-8")

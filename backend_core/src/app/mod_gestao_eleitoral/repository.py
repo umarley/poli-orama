@@ -846,7 +846,13 @@ class GestaoEleitoralRepository:
         self, filters: ResultadoFilters, scope: TerritorialScope
     ) -> list[dict[str, Any]]:
         where, values = self._filters(filters, scope)
-        source, rollup = await self._analytical_from(filters, scope, "municipio", geo=True)
+        if await self._can_use_locality_catalog(filters, scope):
+            source = self._locality_catalog_from(scope, include_municipality_names=True)
+            rollup = False
+        else:
+            source, rollup = await self._analytical_from(
+                filters, scope, "municipio", geo=True
+            )
         name_expr = (
             "COALESCE(MAX(m.nome), re.cd_municipio::text)"
             if rollup
@@ -966,7 +972,10 @@ class GestaoEleitoralRepository:
         self, filters: ResultadoFilters, scope: TerritorialScope
     ) -> list[dict[str, Any]]:
         where, values = self._filters(filters, scope)
-        source, _ = await self._analytical_from(filters, scope, "zona")
+        if await self._can_use_locality_catalog(filters, scope):
+            source = self._locality_catalog_from(scope)
+        else:
+            source, _ = await self._analytical_from(filters, scope, "zona")
         return await self._all(
             f"""
             SELECT re.nr_zona AS valor,
@@ -980,6 +989,34 @@ class GestaoEleitoralRepository:
             """,
             values,
         )
+
+    async def _can_use_locality_catalog(
+        self, filters: ResultadoFilters, scope: TerritorialScope
+    ) -> bool:
+        if not filters.eleicao_chaves:
+            return False
+        if filters.votaveis or filters.cargos:
+            return False
+        if filters.nr_local_votacao or filters.nr_secao or scope.secoes_ids:
+            return False
+        return await self.active_rollup_generations(filters) is not None
+
+    @staticmethod
+    def _locality_catalog_from(
+        scope: TerritorialScope, *, include_municipality_names: bool = False
+    ) -> str:
+        joins = "FROM tse.resultado_localidade_eleitoral re"
+        if include_municipality_names or scope.municipios_ibge or scope.zonas_ids:
+            joins += """
+            LEFT JOIN global.municipio m ON m.codigo_tse = re.cd_municipio
+            """
+        if scope.zonas_ids:
+            joins += """
+            LEFT JOIN global.zona_eleitoral ze
+              ON ze.codigo_municipio_ibge = m.codigo_ibge
+             AND ze.numero_zona = re.nr_zona
+            """
+        return joins
 
     async def list_polling_places(
         self, filters: ResultadoFilters, scope: TerritorialScope
